@@ -165,6 +165,14 @@ impl Page for TimerPage {
     }
 
     /// The timer has nothing to say in the collapsed pill as a page; its compact view is a `presence`.
+    fn name(&self) -> &'static str {
+        "Focus timer"
+    }
+
+    fn icon(&self) -> Icon {
+        Icon::Stopwatch
+    }
+
     fn priority(&self, mode: Mode) -> Option<Priority> {
         (mode == Mode::Expanded).then_some(Priority::BACKGROUND)
     }

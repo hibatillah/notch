@@ -5,6 +5,7 @@
 //! Each activity can be switched off from the tray menu, which stores `activity.<id>=off` in the settings file.
 
 mod battery;
+mod bluetooth;
 mod brightness;
 mod camera;
 mod clipboard;
@@ -19,6 +20,7 @@ pub fn all() -> Vec<Box<dyn Activity>> {
         Box::new(volume::VolumeActivity::new()),
         Box::new(brightness::BrightnessActivity::new()),
         Box::new(battery::BatteryActivity::new()),
+        Box::new(bluetooth::BluetoothActivity::new()),
         Box::new(microphone::MicrophoneActivity::new()),
         Box::new(camera::CameraActivity::new()),
         Box::new(clipboard::ClipboardActivity::new()),

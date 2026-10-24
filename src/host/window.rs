@@ -15,6 +15,7 @@ use windows::{
         UI::{
             HiDpi::{DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2, SetProcessDpiAwarenessContext},
             Input::KeyboardAndMouse::{TME_LEAVE, TRACKMOUSEEVENT, TrackMouseEvent},
+            Shell::{DragFinish, DragQueryFileW, HDROP},
             WindowsAndMessaging::*,
         },
     },
@@ -57,7 +58,11 @@ fn with_notch<R>(action: impl FnOnce(&mut Notch) -> R) -> Option<R> {
 /// Shows the tray menu and carries out the choice.
 fn show_menu(window: HWND) {
     let activities = with_notch(|notch| notch.activity_menu()).unwrap_or_default();
-    match tray::show_context_menu(window, &activities) {
+    let page_items = with_notch(|notch| notch.page_menu()).unwrap_or_default();
+    match tray::show_context_menu(window, &activities, &page_items) {
+        Some(tray::MenuChoice::PageItem { page, item }) => {
+            with_notch(|notch| notch.page_menu_item_chosen(page, item));
+        }
         Some(tray::MenuChoice::Toggle(index)) => {
             with_notch(|notch| notch.toggle_activity(index));
         }
@@ -74,6 +79,20 @@ fn power_setting_message(lparam: LPARAM) -> Option<SystemMessage> {
     }
     let value = unsafe { std::ptr::read_unaligned(setting.Data.as_ptr().cast::<u32>()) };
     Some(SystemMessage::PowerSettingChanged { setting: setting.PowerSetting, value })
+}
+
+/// The files of a `WM_DROPFILES` message; the drop is finished here.
+fn dropped_paths(drop: HDROP) -> Vec<std::path::PathBuf> {
+    let count = unsafe { DragQueryFileW(drop, u32::MAX, None) };
+    let mut paths = Vec::new();
+    for index in 0..count {
+        let length = unsafe { DragQueryFileW(drop, index, None) } as usize;
+        let mut buffer = vec![0u16; length + 1];
+        let written = unsafe { DragQueryFileW(drop, index, Some(&mut buffer)) } as usize;
+        paths.push(std::path::PathBuf::from(String::from_utf16_lossy(&buffer[..written])));
+    }
+    unsafe { DragFinish(drop) };
+    paths
 }
 
 fn low_word_signed(value: isize) -> i32 {
@@ -129,7 +148,14 @@ extern "system" fn window_procedure(window: HWND, message: u32, wparam: WPARAM, 
             LRESULT(0)
         }
         WM_RBUTTONUP => {
-            show_menu(window);
+            if with_notch(|notch| notch.right_clicked(x, y)) != Some(true) {
+                show_menu(window);
+            }
+            LRESULT(0)
+        }
+        WM_DROPFILES => {
+            let paths = dropped_paths(HDROP(wparam.0 as *mut _));
+            with_notch(|notch| notch.files_dropped(paths));
             LRESULT(0)
         }
         WM_MOUSEACTIVATE => LRESULT(MA_NOACTIVATE as isize),
@@ -205,7 +231,7 @@ pub fn run(pages: Vec<Box<dyn Page>>, activities: Vec<Box<dyn Activity>>) -> Res
         // A previous instance is asked to close only after this one is visible, so a rebuild swaps without a gap.
         let previous_window = FindWindowW(w!("NotchWindow"), None).ok();
         let window = CreateWindowExW(
-            WS_EX_LAYERED | WS_EX_TOPMOST | WS_EX_TOOLWINDOW | WS_EX_NOACTIVATE,
+            WS_EX_LAYERED | WS_EX_TOPMOST | WS_EX_TOOLWINDOW | WS_EX_NOACTIVATE | WS_EX_ACCEPTFILES,
             w!("NotchWindow"),
             w!("Notch"),
             WS_POPUP,

@@ -7,6 +7,7 @@ mod host;
 mod log;
 mod page;
 mod pages;
+mod platform;
 mod ui;
 
 fn main() {

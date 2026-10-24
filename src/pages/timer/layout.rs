@@ -2,19 +2,18 @@
 
 use crate::gfx::{Point, Rect, Size};
 
-pub const EXPANDED_SIZE: Size = Size::new(380.0, 124.0);
-// The window is 175 px high and the page dots take 16 px of it.
-const _: () = assert!(EXPANDED_SIZE.height <= 159.0);
-const PADDING: f32 = 16.0;
-const TITLE_TOP: f32 = 14.0;
-const TITLE_HEIGHT: f32 = 22.0;
-const DETAIL_TOP: f32 = 38.0;
-const DETAIL_HEIGHT: f32 = 20.0;
-const TIME_TOP: f32 = 8.0;
-const TIME_HEIGHT: f32 = 52.0;
+pub const EXPANDED_SIZE: Size = Size::new(348.0, 90.0);
+// The window is 260 px high and the notch's padding and header take 56 px of it.
+const _: () = assert!(EXPANDED_SIZE.height <= 190.0);
+const TITLE_TOP: f32 = 0.0;
+const TITLE_HEIGHT: f32 = 20.0;
+const DETAIL_TOP: f32 = 22.0;
+const DETAIL_HEIGHT: f32 = 18.0;
+const TIME_TOP: f32 = 0.0;
+const TIME_HEIGHT: f32 = 50.0;
 /// Share of the width the title may use when a time sits beside it.
 const TITLE_SHARE_WITH_TIME: f32 = 0.5;
-const BUTTON_TOP: f32 = 74.0;
+const BUTTON_TOP: f32 = 60.0;
 const BUTTON_HEIGHT: f32 = 30.0;
 const BUTTON_GAP: f32 = 8.0;
 
@@ -35,16 +34,16 @@ impl Layout {
     }
 
     pub fn title(&self, has_time: bool) -> Rect {
-        let right = if has_time { self.width() * TITLE_SHARE_WITH_TIME } else { self.width() - PADDING };
-        self.rect(PADDING, TITLE_TOP, right, TITLE_TOP + TITLE_HEIGHT)
+        let right = if has_time { self.width() * TITLE_SHARE_WITH_TIME } else { self.width() };
+        self.rect(0.0, TITLE_TOP, right, TITLE_TOP + TITLE_HEIGHT)
     }
 
     pub fn detail(&self) -> Rect {
-        self.rect(PADDING, DETAIL_TOP, self.width() - PADDING, DETAIL_TOP + DETAIL_HEIGHT)
+        self.rect(0.0, DETAIL_TOP, self.width(), DETAIL_TOP + DETAIL_HEIGHT)
     }
 
     pub fn time(&self) -> Rect {
-        self.rect(self.width() * TITLE_SHARE_WITH_TIME, TIME_TOP, self.width() - PADDING, TIME_TOP + TIME_HEIGHT)
+        self.rect(self.width() * TITLE_SHARE_WITH_TIME, TIME_TOP, self.width(), TIME_TOP + TIME_HEIGHT)
     }
 
     /// `count` buttons of equal width side by side across the page.
@@ -52,11 +51,11 @@ impl Layout {
         if count == 0 {
             return Vec::new();
         }
-        let available = self.width() - 2.0 * PADDING - BUTTON_GAP * (count - 1) as f32;
+        let available = self.width() - BUTTON_GAP * (count - 1) as f32;
         let button_width = available / count as f32;
         (0..count)
             .map(|index| {
-                let left = PADDING + index as f32 * (button_width + BUTTON_GAP);
+                let left = index as f32 * (button_width + BUTTON_GAP);
                 self.rect(left, BUTTON_TOP, left + button_width, BUTTON_TOP + BUTTON_HEIGHT)
             })
             .collect()
@@ -85,9 +84,9 @@ mod tests {
         let rects = layout.buttons(3);
         assert_eq!(rects.len(), 3);
         assert!((rects[0].width() - rects[2].width()).abs() < 0.01);
-        assert!(rects[0].left > layout.bounds.left && rects[2].right < layout.bounds.right);
+        assert!(rects[0].left >= layout.bounds.left && rects[2].right <= layout.bounds.right + 0.01);
         assert!(rects[1].left > rects[0].right);
-        assert!(rects.iter().all(|rect| rect.bottom < layout.bounds.bottom));
+        assert!(rects.iter().all(|rect| rect.bottom <= layout.bounds.bottom));
     }
 
     #[test]

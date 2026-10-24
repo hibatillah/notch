@@ -30,6 +30,14 @@ pub enum Icon {
     Camera,
     Clipboard,
     Bell,
+    Gear,
+    Clock,
+    Music,
+    Folder,
+    Calendar,
+    Stopwatch,
+    Chart,
+    Bluetooth,
 }
 
 /// How a path is painted: solid shapes are filled, line icons are stroked with round ends.
@@ -214,6 +222,50 @@ impl Icon {
                     .curve_to(at(12.8, 21.0), at(13.4, 20.5), at(13.8, 19.5));
                 (join(join(dome, clapper), line(&[(12.0, 3.5), (12.0, 5.5)])), Paint::Line)
             }
+            Icon::Gear => {
+                let mut gear = circle(at(12.0, 12.0), 3.0 * unit);
+                gear.append(circle(at(12.0, 12.0), 6.5 * unit));
+                for step in 0..8 {
+                    let angle = step as f32 * std::f32::consts::FRAC_PI_4;
+                    let (sine, cosine) = angle.sin_cos();
+                    gear.append(line(&[
+                        (12.0 + 6.5 * cosine, 12.0 + 6.5 * sine),
+                        (12.0 + 9.5 * cosine, 12.0 + 9.5 * sine),
+                    ]));
+                }
+                (gear, Paint::Line)
+            }
+            Icon::Clock => {
+                let face = circle(at(12.0, 12.0), 9.0 * unit);
+                (join(face, line(&[(12.0, 7.0), (12.0, 12.0), (15.5, 14.0)])), Paint::Line)
+            }
+            Icon::Music => {
+                let stem = line(&[(9.5, 17.5), (9.5, 5.5), (18.0, 3.5), (18.0, 15.5)]);
+                let heads = join(circle(at(7.0, 17.5), 2.5 * unit), circle(at(15.5, 15.5), 2.5 * unit));
+                (join(stem, heads), Paint::Line)
+            }
+            Icon::Folder => (
+                solid(&[(3.0, 6.0), (9.0, 6.0), (11.0, 9.0), (21.0, 9.0), (21.0, 19.0), (3.0, 19.0)], 2.0),
+                Paint::Line,
+            ),
+            Icon::Calendar => {
+                let body = solid(&[(4.0, 6.0), (20.0, 6.0), (20.0, 20.0), (4.0, 20.0)], 2.0);
+                let rings = join(line(&[(8.5, 3.5), (8.5, 7.5)]), line(&[(15.5, 3.5), (15.5, 7.5)]));
+                (join(join(body, rings), line(&[(4.0, 10.5), (20.0, 10.5)])), Paint::Line)
+            }
+            Icon::Stopwatch => {
+                let face = circle(at(12.0, 13.5), 7.0 * unit);
+                let hand = line(&[(12.0, 13.5), (14.5, 10.5)]);
+                let top = join(line(&[(10.0, 3.5), (14.0, 3.5)]), line(&[(12.0, 3.5), (12.0, 6.5)]));
+                (join(join(face, hand), top), Paint::Line)
+            }
+            Icon::Bluetooth => {
+                (line(&[(7.0, 8.0), (17.0, 16.0), (12.0, 20.5), (12.0, 3.5), (17.0, 8.0), (7.0, 16.0)]), Paint::Line)
+            }
+            Icon::Chart => {
+                let bars = join(line(&[(6.0, 20.0), (6.0, 12.0)]), line(&[(12.0, 20.0), (12.0, 5.0)]));
+                (join(bars, line(&[(18.0, 20.0), (18.0, 9.0)])), Paint::Line)
+            }
             Icon::Clipboard => {
                 let board = solid(&[(5.0, 5.0), (19.0, 5.0), (19.0, 21.0), (5.0, 21.0)], 2.0);
                 let clip = line(&[(9.0, 3.0), (15.0, 3.0)]);
@@ -255,7 +307,7 @@ fn join(mut first: Path, second: Path) -> Path {
 mod tests {
     use super::*;
 
-    const ALL: [Icon; 18] = [
+    const ALL: [Icon; 26] = [
         Icon::Lyrics,
         Icon::Shuffle,
         Icon::Previous,
@@ -274,6 +326,14 @@ mod tests {
         Icon::Camera,
         Icon::Clipboard,
         Icon::Bell,
+        Icon::Gear,
+        Icon::Clock,
+        Icon::Music,
+        Icon::Folder,
+        Icon::Calendar,
+        Icon::Stopwatch,
+        Icon::Chart,
+        Icon::Bluetooth,
     ];
 
     #[test]

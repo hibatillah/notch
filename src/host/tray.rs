@@ -25,11 +25,20 @@ const MENU_COMMAND_QUIT: usize = 1;
 /// The command of the first activity in the menu; the rest follow in order.
 const MENU_COMMAND_FIRST_ACTIVITY: usize = 100;
 
+/// Commands of the items pages add start here: `PAGE_ITEM_BASE + page * ITEMS_PER_PAGE + item`.
+const PAGE_ITEM_BASE: usize = 1000;
+const ITEMS_PER_PAGE: usize = 16;
+
 /// What the user picked from the menu.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum MenuChoice {
     /// Switch the activity at this index on or off.
     Toggle(usize),
+    /// An item a page added to the menu.
+    PageItem {
+        page: usize,
+        item: usize,
+    },
     Quit,
 }
 
@@ -37,6 +46,9 @@ pub enum MenuChoice {
 fn choice_for_command(command: usize, activity_count: usize) -> Option<MenuChoice> {
     if command == MENU_COMMAND_QUIT {
         return Some(MenuChoice::Quit);
+    }
+    if let Some(offset) = command.checked_sub(PAGE_ITEM_BASE) {
+        return Some(MenuChoice::PageItem { page: offset / ITEMS_PER_PAGE, item: offset % ITEMS_PER_PAGE });
     }
     let index = command.checked_sub(MENU_COMMAND_FIRST_ACTIVITY)?;
     (index < activity_count).then_some(MenuChoice::Toggle(index))
@@ -129,8 +141,13 @@ pub fn remove(window: HWND) {
     }
 }
 
-/// Shows the context menu at the pointer: a checkable item for each activity, then "Quit". Returns what was picked.
-pub fn show_context_menu(window: HWND, activities: &[(&'static str, bool)]) -> Option<MenuChoice> {
+/// Shows the context menu at the pointer: a checkable item for each activity, the items pages add (page index, item
+/// index, label), then "Quit". Returns what was picked.
+pub fn show_context_menu(
+    window: HWND,
+    activities: &[(&'static str, bool)],
+    page_items: &[(usize, usize, &'static str)],
+) -> Option<MenuChoice> {
     unsafe {
         let Ok(menu) = CreatePopupMenu() else { return None };
         for (index, &(label, is_on)) in activities.iter().enumerate() {
@@ -138,6 +155,13 @@ pub fn show_context_menu(window: HWND, activities: &[(&'static str, bool)]) -> O
             let _ = AppendMenuW(menu, flags, MENU_COMMAND_FIRST_ACTIVITY + index, &HSTRING::from(label));
         }
         if !activities.is_empty() {
+            let _ = AppendMenuW(menu, MF_SEPARATOR, 0, PCWSTR::null());
+        }
+        for &(page, item, label) in page_items {
+            let command = PAGE_ITEM_BASE + page * ITEMS_PER_PAGE + item;
+            let _ = AppendMenuW(menu, MF_STRING, command, &HSTRING::from(label));
+        }
+        if !page_items.is_empty() {
             let _ = AppendMenuW(menu, MF_SEPARATOR, 0, PCWSTR::null());
         }
         let _ = AppendMenuW(menu, MF_STRING, MENU_COMMAND_QUIT, w!("Quit"));
@@ -160,6 +184,12 @@ mod tests {
         assert_eq!(choice_for_command(MENU_COMMAND_QUIT, 3), Some(MenuChoice::Quit));
         assert_eq!(choice_for_command(MENU_COMMAND_FIRST_ACTIVITY, 3), Some(MenuChoice::Toggle(0)));
         assert_eq!(choice_for_command(MENU_COMMAND_FIRST_ACTIVITY + 2, 3), Some(MenuChoice::Toggle(2)));
+    }
+
+    #[test]
+    fn page_items_name_their_page_and_position() {
+        let command = PAGE_ITEM_BASE + 3 * ITEMS_PER_PAGE + 2;
+        assert_eq!(choice_for_command(command, 3), Some(MenuChoice::PageItem { page: 3, item: 2 }));
     }
 
     #[test]

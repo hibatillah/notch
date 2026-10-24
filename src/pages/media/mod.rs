@@ -25,6 +25,7 @@ use crate::{
     gfx::{Canvas, ImageSlot, Size},
     log,
     page::{Context, Frame, Mode, Page, PageSizes, PointerEvent, Priority, TimerId},
+    ui::Icon,
 };
 
 const SETTING_LYRICS: &str = "media.lyrics";
@@ -192,6 +193,14 @@ impl Page for MediaPage {
         "media"
     }
 
+    fn name(&self) -> &'static str {
+        "Media"
+    }
+
+    fn icon(&self) -> Icon {
+        Icon::Music
+    }
+
     fn priority(&self, mode: Mode) -> Option<Priority> {
         // Collapsed it only shows music that is playing; open it also stays up while paused, so playback can resume.
         let wanted = match mode {
@@ -278,6 +287,7 @@ impl Page for MediaPage {
                 self.seek_drag = None;
                 context.request_repaint();
             }
+            PointerEvent::SecondaryReleased(_) => {}
         }
     }
 

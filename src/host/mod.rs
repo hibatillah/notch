@@ -2,9 +2,11 @@
 //! Nothing in here knows what any particular page shows.
 
 mod activity_layout;
+mod chrome;
 mod display;
 mod navigation;
 mod notch;
+mod page_editor;
 mod registry;
 mod settings;
 mod tray;

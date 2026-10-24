@@ -18,10 +18,11 @@ use crate::{
     activity::Presence,
     gfx::{Canvas, Fonts, ImageBrush, ImageData, Point, Rect, Size, Surface},
     host::Settings,
+    ui::Icon,
 };
 
 /// Height of the collapsed pill in device-independent pixels; pages center their resting content in it.
-pub const RESTING_HEIGHT: f32 = 32.0;
+pub const RESTING_HEIGHT: f32 = 28.0;
 
 /// Message a `Notifier` posts to wake the host from another thread.
 pub(crate) const WM_PAGE_NOTIFY: u32 = WM_APP + 1;
@@ -52,7 +53,8 @@ pub enum Mode {
     Expanded,
 }
 
-/// Sizes a page wants, in device-independent pixels. The host animates toward them.
+/// Sizes a page wants, in device-independent pixels. The host animates toward them. `expanded` is the size of the
+/// page's own content: the host adds its padding and the header with the page dots around it.
 #[derive(Clone, Copy, Debug)]
 pub struct PageSizes {
     pub resting_width: f32,
@@ -63,11 +65,12 @@ pub struct PageSizes {
 #[derive(Clone, Copy, Debug)]
 pub struct Frame {
     pub scale: f32,
-    /// The pill in device pixels, in the same space as pointer positions.
+    /// Where the page draws, in device pixels, in the same space as pointer positions. Collapsed, this is the pill;
+    /// open, it is the pill without the padding and the header.
     pub bounds: Rect,
     /// 0 collapsed, 1 fully open; the spring can overshoot a little past 1.
     pub expansion: f32,
-    /// The animated expanded size in device-independent pixels.
+    /// The animated size of the page's content when open, in device-independent pixels.
     pub expanded: Size,
 }
 
@@ -88,6 +91,8 @@ pub enum PointerEvent {
     Left,
     /// A pointer capture requested with `Context::capture_pointer` ended.
     CaptureLost,
+    /// The secondary (right) button was released.
+    SecondaryReleased(Point),
 }
 
 /// Identifies one of a page's timers. Must be below `TIMERS_PER_PAGE` (16).
@@ -117,6 +122,26 @@ pub trait Page {
     /// Called on every page when the pointer enters or leaves the notch.
     fn on_hover_changed(&mut self, _is_hovering: bool, _context: &mut Context) {}
 
+    /// Items this page adds to the tray menu, such as "Use calendar link from clipboard".
+    fn menu_items(&self) -> Vec<&'static str> {
+        Vec::new()
+    }
+
+    /// Called when the user picks the item at `index` of `menu_items`.
+    fn on_menu_item(&mut self, _index: usize, _context: &mut Context) {}
+
+    /// True for a page that takes files dropped on the notch; the first such page that is switched on gets them.
+    fn accepts_drops(&self) -> bool {
+        false
+    }
+
+    /// Called with the files dropped on the notch, when `accepts_drops` is true.
+    fn on_drop(&mut self, _paths: Vec<std::path::PathBuf>, _context: &mut Context) {}
+
+    /// Called when this page starts or stops being the one on screen: the notch is open and showing it. A page that
+    /// measures something only while it is looked at starts and stops its work here.
+    fn on_shown_changed(&mut self, _is_shown: bool, _context: &mut Context) {}
+
     fn on_pointer(&mut self, _event: PointerEvent, _frame: &Frame, _context: &mut Context) {}
 
     fn on_timer(&mut self, _timer: TimerId, _context: &mut Context) {}
@@ -132,6 +157,21 @@ pub trait Page {
 
     /// Draws what `presence` asked for into `area` (device pixels), faded by `opacity`.
     fn draw_presence(&self, _canvas: &Canvas, _area: Rect, _scale: f32, _opacity: f32) {}
+
+    /// The name shown for the page when the user edits the page list.
+    fn name(&self) -> &'static str {
+        self.id()
+    }
+
+    /// The glyph shown beside the name when the user edits the page list.
+    fn icon(&self) -> Icon {
+        Icon::Clock
+    }
+
+    /// True for a page that starts switched off until the user adds it.
+    fn is_opt_in(&self) -> bool {
+        false
+    }
 
     /// Advances the page's own animations; return true while any is still moving. Only called while animating.
     fn animate(&mut self, _elapsed_seconds: f32) -> bool {
@@ -206,6 +246,11 @@ impl<'a> Context<'a> {
 
     pub fn fonts(&self) -> &Fonts {
         self.fonts
+    }
+
+    /// Shows a popup menu of `items` at the pointer and waits for the choice; the position of the one chosen, if any.
+    pub fn show_menu(&mut self, items: &[&str]) -> Option<usize> {
+        crate::platform::popup_menu(self.window, items)
     }
 
     /// Draw the notch again after this hook returns.

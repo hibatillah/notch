@@ -103,6 +103,11 @@ impl<'a> Canvas<'a> {
         }
     }
 
+    /// Width of `text` in device-independent pixels when drawn on one line with `style`.
+    pub fn measure(&self, style: &FontStyle, text: &str) -> f32 {
+        self.fonts.measure(style, text)
+    }
+
     /// Draws one run of text inside `rect`, aligned and trimmed according to `style`.
     pub fn text(&self, style: &FontStyle, text: &str, rect: Rect, color: Color) {
         if color.a <= MIN_VISIBLE_ALPHA || text.is_empty() {
