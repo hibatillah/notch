@@ -172,7 +172,7 @@ mod tests {
         let flat: Vec<u8> = [10, 20, 30, 255].repeat(36 * 36);
         let shrunk = ImageData::new(36, 36, flat).downscaled(10);
         assert_eq!((shrunk.width, shrunk.height), (10, 10));
-        assert!(shrunk.bgra_premultiplied.chunks_exact(4).all(|pixel| pixel == [10, 20, 30, 255]));
+        assert!(shrunk.bgra_premultiplied.as_chunks::<4>().0.iter().all(|pixel| *pixel == [10, 20, 30, 255]));
     }
 
     #[test]

@@ -128,14 +128,14 @@ unsafe fn read_pixels(bitmap: HBITMAP) -> Option<ImageData> {
 
 /// Shell bitmaps can be straight-alpha or lack alpha; Direct2D needs premultiplied.
 fn normalise_alpha(pixels: &mut [u8]) {
-    if pixels.chunks_exact(4).all(|pixel| pixel[3] == 0) {
-        pixels.chunks_exact_mut(4).for_each(|pixel| pixel[3] = 255);
+    if pixels.as_chunks::<4>().0.iter().all(|pixel| pixel[3] == 0) {
+        pixels.as_chunks_mut::<4>().0.iter_mut().for_each(|pixel| pixel[3] = 255);
         return;
     }
     let is_straight_alpha =
-        pixels.chunks_exact(4).any(|pixel| pixel[0] > pixel[3] || pixel[1] > pixel[3] || pixel[2] > pixel[3]);
+        pixels.as_chunks::<4>().0.iter().any(|pixel| pixel[0] > pixel[3] || pixel[1] > pixel[3] || pixel[2] > pixel[3]);
     if is_straight_alpha {
-        for pixel in pixels.chunks_exact_mut(4) {
+        for pixel in pixels.as_chunks_mut::<4>().0 {
             let alpha = u16::from(pixel[3]);
             for channel in &mut pixel[..3] {
                 *channel = ((u16::from(*channel) * alpha + 127) / 255) as u8;
