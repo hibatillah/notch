@@ -84,6 +84,7 @@ Delete its file, its `mod` line and its entry in `all()`.
 | `volume` | volume bar, or "Muted" | Core Audio endpoint volume callback; follows the default speakers |
 | `brightness` | brightness bar | power setting `GUID_DEVICE_POWER_POLICY_VIDEO_BRIGHTNESS`; laptop panel only |
 | `battery` | "Charging", "On battery", "Low battery" at 20 % and 10 % | power settings for the power source and battery level |
+| `bluetooth` | "<device> connected" with its battery when known, or "disconnected" | `ConnectionStatusChanged` of every paired device, on a thread of its own; the battery is read two seconds after a connection from the device node that reports it |
 | `microphone` | "Microphone on/off", then an orange dot | audio sessions of the default recording device; shows that an app has the microphone open, so an app that keeps it open while you are muted (Google Meet in a browser) keeps the dot |
 | `camera` | "Camera on/off", then a green dot | stream start and stop events in the `Microsoft-Windows-MF-FrameServer/Camera_FrameServer` event log; misses apps that bypass the Frame Server and a camera already streaming when the notch starts |
 | `clipboard` | "Copied" | clipboard change message; never reads the clipboard, skips copies that ask not to be monitored |

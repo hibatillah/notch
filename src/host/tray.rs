@@ -22,6 +22,7 @@ const TRAY_ICON_ID: u32 = 1;
 const ICON_SIZE: i32 = 32;
 const TOOLTIP: &str = "Notch";
 const MENU_COMMAND_QUIT: usize = 1;
+const MENU_COMMAND_HIDE_WHEN_IDLE: usize = 2;
 /// The command of the first activity in the menu; the rest follow in order.
 const MENU_COMMAND_FIRST_ACTIVITY: usize = 100;
 
@@ -39,6 +40,8 @@ pub enum MenuChoice {
         page: usize,
         item: usize,
     },
+    /// Switch hiding the notch when nothing is happening on or off.
+    ToggleHideWhenIdle,
     Quit,
 }
 
@@ -46,6 +49,9 @@ pub enum MenuChoice {
 fn choice_for_command(command: usize, activity_count: usize) -> Option<MenuChoice> {
     if command == MENU_COMMAND_QUIT {
         return Some(MenuChoice::Quit);
+    }
+    if command == MENU_COMMAND_HIDE_WHEN_IDLE {
+        return Some(MenuChoice::ToggleHideWhenIdle);
     }
     if let Some(offset) = command.checked_sub(PAGE_ITEM_BASE) {
         return Some(MenuChoice::PageItem { page: offset / ITEMS_PER_PAGE, item: offset % ITEMS_PER_PAGE });
@@ -147,6 +153,7 @@ pub fn show_context_menu(
     window: HWND,
     activities: &[(&'static str, bool)],
     page_items: &[(usize, usize, String)],
+    hides_when_idle: bool,
 ) -> Option<MenuChoice> {
     unsafe {
         let Ok(menu) = CreatePopupMenu() else { return None };
@@ -164,6 +171,8 @@ pub fn show_context_menu(
         if !page_items.is_empty() {
             let _ = AppendMenuW(menu, MF_SEPARATOR, 0, PCWSTR::null());
         }
+        let hide_flags = if hides_when_idle { MF_STRING | MF_CHECKED } else { MF_STRING };
+        let _ = AppendMenuW(menu, hide_flags, MENU_COMMAND_HIDE_WHEN_IDLE, w!("Hide when idle"));
         let _ = AppendMenuW(menu, MF_STRING, MENU_COMMAND_QUIT, w!("Quit"));
         let mut cursor = POINT::default();
         let _ = GetCursorPos(&mut cursor);
@@ -184,6 +193,11 @@ mod tests {
         assert_eq!(choice_for_command(MENU_COMMAND_QUIT, 3), Some(MenuChoice::Quit));
         assert_eq!(choice_for_command(MENU_COMMAND_FIRST_ACTIVITY, 3), Some(MenuChoice::Toggle(0)));
         assert_eq!(choice_for_command(MENU_COMMAND_FIRST_ACTIVITY + 2, 3), Some(MenuChoice::Toggle(2)));
+    }
+
+    #[test]
+    fn hiding_when_idle_has_its_own_command() {
+        assert_eq!(choice_for_command(MENU_COMMAND_HIDE_WHEN_IDLE, 3), Some(MenuChoice::ToggleHideWhenIdle));
     }
 
     #[test]

@@ -108,7 +108,8 @@ What each part does:
 - `priority` answers "do you want to be shown?" for the collapsed and the open notch. `None` means no. Collapsed, the
   highest priority wins; `Priority::NORMAL` beats the clock's `BACKGROUND`. Open, every page that answers `Some` can be
   reached by scrolling or by the page dots, and the highest priority is only the page shown first.
-- Keep the open size at most 159 px high: the window is 175 px and the dots strip takes 16 px of it.
+- Report the size of your content only; the notch adds 32 px to the width and 56 px to the height for its padding and
+  header. The window is 260 px high, so keep the content at most 200 px high.
 - `sizes` is the size you want, in device-independent pixels. Ask again whenever your content changes size; the host
   asks after every event and animates the change.
 - `draw_resting` and `draw_expanded` draw your content. Multiply sizes by `frame.scale` to get device pixels, and fade
@@ -173,6 +174,10 @@ To only turn a page off without deleting it, list the pages you want in `NOTCH_P
 | `on_start(context)` | no | once, after the window exists |
 | `on_hover_changed(is_hovering, context)` | no | on every page, when the pointer enters or leaves the notch |
 | `on_pointer(event, frame, context)` | no | pointer input, for the page shown open |
+| `on_shown_changed(is_shown, context)` | no | when this page starts or stops being on screen (the notch is open and shows it); start and stop measuring here |
+| `name()`, `icon()`, `is_opt_in()` | no | what the "Edit pages" view calls the page and draws beside it, and whether it starts switched off |
+| `accepts_drops()`, `on_drop(paths, context)` | no | for a page that takes files dropped on the notch |
+| `menu_items()`, `on_menu_item(index, context)` | no | items the page adds to the tray menu |
 | `on_timer(timer, context)` | no | when one of the page's timers fires |
 | `on_notify(context)` | no | after a background thread used the page's `Notifier` |
 | `animate(elapsed_seconds)` | no | each frame while the notch animates; return true while the page is still moving |
@@ -184,8 +189,9 @@ A page that also has something to say while closed (the timer's ring and minutes
 `activity::Flash` for a transient that comes and goes, and its own timers and settings as usual. See
 [adding-an-activity.md](adding-an-activity.md) for how the host lays these out.
 
-`PointerEvent` is `Moved`, `Pressed`, `Released`, `Left` (the pointer left the notch) and `CaptureLost`. Positions
-are device pixels.
+`PointerEvent` is `Moved`, `Pressed`, `Released`, `SecondaryReleased` (a right click), `Left` (the pointer left the
+notch) and `CaptureLost`. Positions are device pixels. `Frame::bounds` is the page's own content area when the notch
+is open (the notch draws its padding and header around it), so a page lays itself out from the top-left of `bounds`.
 
 ### `Context`
 
@@ -196,7 +202,8 @@ Passed to every hook that can change something.
 | `request_repaint()` | draw the notch again after the hook returns |
 | `request_animation()` | start the frame timer so `animate` runs; use it after starting an animation of your own |
 | `set_timer(TimerId(n), milliseconds)` / `kill_timer(TimerId(n))` | repeating timers; `n` must be below 16; setting an existing timer re-arms it |
-| `capture_pointer()` / `release_pointer()` | receive pointer events even outside the notch, for dragging |
+| `show_menu(&["Open", "Remove"])` | show a popup menu at the pointer and wait; the position of the item chosen |
+| `listen_to_power_setting(&GUID)`, `listen_to_clipboard()` | for activities; see [adding-an-activity.md](adding-an-activity.md) |
 | `notifier()` | a handle a background thread calls `notify()` on to wake the page |
 | `upload_image(&ImageData)` | make an image drawable; usually through `ImageSlot::sync` |
 | `fonts()` | measure text with `fonts().measure(&style, text)` |

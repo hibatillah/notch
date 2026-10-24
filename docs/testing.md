@@ -36,6 +36,11 @@ spread over many files:
 | drawing toolkit | `src/gfx/color.rs`, `geometry.rs`, `spring.rs`, `image.rs`, `path.rs`, `raster.rs`, `canvas.rs` (flare shape) |
 | widgets | `src/ui/icon_button.rs`, `icons.rs`, `progress_bar.rs`, `hud.rs` |
 | timer page | `src/pages/timer/session.rs` (rules, saving), `view.rs`, `layout.rs` |
+| stats page | `src/pages/stats/format.rs` (numbers), `sampler.rs` (the readings), `mod.rs` (layout) |
+| shelf page | `src/pages/shelf/items.rs` (the list, kinds, saving), `mod.rs` (places) |
+| calendar page | `src/pages/calendar/dates.rs`, `ics.rs` (reading and repeating), `agenda.rs` (what a day says), `fetch.rs` |
+| notifications page | `src/pages/notifications/items.rs` (the stack and its wording), `mod.rs` (cards) |
+| editing pages | `src/host/page_editor.rs`, `chrome.rs`, `navigation.rs` (the page list) |
 | activities | `src/activities/battery.rs` (charge rules), `volume.rs`, `camera.rs`, `privacy.rs` |
 | clock page | `src/pages/clock/mod.rs` |
 | media page | `src/pages/media/mod.rs`, `layout.rs`, `resting.rs`, `session.rs`, `lyric_follower.rs`, `lyrics/mod.rs`, `lyrics/client.rs` |
@@ -114,6 +119,11 @@ For a change that affects drawing or input, run `scripts/reload.sh` and check:
 - clicking and dragging the progress bar jumps to that point
 - the lyric button hides and shows lyrics, and the choice is remembered after restarting
 - the tray icon's Quit closes the notch and removes the icon
+
+For a change to the notch's frame, the editor or hiding: open the notch and check the dots and the gear, open the gear
+and add, drag, double-click and remove a page, tick "Hide when idle" in the tray menu and check that the notch
+disappears, shows its small pill when you rest the pointer on the top of the screen, and opens if you stay. The
+mouse-driven checks need an unlocked screen.
 
 For a change to the timer, seed a short session by hand (stop the notch, put `timer.state=running focus 30000 <end>` in
 the settings file, where `<end>` is the Unix time in milliseconds 30 seconds from now, and start it) and check: the ring

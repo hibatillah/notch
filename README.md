@@ -1,39 +1,40 @@
 # Notch
 
 A small "dynamic island" for the top of your Windows screen, written in Rust. It sits at the top edge as a slim
-black pill, and opens when you hover over it to show a page: a clock, or the media player with album art, controls
-and synced lyrics. It draws directly with Direct2D, with no UI framework and no web view, so it stays small and uses
-no CPU while idle.
+black pill that shows what is happening (a volume change, the microphone turning on, the music playing), and opens
+when you hover over it to show a page: a clock, the media player, a focus timer, a file shelf, a calendar, your
+notifications or system stats. It draws directly with Direct2D, with no UI framework and no web view, so it stays
+small and uses no CPU while idle.
 
 ## What it includes
 
-Three pages out of the box. Pages are separate modules, so you can add your own or remove these.
+Pages are what you see when you open the notch. They are separate modules, so you can add your own or remove these.
+Swipe or scroll between them; the dots at the top show where you are, and the gear opens **Edit pages**.
 
-| Page      | Collapsed                                                 | Open                                                                                                                    |
-| --------- | --------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------- |
-| **Clock** | the time                                                  | the time and date                                                                                                       |
-| **Media** | the app icon, title and artist, or the current lyric line | album art, title, artist, seek bar, time left, play/pause, previous, next, shuffle, repeat, and scrolling synced lyrics |
-| **Timer** | while running: a progress ring and the time left, beside the other page | focus timer: the time, pause, +5 min and stop; start, and the length of a session |
-
-The timer runs focus sessions (25 minutes by default, four to a round) and breaks (5 minutes, 15 after the fourth
-session). A ring and the minutes left show in the collapsed pill (seconds in the last ten minutes), and when a phase
-ends the notch shows an alert and plays the Windows notification sound; open the notch to start the break or skip it.
-The timer keeps real time, so it survives restarting the notch. Break lengths can be set by hand in the settings file
-(see [docs/configuration.md](docs/configuration.md)).
-
-The media page works with any player that reports to the Windows media controls (Spotify, browsers, and so on). It
-has been tested with Spotify. A tray icon lets you quit.
+| Page              | What it does                                                                                               |
+| ----------------- | ---------------------------------------------------------------------------------------------------------- |
+| **Clock**         | the time and date                                                                                          |
+| **Media**         | the artwork, title, album and artist, previous / play or pause / next, and three lines of synced lyrics   |
+| **Notifications** | Windows notifications: each new one shows in the pill for four seconds, then a stack with Open and Dismiss |
+| **File shelf**    | drop files on the notch to keep them for later; click one to open it, right-click for more                |
+| **Calendar**      | a week strip and today's events from a calendar address, with a Join button for video meetings           |
+| **Focus timer**   | focus sessions and breaks, with a ring and the minutes left in the pill                                   |
+| **System stats**  | processor, memory, network and disk (off until you add it in Edit pages)                                   |
 
 Activities show up in the collapsed pill while something happens, and each can be switched off from the tray menu:
 
-| Activity              | Shows                                                           |
-| --------------------- | --------------------------------------------------------------- |
-| **Volume**            | a bar with the value, or "Muted"                                |
-| **Brightness**        | a bar with the value (laptop screens)                           |
-| **Charger / battery** | "Charging", "On battery", and "Low battery" at 20 % and 10 %    |
-| **Microphone**        | "Microphone on", then an orange dot while an app has it open    |
-| **Camera**            | "Camera on", then a green dot while an app has it open          |
-| **Copied**            | "Copied" when something is copied (never reads what you copied) |
+| Activity              | Shows                                                                      |
+| --------------------- | -------------------------------------------------------------------------- |
+| **Volume**            | a bar with the value, or "Muted"                                           |
+| **Brightness**        | a bar with the value (laptop screens)                                      |
+| **Charger / battery** | "Charging", "On battery", and "Low battery" at 20 % and 10 %               |
+| **Bluetooth**         | a paired device connecting or disconnecting, with its battery when known   |
+| **Microphone**        | "Microphone on", then an orange dot while an app has it open               |
+| **Camera**            | "Camera on", then a green dot while an app has it open                     |
+| **Copied**            | "Copied" when something is copied (never reads what you copied)            |
+
+Pages can add to the collapsed pill too: the media page shows the art with still bars (or the lyric line being sung),
+the timer shows its ring, the shelf says when a file is added, and the calendar reminds you 15 minutes before an event.
 
 Limits of the microphone and camera activities:
 
@@ -44,11 +45,23 @@ Limits of the microphone and camera activities:
   older DirectShow programs) and a camera that is already on when the notch starts. This relies on how Windows 11
   build 26300 behaves; other Windows versions are untested.
 
+Other limits:
+
+- **Notifications** appear in the notch a few seconds after Windows shows its own banner (reading the list takes a
+  few seconds when many notifications are waiting), and the notch adds to the Windows notification center without
+  replacing it.
+- **Calendar** reads an iCal address (for Google Calendar, "Secret address in iCal format" in the calendar's
+  settings), not a Google sign-in. Treat that address like a password. An event in a time zone with daylight saving
+  can show an hour off while it is in effect.
+- **File shelf** takes files dropped on the notch, but a file cannot be dragged out of it; open it, or right-click for
+  Show in folder or Copy path.
+- **Brightness** follows the laptop panel only.
+
 ## Device requirements
 
 - Windows 10 or 11, 64-bit (developed and tested on Windows 11; Windows 10 is untested)
 - For the media page: a player that shows up in the Windows media controls
-- Internet access only if you want lyrics (see [Privacy](#privacy))
+- Internet access only for lyrics and for a calendar address (see [Privacy](#privacy))
 
 It is a single `notch.exe` with no installer. Typical use on the author's machine: 0 % CPU when idle and about
 19 MB of memory with the clock page, about 33 MB while playing music with lyrics (see [Resource use](#resource-use)).
@@ -68,13 +81,17 @@ own page, and [docs/architecture.md](docs/architecture.md) explains how the code
 ## Using it
 
 - **Hover** over the pill at the top of the screen to open it; move away to close it.
-- **Pages:** when more than one page has something to show, dots appear at the bottom of the open notch. Scroll the
-  mouse wheel (or swipe two fingers on a touchpad) or click a dot to move between them; the notch opens on the page you
-  left.
-- **Media page:** click the buttons, or click or drag the progress bar to jump to a point in the song. The
-  speech-bubble button turns the lyrics on and off, and your choice is remembered.
-- **Quit:** right-click the tray icon (on Windows 11 it may be under the `^` overflow menu) or the notch, and choose
-  **Quit**.
+- **Pages:** scroll the mouse wheel (or swipe two fingers on a touchpad) or click a dot to move between pages. The
+  notch opens on the page you left. Click the gear to add, remove and reorder pages: drag a page to move it,
+  double-click to remove it, click one under "Available" to add it.
+- **Media page:** click the buttons; the speech-bubble button turns the lyrics on and off, and your choice is
+  remembered.
+- **Calendar:** copy your calendar's iCal address, then right-click the tray icon and choose **Use calendar link from
+  clipboard**.
+- **Tray menu** (right-click the tray icon or the notch): switch activities on and off, set the calendar link, choose
+  what notifications show, **Hide when idle** (the notch is invisible until you point at the top of the screen, then
+  shows a small pill and opens if you stay), and **Quit**. On Windows 11 the tray icon may be under the `^` overflow
+  menu.
 
 ## Development
 
@@ -135,10 +152,12 @@ Run `scripts/perf.sh` to measure your own machine. See [docs/testing.md](docs/te
 
 ## Privacy
 
-Nothing is sent anywhere except lyric lookups. When a new track starts, the media page asks
-[LRCLIB](https://lrclib.net) for synced lyrics, which sends the track's artist, title, album and length to that
-service. There are no accounts, no analytics and no other network use. Settings stay on your computer in
-`%APPDATA%\notch\settings.txt`.
+Nothing is sent anywhere except lyric lookups and the download of the calendar address you give it. When a new track
+starts, the media page asks [LRCLIB](https://lrclib.net) for synced lyrics, which sends the track's artist, title,
+album and length to that service. If you set a calendar address, the calendar page downloads that file from it
+every 15 minutes. There are no accounts, no analytics and no other network use. Notifications, the clipboard and the
+files on the shelf are only read on your computer; the notch never reads what you copy. Settings stay on your computer
+in `%APPDATA%\notch\settings.txt`, which also holds the calendar address; treat it like a password.
 
 To turn lookups off, set the environment variable `NOTCH_LYRICS=off`. The lyrics button in the notch only hides
 lyrics; it does not stop the lookup.

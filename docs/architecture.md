@@ -7,18 +7,25 @@ code is split so that adding or removing a page or an activity never touches the
 
 ```
 src/
-  main.rs         entry point: starts the host with the registered pages
+  main.rs         entry point: starts the host with the registered pages and activities
   page.rs         the whole contract for a page: the Page trait, Context, Frame, events
   activity.rs     the whole contract for an activity: the Activity trait, Presence, SystemMessage, Flash
   log.rs          optional debug log (set NOTCH_DEBUG to a file path)
   host/           the notch itself: window, animation, hover, tray, settings. Knows no page.
   gfx/            drawing toolkit for pages: Canvas, fonts, colors, images, springs, geometry
-  ui/             reusable widgets: IconButton (ghost hover), ProgressBar, icons, the HUD layouts for activities
-  activities/     the registry (mod.rs) and one file per activity: volume, brightness, battery, microphone, camera, clipboard
+  platform.rs     small Windows actions for pages: open a file or link, copy and paste text, a popup menu
+  ui/             reusable widgets: IconButton, PillButton, Ring, icons, the HUD layouts for activities
+  activities/     the registry (mod.rs) and one file per activity: volume, brightness, battery, Bluetooth,
+                  microphone, camera, clipboard
   pages/
     mod.rs        the registry: the only place pages are listed
     clock/        fallback page: the time and date
-    media/        media player: session, controls, seek bar, lyrics, artwork, app icon
+    media/        media player: session, controls, lyrics, artwork, app icon
+    notifications/ Windows notifications: the listener, the stack, the cards
+    shelf/        file shelf: the list of files and their tiles
+    calendar/     calendar: dates, the iCal reader, the day's agenda, the download
+    timer/        focus timer: the rules, what is said in each state, the layout
+    stats/        system stats: the readings and how they are written
 ```
 
 Dependencies point one way. Pages use `page`, `gfx` and `ui`; activities use `activity`, `page` (for `Context`), `gfx`
@@ -34,7 +41,9 @@ particular page or activity, and pages and activities never use each other.
 | `window.rs` | creates the window, runs the message loop, turns Windows messages into calls on the notch |
 | `notch.rs` | the `Notch`: animates the pill, tracks hover, selects pages, routes input, paints |
 | `registry.rs` | decides which registered pages are switched on (`NOTCH_PAGES`, the `pages` setting) |
-| `navigation.rs` | which page opens, wheel steps, the page dots (pure functions) |
+| `navigation.rs` | the user's page order and which pages are on, which page opens, wheel steps (pure) |
+| `chrome.rs` | the padding and the header (page dots and gear) around every open page |
+| `page_editor.rs` | the "Edit pages" view: chip layout, drag and double-click rules, drawing |
 | `activity_layout.rs` | which transient activities show and where each one starts (pure functions) |
 | `settings.rs` | the persistent key-value store pages and activities share |
 | `tray.rs` | the tray icon and its menu: one checkable item per activity, then Quit |
@@ -43,7 +52,9 @@ particular page or activity, and pages and activities never use each other.
 ### Choosing a page
 
 Each page answers `priority(mode)` for `Mode::Resting` (collapsed) and `Mode::Expanded` (open). `None` means
-"nothing to show". The host shows the highest priority in each mode, and the earlier registered page wins ties.
+"nothing to show". The host shows the highest priority in each mode, and the earlier registered page wins ties. A page
+that answers `Priority::URGENT` while open comes before the page the user chose, for as long as it does (the
+notifications page does this while a notification is showing).
 
 While collapsed the highest priority is always the page shown. While open it is only the starting point: with two or
 more pages that have something to show, the user moves between them (see Navigation below), and the page they moved
@@ -53,6 +64,19 @@ The two modes are independent. The media page, for example, is shown collapsed o
 when open while paused so playback can be resumed. The clock answers `Some(BACKGROUND)` in both modes, so
 something is always shown. The host asks again after every event, so a page changes what it shows by changing its
 own state.
+
+### The open notch
+
+Every open page sits inside the same frame: 14 px of padding, a 16 px header (the page dots on the left, the gear on
+the right), a 12 px gap, then the page's own content, 16 px of padding at the sides and 14 below. A page reports the
+size of its content only (`PageSizes::expanded`) and draws in `Frame::bounds`, which is the content area. The gear
+opens the "Edit pages" view in place of the page: drag a chip to reorder, double-click to remove, click an available
+one to add; the order and what is off are saved as `navigation.order` and `navigation.disabled`. A page can be opt-in
+(`Page::is_opt_in`), which starts it switched off.
+
+While the screen is idle the notch can hide itself (a choice in the tray menu): it shrinks to a nearly invisible
+240 x 6 px strip that still receives the pointer, shows the small pill when the pointer rests on it for 150 ms, and
+opens 450 ms after that if the pointer stays.
 
 ### Navigation
 

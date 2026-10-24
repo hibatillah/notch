@@ -59,7 +59,11 @@ fn with_notch<R>(action: impl FnOnce(&mut Notch) -> R) -> Option<R> {
 fn show_menu(window: HWND) {
     let activities = with_notch(|notch| notch.activity_menu()).unwrap_or_default();
     let page_items = with_notch(|notch| notch.page_menu()).unwrap_or_default();
-    match tray::show_context_menu(window, &activities, &page_items) {
+    let hides_when_idle = with_notch(|notch| notch.hides_when_idle()).unwrap_or_default();
+    match tray::show_context_menu(window, &activities, &page_items, hides_when_idle) {
+        Some(tray::MenuChoice::ToggleHideWhenIdle) => {
+            with_notch(|notch| notch.toggle_hide_when_idle());
+        }
         Some(tray::MenuChoice::PageItem { page, item }) => {
             with_notch(|notch| notch.page_menu_item_chosen(page, item));
         }

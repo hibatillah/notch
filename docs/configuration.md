@@ -43,6 +43,11 @@ change something; you can also edit it by hand while the notch is not running.
 | `timer.focus_minutes` | 5 to 120 | length of a focus session; the timer page changes it in steps of 5 |
 | `timer.short_break_minutes`, `timer.long_break_minutes` | minutes | break lengths (default 5 and 15); set by hand |
 | `timer.state`, `timer.completed` | written by the notch | the running timer and the focus sessions finished in this round, so a restart keeps them |
+| `navigation.order`, `navigation.disabled` | page ids, comma-separated | the order of the pages and the ones switched off; the "Edit pages" view writes them |
+| `notifications.enabled`, `notifications.show_text` | `on`, `off` | show notifications in the notch; show what they say (off is private mode); the tray menu changes them |
+| `calendar.ics_url` | a web address | the calendar address; the tray menu sets it from the clipboard. It is a secret: anyone with it can read the calendar |
+| `calendar.refresh_minutes` | minutes | how often the calendar is downloaded again (default 15); set by hand |
+| `notch.hide_when_idle` | `on`, `off` | hide the notch until you point at the top of the screen; the tray menu changes it |
 | `navigation.page` | a page id | the page that was open last; the notch opens on it (the notch writes this when you change page) |
 | `activity.<id>` | `on`, `off` | show that activity; ids are `volume`, `brightness`, `battery`, `microphone`, `camera`, `clipboard` (the tray menu changes this) |
 

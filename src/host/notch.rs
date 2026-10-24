@@ -40,6 +40,18 @@ const ANIMATION_TIMER_ID: usize = 1;
 /// Safety net while the notch is open: the leave notification can be lost when the window resizes under the pointer.
 const HOVER_WATCH_TIMER_ID: usize = 2;
 const HOVER_WATCH_INTERVAL_MILLISECONDS: u32 = 120;
+/// While the notch hides when idle: after the pointer enters the strip it waits this long, then the small pill shows...
+const REVEAL_TIMER_ID: usize = 3;
+const REVEAL_DELAY_MILLISECONDS: u32 = 150;
+/// ...and if the pointer stays, the notch opens this long after that.
+const EXPAND_TIMER_ID: usize = 4;
+const EXPAND_DELAY_MILLISECONDS: u32 = 450;
+/// The strip at the top of the screen that wakes a hidden notch, in device-independent pixels.
+const HIDDEN_WIDTH: f32 = 240.0;
+const HIDDEN_HEIGHT: f32 = 6.0;
+/// How opaque the strip is: just enough for the pointer to find it.
+const HIDDEN_ALPHA: f32 = 0.006;
+const HIDE_WHEN_IDLE_SETTING: &str = "notch.hide_when_idle";
 /// The expansion past which content starts to appear; below it only the collapsed content shows.
 const EXPANDED_CONTENT_START: f32 = 0.55;
 /// How far page content slides while switching pages, in device-independent pixels.
@@ -103,12 +115,20 @@ pub struct Notch {
     pending: Requests,
     expansion: Spring,
     resting_width: Spring,
+    /// Height of the collapsed pill: the page height normally, a thin strip while the notch hides.
+    resting_height: Spring,
     expanded_width: Spring,
     expanded_height: Spring,
     /// 0 while the page shows in the collapsed pill, 1 while transient activities take its place.
     activity_blend: Spring,
     /// Room kept at the right end of the collapsed pill for badges.
     badge_width: Spring,
+    /// Whether the notch hides itself when nothing is happening (a choice in the tray menu).
+    hides_when_idle: bool,
+    /// While hidden, the pointer has waited on the strip and the small pill is showing.
+    is_revealed: bool,
+    /// The best page for the collapsed pill has something to say beyond being the clock.
+    has_resting_content: bool,
     is_hovering: bool,
     is_animating: bool,
     pointer_captured: bool,
@@ -180,10 +200,14 @@ impl Notch {
             pending: Requests::default(),
             expansion: Spring::new(0.0, 260.0, 22.0),
             resting_width: Spring::new(0.0, 220.0, 26.0),
+            resting_height: Spring::new(RESTING_HEIGHT, 260.0, 26.0),
             expanded_width: Spring::new(0.0, 200.0, 26.0),
             expanded_height: Spring::new(0.0, 220.0, 26.0),
             activity_blend: Spring::new(0.0, 300.0, 28.0),
             badge_width: Spring::new(0.0, 220.0, 26.0),
+            hides_when_idle: false,
+            is_revealed: false,
+            has_resting_content: false,
             is_hovering: false,
             is_animating: false,
             pointer_captured: false,
@@ -203,6 +227,7 @@ impl Notch {
             .settings
             .get_string(LAST_PAGE_SETTING)
             .and_then(|id| self.pages.iter().position(|page| page.id() == id));
+        self.hides_when_idle = self.settings.get_bool(HIDE_WHEN_IDLE_SETTING, false);
         let ids = self.page_ids();
         let opt_in: Vec<bool> = self.pages.iter().map(|page| page.is_opt_in()).collect();
         self.page_list = PageList::load(
@@ -356,6 +381,26 @@ impl Notch {
     pub fn timer_fired(&mut self, timer_key: usize) {
         match timer_key {
             ANIMATION_TIMER_ID => self.advance_animation(),
+            REVEAL_TIMER_ID => {
+                unsafe {
+                    let _ = KillTimer(Some(self.window), REVEAL_TIMER_ID);
+                    SetTimer(Some(self.window), EXPAND_TIMER_ID, EXPAND_DELAY_MILLISECONDS, None);
+                }
+                if self.is_hovering {
+                    self.is_revealed = true;
+                    self.flush();
+                }
+            }
+            EXPAND_TIMER_ID => {
+                unsafe {
+                    let _ = KillTimer(Some(self.window), EXPAND_TIMER_ID);
+                }
+                if self.is_hovering {
+                    self.expansion.target = 1.0;
+                    self.start_animation();
+                    self.flush();
+                }
+            }
             HOVER_WATCH_TIMER_ID => {
                 if !self.pointer_captured && !self.pointer_is_over_window() {
                     let (cursor, bounds) = self.pointer_and_window_bounds();
@@ -721,9 +766,15 @@ impl Notch {
         } else {
             activity_layout::total_width(&transient_widths)
         };
+        let resting_priority = self.pages[resting_index].priority(Mode::Resting);
+        self.has_resting_content = resting_priority.is_some_and(|priority| priority > Priority::BACKGROUND);
+        let is_hidden = self.is_hidden();
+        let (resting_target, resting_height_target) =
+            if is_hidden { (HIDDEN_WIDTH, HIDDEN_HEIGHT) } else { (resting_target, RESTING_HEIGHT) };
         let mut targets_changed = false;
         for (spring, target) in [
             (&mut self.resting_width, resting_target),
+            (&mut self.resting_height, resting_height_target),
             (&mut self.expanded_width, expanded.width + chrome::WIDTH_EXTRA),
             (&mut self.expanded_height, expanded.height + chrome::HEIGHT_EXTRA),
             (&mut self.activity_blend, if transient_widths.is_empty() { 0.0 } else { 1.0 }),
@@ -777,9 +828,10 @@ impl Notch {
     }
 
     /// The springs that decide the size of the pill.
-    fn layout_springs(&mut self) -> [&mut Spring; 6] {
+    fn layout_springs(&mut self) -> [&mut Spring; 7] {
         [
             &mut self.resting_width,
+            &mut self.resting_height,
             &mut self.expanded_width,
             &mut self.expanded_height,
             &mut self.activity_blend,
@@ -795,6 +847,28 @@ impl Notch {
 
     // ---- hover ----------------------------------------------------------------------------------------------
 
+    /// True while the notch is only the thin strip: it hides when idle, nothing is going on, and nobody is pointing at it.
+    fn is_hidden(&self) -> bool {
+        self.hides_when_idle
+            && !self.is_revealed
+            && self.expansion.target == 0.0
+            && self.editor.is_none()
+            && self.shown_transients.is_empty()
+            && self.shown_badges.is_empty()
+            && !self.has_resting_content
+    }
+
+    /// Switches hiding when idle on or off and remembers the choice.
+    pub fn toggle_hide_when_idle(&mut self) {
+        self.hides_when_idle = !self.hides_when_idle;
+        self.settings.set_bool(HIDE_WHEN_IDLE_SETTING, self.hides_when_idle);
+        self.flush();
+    }
+
+    pub fn hides_when_idle(&self) -> bool {
+        self.hides_when_idle
+    }
+
     fn set_hovering(&mut self, is_hovering: bool) {
         if self.is_hovering == is_hovering {
             return;
@@ -805,7 +879,22 @@ impl Notch {
             self.is_gear_hovered = false;
         }
         log::debug(&format!("hovering={is_hovering}"));
-        self.expansion.target = if is_hovering { 1.0 } else { 0.0 };
+        // A hidden notch first shows its small pill, and opens only if the pointer stays.
+        let waits_to_reveal = is_hovering && self.is_hidden();
+        if waits_to_reveal {
+            unsafe {
+                SetTimer(Some(self.window), REVEAL_TIMER_ID, REVEAL_DELAY_MILLISECONDS, None);
+            }
+        } else {
+            self.expansion.target = if is_hovering { 1.0 } else { 0.0 };
+        }
+        if !is_hovering {
+            self.is_revealed = false;
+            unsafe {
+                let _ = KillTimer(Some(self.window), REVEAL_TIMER_ID);
+                let _ = KillTimer(Some(self.window), EXPAND_TIMER_ID);
+            }
+        }
         self.start_animation();
         for index in 0..self.pages.len() {
             self.with_page(index, |page, context| page.on_hover_changed(is_hovering, context));
@@ -901,7 +990,7 @@ impl Notch {
     fn frame(&self) -> Frame {
         let amount = self.expansion.position.clamp(-0.05, 1.1);
         let width = lerp(self.resting_width.position, self.expanded_width.position, amount) * self.scale;
-        let height = lerp(RESTING_HEIGHT, self.expanded_height.position, amount) * self.scale;
+        let height = lerp(self.resting_height.position, self.expanded_height.position, amount) * self.scale;
         let left = (WINDOW_WIDTH * self.scale - width) / 2.0;
         Frame {
             scale: self.scale,
@@ -916,7 +1005,14 @@ impl Notch {
 
     /// Radius of the outward-curving fillets where the pill's sides meet the top of the screen, in device pixels.
     fn flare_size(&self, frame: &Frame) -> f32 {
-        lerp(RESTING_FLARE, EXPANDED_FLARE, frame.expansion.clamp(0.0, 1.0)) * self.scale
+        lerp(RESTING_FLARE, EXPANDED_FLARE, frame.expansion.clamp(0.0, 1.0)) * self.scale * self.visibility()
+    }
+
+    /// 0 while the notch is only a thin strip, 1 once it is a full pill.
+    fn visibility(&self) -> f32 {
+        ((self.resting_height.position - HIDDEN_HEIGHT) / (RESTING_HEIGHT - HIDDEN_HEIGHT))
+            .clamp(0.0, 1.0)
+            .max(self.expansion.position.clamp(0.0, 1.0))
     }
 
     /// Smallest surface rectangle that holds the pill and its flares, with a margin for anti-aliased edges.
@@ -934,7 +1030,9 @@ impl Notch {
         let frame = self.frame();
         let region = self.pill_region(&frame);
         self.region_origin.set((region.left, region.top));
-        let resting_opacity = (1.0 - frame.expansion * 2.2).clamp(0.0, 1.0);
+        let visibility = self.visibility();
+        let resting_opacity = (1.0 - frame.expansion * 2.2).clamp(0.0, 1.0) * visibility;
+        let fill = Color::BLACK.with_alpha(lerp(HIDDEN_ALPHA, 1.0, visibility));
         let blend = self.activity_blend.position.clamp(0.0, 1.0);
         let page_opacity = resting_opacity * (1.0 - blend);
         let activity_opacity = resting_opacity * blend;
@@ -955,9 +1053,11 @@ impl Notch {
                 canvas.fill_rounded_rect(
                     Rect::new(bounds.left, bounds.top - radius, bounds.right, bounds.bottom),
                     radius,
-                    Color::BLACK,
+                    fill,
                 );
-                canvas.fill_top_flares(bounds, self.flare_size(&frame), Color::BLACK);
+                if visibility > 0.05 {
+                    canvas.fill_top_flares(bounds, self.flare_size(&frame), Color::BLACK);
+                }
                 canvas.clipped(bounds, || {
                     if page_opacity > 0.01 {
                         // Badges take the right end of the pill, so the page draws in what is left of it.
