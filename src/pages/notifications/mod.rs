@@ -145,6 +145,39 @@ impl NotificationsPage {
         }
     }
 
+    /// A page with example notifications, for rendering the page off-screen.
+    #[cfg(test)]
+    pub fn sample(fonts: &crate::gfx::Fonts, with_alert: bool) -> Self {
+        let mut page = Self::new();
+        let item = |id: u32, app: &str, title: &str, body: &str, minutes: u64| Item {
+            id,
+            app: app.to_owned(),
+            app_id: String::new(),
+            title: title.to_owned(),
+            body: body.to_owned(),
+            age: Duration::from_secs(minutes * 60),
+        };
+        page.stack.push(item(3, "GitHub", "CI passed on main", "", 9));
+        page.stack.push(item(2, "Mail", "Invoice for October", "", 4));
+        page.stack.push(item(
+            1,
+            "Discord",
+            "Rafi",
+            "Deploy is green. Can you check the hover state on the 1440p monitor before we tag it?",
+            0,
+        ));
+        if with_alert {
+            let newest = page.stack.items()[0].clone();
+            let (title, text) = compact_parts(&newest, true);
+            let title_width = fonts.measure(&COMPACT_TITLE, &title).min(COMPACT_TITLE_LIMIT).ceil();
+            let body_width = fonts.measure(&COMPACT_BODY, &text).min(COMPACT_BODY_LIMIT).ceil();
+            page.alert_width = 10.0 + COMPACT_TILE + 8.0 + title_width + 8.0 + body_width + 10.0;
+            page.alert_item = Some(newest);
+            page.alert = Flash::visible();
+        }
+        page
+    }
+
     fn show_alert(&mut self, item: &Item, context: &mut Context) {
         let (title, text) = compact_parts(item, self.shows_text);
         let fonts = context.fonts();

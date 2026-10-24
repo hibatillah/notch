@@ -32,7 +32,7 @@ use self::{
 };
 use crate::{
     activity::{FLASH_TIMER, Flash, Presence},
-    gfx::{Align, Canvas, Color, FontStyle, Point, Rect, SEGOE_UI, Size, Weight},
+    gfx::{Align, Canvas, Color, FontStyle, Fonts, Point, Rect, SEGOE_UI, Size, Weight},
     page::{Context, Frame, Mode, Notifier, Page, PageSizes, PointerEvent, Priority, TimerId},
     platform,
     ui::{self, Icon},
@@ -167,18 +167,49 @@ impl CalendarPage {
     }
 
     /// Works out what the page shows from the events and the time now.
-    fn refresh(&mut self, context: &Context) {
+    fn refresh(&mut self, fonts: &Fonts) {
         let now = local_now();
         self.today = day_of(now);
         self.occurrences = occurrences_on(&self.events, self.today, &SystemClock);
         self.agenda = build(&self.occurrences, now);
         self.reminder = reminder(&self.occurrences, now);
         if let Some(reminder) = &self.reminder {
-            let fonts = context.fonts();
             let title = fonts.measure(&BADGE, &reminder.title).min(REMINDER_TITLE_WIDTH).ceil();
             let time = fonts.measure(&BADGE_TIME, &widest_form(&reminder.text)).ceil();
             self.reminder_width = 14.0 + 6.0 + title + 8.0 + time + 6.0;
         }
+    }
+
+    /// A page with a day of example events around the time now, for rendering the page off-screen.
+    #[cfg(test)]
+    pub fn sample(fonts: &Fonts) -> Self {
+        let now = local_now();
+        let (year, month, day) = civil_from_days(day_of(now));
+        let at = |seconds: i64| {
+            let (_, _, date) = civil_from_days(day_of(seconds));
+            let of_day = seconds.rem_euclid(dates::SECONDS_PER_DAY);
+            format!("{year:04}{month:02}{date:02}T{:02}{:02}00", of_day / 3600, of_day / 60 % 60)
+        };
+        let _ = day;
+        let today = |hour: i64, minute: i64| day_of(now) * dates::SECONDS_PER_DAY + hour * 3600 + minute * 60;
+        let event = |start: i64, minutes: i64, summary: &str, place: &str| {
+            format!(
+                "BEGIN:VEVENT\r\nUID:{summary}\r\nDTSTART:{}\r\nDTEND:{}\r\nSUMMARY:{summary}\r\nLOCATION:{place}\r\nEND:VEVENT\r\n",
+                at(start),
+                at(start + minutes * 60)
+            )
+        };
+        let text = format!(
+            "BEGIN:VCALENDAR\r\n{}{}{}END:VCALENDAR\r\n",
+            event(today(9, 0), 30, "Morning standup", ""),
+            event(now + 12 * 60, 60, "Design review: notch v3", "https://meet.google.com/abc-defg-hij"),
+            event(today(23, 0), 60, "Deep learning reading group", ""),
+        );
+        let mut page = Self::new();
+        page.link = Some("https://example.invalid/calendar.ics".to_owned());
+        page.load_events(&text);
+        page.refresh(fonts);
+        page
     }
 
     fn arm_minute_timer(context: &mut Context) {
@@ -484,7 +515,7 @@ impl Page for CalendarPage {
             0 => self.use_clipboard_link(context),
             _ => self.remove_link(context),
         }
-        self.refresh(context);
+        self.refresh(context.fonts());
         context.request_repaint();
     }
 
@@ -494,7 +525,7 @@ impl Page for CalendarPage {
         if let Some(text) = self.storage.as_ref().and_then(|storage| std::fs::read_to_string(storage).ok()) {
             self.load_events(&text);
         }
-        self.refresh(context);
+        self.refresh(context.fonts());
         Self::arm_minute_timer(context);
         if self.link.is_some() {
             context.set_timer(FETCH_TIMER, FIRST_FETCH_MILLISECONDS);
@@ -503,7 +534,7 @@ impl Page for CalendarPage {
 
     fn on_shown_changed(&mut self, is_shown: bool, context: &mut Context) {
         if is_shown {
-            self.refresh(context);
+            self.refresh(context.fonts());
             context.request_repaint();
         } else {
             self.hovered_join = None;
@@ -521,7 +552,7 @@ impl Page for CalendarPage {
                     let _ = std::fs::write(storage, &text);
                 }
                 self.load_events(&text);
-                self.refresh(context);
+                self.refresh(context.fonts());
                 context.request_repaint();
             }
             Some(Err(message)) => crate::log::debug(&format!("calendar: could not download: {message}")),
@@ -566,7 +597,7 @@ impl Page for CalendarPage {
                 self.alert.on_timer(timer, context);
             }
             MINUTE_TIMER => {
-                self.refresh(context);
+                self.refresh(context.fonts());
                 Self::arm_minute_timer(context);
                 context.request_repaint();
             }

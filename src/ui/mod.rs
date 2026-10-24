@@ -3,11 +3,13 @@
 mod hud;
 mod icon_button;
 mod icons;
+mod outline;
 mod pill_button;
 mod ring;
 
 pub use hud::{LEVEL_WIDTH, draw_level, draw_message, message_width};
 pub use icon_button::IconButton;
 pub use icons::Icon;
+pub use outline::draw_dashed_outline;
 pub use pill_button::PillButton;
 pub use ring::Ring;

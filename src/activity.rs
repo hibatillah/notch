@@ -72,6 +72,12 @@ pub struct Flash {
 }
 
 impl Flash {
+    /// A flash that is showing, for building samples of what a page looks like.
+    #[cfg(test)]
+    pub fn visible() -> Self {
+        Self { is_visible: true }
+    }
+
     pub fn is_visible(&self) -> bool {
         self.is_visible
     }

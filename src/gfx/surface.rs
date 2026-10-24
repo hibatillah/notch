@@ -32,6 +32,9 @@ pub struct Surface {
     pub height: i32,
     memory_context: HDC,
     bitmap: HBITMAP,
+    /// The bitmap's pixels, premultiplied BGRA, `width * height * 4` bytes.
+    #[cfg(test)]
+    pixels: *const u8,
     previous_object: HGDIOBJ,
     target: ID2D1DCRenderTarget,
     brush: ID2D1SolidColorBrush,
@@ -80,12 +83,21 @@ impl Surface {
                 height,
                 memory_context,
                 bitmap,
+                #[cfg(test)]
+                pixels: pixel_pointer.cast::<u8>(),
                 previous_object,
                 target,
                 brush,
                 image_cache: ImageCache::default(),
             })
         }
+    }
+
+    /// The pixels as last drawn, premultiplied BGRA; only used to render the notch off-screen for review.
+    #[cfg(test)]
+    pub fn read_pixels(&self) -> &[u8] {
+        // SAFETY: the pixels belong to the DIB section, which lives as long as the surface.
+        unsafe { std::slice::from_raw_parts(self.pixels, self.width as usize * self.height as usize * 4) }
     }
 
     /// Uploads decoded pixels as a brush that can fill any shape, such as a rounded square.

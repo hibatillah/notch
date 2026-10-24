@@ -57,6 +57,28 @@ impl StatsPage {
         Self { sampler: Sampler::new(), latest: None, cpu_history: VecDeque::with_capacity(HISTORY_LENGTH) }
     }
 
+    /// A page with example readings, for rendering the page off-screen.
+    #[cfg(test)]
+    pub fn sample() -> Self {
+        let mut page = Self::new();
+        let reading = page.sampler.sample();
+        for index in 0..HISTORY_LENGTH {
+            let wave = 20.0 + 18.0 * ((index as f32) * 0.6).sin() + (index % 5) as f32 * 3.0;
+            page.record(Sample {
+                cpu_percent: Some(wave),
+                memory_percent: 51.0,
+                memory_used_bytes: 8_697_308_160,
+                memory_total_bytes: 17_179_869_184,
+                download_bytes_per_second: Some(2_400_000.0),
+                upload_bytes_per_second: Some(120_000.0),
+                disk_percent: 61.0,
+                disk_free_bytes: 200_000_000_000,
+                ..reading
+            });
+        }
+        page
+    }
+
     fn record(&mut self, sample: Sample) {
         if let Some(cpu) = sample.cpu_percent {
             if self.cpu_history.len() == HISTORY_LENGTH {

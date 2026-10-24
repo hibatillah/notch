@@ -71,6 +71,43 @@ impl MediaPage {
         }
     }
 
+    /// A page with a track and lyrics playing, for rendering the page off-screen. `view` picks what the collapsed pill
+    /// shows and `lyrics_on` whether the open player has the lyrics.
+    #[cfg(test)]
+    pub fn sample(fonts: &crate::gfx::Fonts, lyrics_on: bool, show_title: bool) -> Self {
+        let mut page = Self::new();
+        page.info.available = true;
+        page.info.is_playing = true;
+        page.info.title = "Location Unknown".to_owned();
+        page.info.artist = "HONNE, NIKI".to_owned();
+        page.info.album = "10 Years".to_owned();
+        let texts = [
+            "Hold on to what you had",
+            "I will find you in the dark",
+            "Wherever you are, wherever you go",
+            "Take me to the place you know",
+            "And I will stay",
+        ];
+        let lines: Vec<LyricLine> = texts
+            .iter()
+            .enumerate()
+            .map(|(index, text)| LyricLine { start_ticks: index as i64 * 50_000_000, text: (*text).to_owned() })
+            .collect();
+        let lyrics = std::sync::Arc::new(lyrics::Lyrics { lines });
+        page.info.lyrics = LyricsStatus::Found(lyrics.clone());
+        page.lyrics_enabled = lyrics_on;
+        page.measured_title = page.info.title.clone();
+        page.title_width = fonts.measure(&styles::COMPACT_TITLE, &page.info.title);
+        page.measured_artist = page.info.artist.clone();
+        page.artist_width = fonts.measure(&styles::COMPACT_ARTIST, &page.info.artist);
+        if lyrics_on {
+            page.follower.update(Some(&lyrics), 2 * 50_000_000 + 10_000_000, true, fonts);
+            page.follower.animate(5.0);
+        }
+        page.is_title_shown = show_title;
+        page
+    }
+
     fn is_track_playing(&self) -> bool {
         self.info.is_playing && !self.info.title.is_empty()
     }

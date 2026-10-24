@@ -17,7 +17,7 @@ use self::{
 };
 use crate::{
     activity::{FLASH_TIMER, Flash, Presence},
-    gfx::{Align, Canvas, Color, FontStyle, Rect, SEGOE_UI, Weight},
+    gfx::{Align, Canvas, Color, FontStyle, Fonts, Rect, SEGOE_UI, Weight},
     page::{Context, Frame, Mode, Page, PageSizes, PointerEvent, Priority, TimerId},
     ui::{self, Icon, PillButton, Ring},
 };
@@ -35,7 +35,7 @@ const ALERT_MILLISECONDS: u32 = 5000;
 
 const TITLE: FontStyle = FontStyle::new(SEGOE_UI, 13.0, Weight::SemiBold, Align::Leading);
 const DETAIL: FontStyle = FontStyle::new(SEGOE_UI, 12.0, Weight::Regular, Align::Leading);
-const TIME: FontStyle = FontStyle::new(SEGOE_UI, 34.0, Weight::SemiBold, Align::Trailing);
+const TIME: FontStyle = FontStyle::new("Consolas", 34.0, Weight::SemiBold, Align::Trailing);
 const BADGE: FontStyle = FontStyle::new(SEGOE_UI, 12.0, Weight::SemiBold, Align::Leading);
 
 /// The timer that keeps the time of the current phase; `FLASH_TIMER` (0) belongs to the alert.
@@ -71,10 +71,10 @@ impl TimerPage {
     }
 
     /// Re-reads what the collapsed pill shows from the timer, and how wide that is.
-    fn refresh_compact(&mut self, context: &Context) {
+    fn refresh_compact(&mut self, fonts: &Fonts) {
         self.compact = view::compact(&self.timer, now_ms());
         if let Some(compact) = &self.compact {
-            let text_width = context.fonts().measure(&BADGE, &view::widest_form(&compact.text)).ceil();
+            let text_width = fonts.measure(&BADGE, &view::widest_form(&compact.text)).ceil();
             self.compact_width = RING_DIAMETER + RING_GAP + text_width + BADGE_TRAILING;
         }
     }
@@ -94,10 +94,22 @@ impl TimerPage {
         }
     }
 
+    /// A page with a focus session running, for rendering the page off-screen.
+    #[cfg(test)]
+    pub fn sample(fonts: &Fonts) -> Self {
+        let mut page = Self::new();
+        let now = now_ms();
+        page.timer.state =
+            State::Running { phase: Phase::Focus, total: 25 * 60_000, ends_at: now + 16 * 60_000 + 43_000 };
+        page.timer.completed = 1;
+        page.refresh_compact(fonts);
+        page
+    }
+
     /// Brings everything in line with a changed timer: saves it, redraws and re-arms the timer.
     fn changed(&mut self, context: &mut Context) {
         self.timer.save(context.settings);
-        self.refresh_compact(context);
+        self.refresh_compact(context.fonts());
         self.schedule(context);
         context.request_repaint();
     }
@@ -234,12 +246,12 @@ impl Page for TimerPage {
         let center = crate::gfx::Point::new(area.left + diameter / 2.0, area.center_y());
         Ring { center, diameter }.draw(canvas, compact.fraction, color, opacity);
         let text_area = Rect::new(area.left + (RING_DIAMETER + RING_GAP) * scale, area.top, area.right, area.bottom);
-        canvas.text(&BADGE, &compact.text, text_area, Color::WHITE.faded(opacity));
+        canvas.text(&BADGE, &compact.text, text_area, color.faded(opacity));
     }
 
     fn on_start(&mut self, context: &mut Context) {
         self.timer = Timer::load(context.settings, now_ms());
-        self.refresh_compact(context);
+        self.refresh_compact(context.fonts());
         self.schedule(context);
     }
 
@@ -288,7 +300,7 @@ impl Page for TimerPage {
             self.announce(context);
             self.changed(context);
         } else {
-            self.refresh_compact(context);
+            self.refresh_compact(context.fonts());
             self.schedule(context);
             context.request_repaint();
         }

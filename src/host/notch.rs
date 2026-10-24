@@ -1182,6 +1182,9 @@ fn highest_priority(priorities: impl IntoIterator<Item = Option<Priority>>) -> O
 }
 
 #[cfg(test)]
+mod snapshots;
+
+#[cfg(test)]
 mod tests {
     use super::*;
 

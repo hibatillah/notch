@@ -242,10 +242,15 @@ pub fn draw_chip(canvas: &Canvas, rect: Rect, view: &ChipView, is_on: bool, is_d
         let fill = if is_dragged { CHIP_FILL_DRAGGED } else { CHIP_FILL };
         canvas.fill_rounded_rect(rect, radius, fill.faded(opacity));
     } else {
-        // An outline: the border color with the notch's black inside it.
-        canvas.fill_rounded_rect(rect, radius, OFF_BORDER.faded(opacity));
-        let inner = Rect::new(rect.left + scale, rect.top + scale, rect.right - scale, rect.bottom - scale);
-        canvas.fill_rounded_rect(inner, radius - scale, Color::BLACK.faded(opacity));
+        crate::ui::draw_dashed_outline(
+            canvas,
+            rect,
+            radius,
+            scale,
+            4.0 * scale,
+            3.0 * scale,
+            OFF_BORDER.faded(opacity),
+        );
     }
     let icon_center = Point::new(rect.left + (CHIP_PADDING + CHIP_ICON / 2.0) * scale, rect.center_y());
     view.icon.draw(canvas, icon_center, CHIP_ICON * scale, icon_color, opacity);

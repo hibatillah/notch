@@ -19,6 +19,8 @@ const EXPANDED_SIZE: Size = Size::new(508.0, 124.0);
 const RESTING_WIDTH: f32 = 150.0;
 const ZONE_RADIUS: f32 = 14.0;
 const BORDER_WIDTH: f32 = 1.5;
+const DASH: f32 = 6.0;
+const DASH_GAP: f32 = 4.0;
 const ZONE_PADDING: f32 = 12.0;
 const FILE_WIDTH: f32 = 76.0;
 const FILE_GAP: f32 = 12.0;
@@ -120,6 +122,24 @@ impl ShelfPage {
         }
     }
 
+    /// A page holding example files, for rendering the page off-screen.
+    #[cfg(test)]
+    pub fn sample(directory: &std::path::Path) -> Self {
+        let mut page = Self::new();
+        page.storage = None;
+        let files: Vec<PathBuf> =
+            ["hover-state-v3.png", "wallpaper-1440p.jpg", "notch-brief.pdf", "budget-q4.xlsx", "notes.txt"]
+                .iter()
+                .map(|name| {
+                    let path = directory.join(name);
+                    let _ = std::fs::write(&path, "x");
+                    path
+                })
+                .collect();
+        page.shelf.add(files);
+        page
+    }
+
     fn save(&self) {
         if let Some(storage) = &self.storage {
             self.shelf.save(storage);
@@ -200,15 +220,15 @@ impl Page for ShelfPage {
 
     fn draw_expanded(&self, canvas: &Canvas, frame: &Frame, opacity: f32) {
         let (bounds, scale) = (frame.bounds, frame.scale);
-        // The zone is an outline: the border color with the notch's black inside it.
-        canvas.fill_rounded_rect(bounds, ZONE_RADIUS * scale, BORDER.faded(opacity));
-        let inner = Rect::new(
-            bounds.left + BORDER_WIDTH * scale,
-            bounds.top + BORDER_WIDTH * scale,
-            bounds.right - BORDER_WIDTH * scale,
-            bounds.bottom - BORDER_WIDTH * scale,
+        ui::draw_dashed_outline(
+            canvas,
+            bounds,
+            ZONE_RADIUS * scale,
+            BORDER_WIDTH * scale,
+            DASH * scale,
+            DASH_GAP * scale,
+            BORDER.faded(opacity),
         );
-        canvas.fill_rounded_rect(inner, (ZONE_RADIUS - BORDER_WIDTH) * scale, Color::BLACK.faded(opacity));
 
         if self.shelf.len() == 0 {
             let center = Point::new(bounds.center_x(), bounds.center_y() - 12.0 * scale);
