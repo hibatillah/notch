@@ -41,8 +41,7 @@ impl Priority {
     pub const BACKGROUND: Priority = Priority(0);
     /// For pages that show live content, such as music that is playing.
     pub const NORMAL: Priority = Priority(10);
-    /// For pages that must interrupt everything else; no page uses it yet.
-    #[allow(dead_code)]
+    /// For pages that must interrupt everything else, such as a notification that has just arrived.
     pub const URGENT: Priority = Priority(20);
 }
 
@@ -123,7 +122,7 @@ pub trait Page {
     fn on_hover_changed(&mut self, _is_hovering: bool, _context: &mut Context) {}
 
     /// Items this page adds to the tray menu, such as "Use calendar link from clipboard".
-    fn menu_items(&self) -> Vec<&'static str> {
+    fn menu_items(&self) -> Vec<String> {
         Vec::new()
     }
 

@@ -475,8 +475,8 @@ impl Page for CalendarPage {
         );
     }
 
-    fn menu_items(&self) -> Vec<&'static str> {
-        vec!["Use calendar link from clipboard", "Remove calendar link"]
+    fn menu_items(&self) -> Vec<String> {
+        vec!["Use calendar link from clipboard".to_owned(), "Remove calendar link".to_owned()]
     }
 
     fn on_menu_item(&mut self, index: usize, context: &mut Context) {

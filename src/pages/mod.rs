@@ -7,6 +7,7 @@
 mod calendar;
 mod clock;
 mod media;
+mod notifications;
 mod shelf;
 mod stats;
 mod timer;
@@ -17,6 +18,7 @@ pub fn all() -> Vec<Box<dyn Page>> {
     vec![
         Box::new(clock::ClockPage::new()),
         Box::new(media::MediaPage::new()),
+        Box::new(notifications::NotificationsPage::new()),
         Box::new(shelf::ShelfPage::new()),
         Box::new(calendar::CalendarPage::new()),
         Box::new(timer::TimerPage::new()),

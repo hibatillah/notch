@@ -420,7 +420,7 @@ impl Notch {
     }
 
     /// The items pages add to the tray menu: page index, item index and label.
-    pub fn page_menu(&self) -> Vec<(usize, usize, &'static str)> {
+    pub fn page_menu(&self) -> Vec<(usize, usize, String)> {
         let mut items = Vec::new();
         for (page, entry) in self.pages.iter().enumerate().filter(|(index, _)| self.page_list.is_enabled(*index)) {
             items.extend(entry.menu_items().into_iter().enumerate().map(|(item, label)| (page, item, label)));
@@ -708,6 +708,18 @@ impl Notch {
         let selection_changed =
             resting_index != self.resting_index || expanded_index != self.expanded_index || activities_changed;
         self.resting_index = resting_index;
+        // A page that takes over while the notch is open (a new notification) slides in like one the user chose.
+        if expanded_index != self.expanded_index
+            && self.is_hovering
+            && self.editor.is_none()
+            && self.previous_index.is_none()
+        {
+            self.previous_index = Some(self.expanded_index);
+            self.slide_direction = if expanded_index > self.expanded_index { 1.0 } else { -1.0 };
+            self.slide.jump_to(0.0);
+            self.slide.target = 1.0;
+            self.start_animation();
+        }
         self.expanded_index = expanded_index;
 
         let PageSizes { resting_width, .. } = self.pages[resting_index].sizes();

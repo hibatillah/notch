@@ -100,17 +100,26 @@ impl PageList {
     }
 }
 
-/// The page to show when open: the one the user chose if it has something to show, else the highest priority.
+/// The page to show when open: a page that must interrupt (urgent priority) first, then the one the user chose if it
+/// has something to show, else the highest priority.
 pub fn choose(selected: Option<usize>, priorities: &[Option<Priority>]) -> Option<usize> {
+    if let Some(index) = highest(priorities, Priority::URGENT) {
+        return Some(index);
+    }
     if let Some(index) = selected
         && priorities.get(index).is_some_and(Option::is_some)
     {
         return Some(index);
     }
+    highest(priorities, Priority::BACKGROUND)
+}
+
+/// The page with the highest priority that is at least `lowest`; the earliest page wins a tie.
+fn highest(priorities: &[Option<Priority>], lowest: Priority) -> Option<usize> {
     let mut best: Option<(usize, Priority)> = None;
     for (index, priority) in priorities.iter().enumerate() {
         let Some(priority) = *priority else { continue };
-        if best.is_none_or(|(_, best_priority)| priority > best_priority) {
+        if priority >= lowest && best.is_none_or(|(_, best_priority)| priority > best_priority) {
             best = Some((index, priority));
         }
     }
@@ -240,6 +249,13 @@ mod tests {
     #[test]
     fn the_chosen_page_opens_even_when_another_ranks_higher() {
         assert_eq!(choose(Some(0), &[LOW, HIGH]), Some(0));
+    }
+
+    #[test]
+    fn an_urgent_page_comes_before_the_chosen_one() {
+        const URGENT: Option<Priority> = Some(Priority::URGENT);
+        assert_eq!(choose(Some(0), &[LOW, URGENT]), Some(1));
+        assert_eq!(choose(None, &[URGENT, URGENT]), Some(0));
     }
 
     #[test]

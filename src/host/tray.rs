@@ -146,7 +146,7 @@ pub fn remove(window: HWND) {
 pub fn show_context_menu(
     window: HWND,
     activities: &[(&'static str, bool)],
-    page_items: &[(usize, usize, &'static str)],
+    page_items: &[(usize, usize, String)],
 ) -> Option<MenuChoice> {
     unsafe {
         let Ok(menu) = CreatePopupMenu() else { return None };
@@ -157,9 +157,9 @@ pub fn show_context_menu(
         if !activities.is_empty() {
             let _ = AppendMenuW(menu, MF_SEPARATOR, 0, PCWSTR::null());
         }
-        for &(page, item, label) in page_items {
+        for (page, item, label) in page_items {
             let command = PAGE_ITEM_BASE + page * ITEMS_PER_PAGE + item;
-            let _ = AppendMenuW(menu, MF_STRING, command, &HSTRING::from(label));
+            let _ = AppendMenuW(menu, MF_STRING, command, &HSTRING::from(label.as_str()));
         }
         if !page_items.is_empty() {
             let _ = AppendMenuW(menu, MF_SEPARATOR, 0, PCWSTR::null());
