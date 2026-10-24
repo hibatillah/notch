@@ -8,12 +8,12 @@ use windows::{
             Shell::{NIF_ICON, NIF_MESSAGE, NIF_TIP, NIM_ADD, NIM_DELETE, NOTIFYICONDATAW, Shell_NotifyIconW},
             WindowsAndMessaging::{
                 AppendMenuW, CreateIconIndirect, CreatePopupMenu, DestroyMenu, GetCursorPos, HICON, ICONINFO,
-                MF_STRING, PostQuitMessage, SetForegroundWindow, TPM_RETURNCMD, TPM_RIGHTBUTTON, TrackPopupMenu,
-                WM_APP,
+                MF_CHECKED, MF_SEPARATOR, MF_STRING, SetForegroundWindow, TPM_RETURNCMD, TPM_RIGHTBUTTON,
+                TrackPopupMenu, WM_APP,
             },
         },
     },
-    core::{Result, w},
+    core::{HSTRING, PCWSTR, Result, w},
 };
 
 /// Message the shell sends to the window for pointer events on the tray icon.
@@ -22,6 +22,25 @@ const TRAY_ICON_ID: u32 = 1;
 const ICON_SIZE: i32 = 32;
 const TOOLTIP: &str = "Notch";
 const MENU_COMMAND_QUIT: usize = 1;
+/// The command of the first activity in the menu; the rest follow in order.
+const MENU_COMMAND_FIRST_ACTIVITY: usize = 100;
+
+/// What the user picked from the menu.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum MenuChoice {
+    /// Switch the activity at this index on or off.
+    Toggle(usize),
+    Quit,
+}
+
+/// The choice a menu command stands for; `None` when the menu was dismissed or the command is unknown.
+fn choice_for_command(command: usize, activity_count: usize) -> Option<MenuChoice> {
+    if command == MENU_COMMAND_QUIT {
+        return Some(MenuChoice::Quit);
+    }
+    let index = command.checked_sub(MENU_COMMAND_FIRST_ACTIVITY)?;
+    (index < activity_count).then_some(MenuChoice::Toggle(index))
+}
 
 /// Rounded-rectangle coverage at a pixel, from a signed distance so the edge is anti-aliased.
 fn pill_coverage(x: f32, y: f32) -> f32 {
@@ -110,10 +129,17 @@ pub fn remove(window: HWND) {
     }
 }
 
-/// Shows the context menu at the pointer; it only has "Quit" for now.
-pub fn show_context_menu(window: HWND) {
+/// Shows the context menu at the pointer: a checkable item for each activity, then "Quit". Returns what was picked.
+pub fn show_context_menu(window: HWND, activities: &[(&'static str, bool)]) -> Option<MenuChoice> {
     unsafe {
-        let Ok(menu) = CreatePopupMenu() else { return };
+        let Ok(menu) = CreatePopupMenu() else { return None };
+        for (index, &(label, is_on)) in activities.iter().enumerate() {
+            let flags = if is_on { MF_STRING | MF_CHECKED } else { MF_STRING };
+            let _ = AppendMenuW(menu, flags, MENU_COMMAND_FIRST_ACTIVITY + index, &HSTRING::from(label));
+        }
+        if !activities.is_empty() {
+            let _ = AppendMenuW(menu, MF_SEPARATOR, 0, PCWSTR::null());
+        }
         let _ = AppendMenuW(menu, MF_STRING, MENU_COMMAND_QUIT, w!("Quit"));
         let mut cursor = POINT::default();
         let _ = GetCursorPos(&mut cursor);
@@ -121,8 +147,25 @@ pub fn show_context_menu(window: HWND) {
         let _ = SetForegroundWindow(window);
         let command = TrackPopupMenu(menu, TPM_RIGHTBUTTON | TPM_RETURNCMD, cursor.x, cursor.y, None, window, None);
         let _ = DestroyMenu(menu);
-        if command.0 as usize == MENU_COMMAND_QUIT {
-            PostQuitMessage(0);
-        }
+        choice_for_command(command.0 as usize, activities.len())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn quit_and_each_activity_have_their_own_command() {
+        assert_eq!(choice_for_command(MENU_COMMAND_QUIT, 3), Some(MenuChoice::Quit));
+        assert_eq!(choice_for_command(MENU_COMMAND_FIRST_ACTIVITY, 3), Some(MenuChoice::Toggle(0)));
+        assert_eq!(choice_for_command(MENU_COMMAND_FIRST_ACTIVITY + 2, 3), Some(MenuChoice::Toggle(2)));
+    }
+
+    #[test]
+    fn a_dismissed_menu_and_unknown_commands_choose_nothing() {
+        assert_eq!(choice_for_command(0, 3), None);
+        assert_eq!(choice_for_command(MENU_COMMAND_FIRST_ACTIVITY + 3, 3), None);
+        assert_eq!(choice_for_command(50, 3), None);
     }
 }

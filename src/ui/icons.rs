@@ -20,6 +20,16 @@ pub enum Icon {
     Next,
     Repeat,
     RepeatOne,
+    Speaker,
+    SpeakerMuted,
+    Sun,
+    Bolt,
+    Battery,
+    BatteryLow,
+    Microphone,
+    Camera,
+    Clipboard,
+    Bell,
 }
 
 /// How a path is painted: solid shapes are filled, line icons are stroked with round ends.
@@ -138,6 +148,78 @@ impl Icon {
                 };
                 (path, Paint::Line)
             }
+            Icon::Speaker | Icon::SpeakerMuted => {
+                let body =
+                    line(&[(3.5, 9.5), (7.5, 9.5), (12.5, 5.5), (12.5, 18.5), (7.5, 14.5), (3.5, 14.5), (3.5, 9.5)]);
+                let marks = if self == Icon::Speaker {
+                    join(
+                        Path::new().move_to(at(15.5, 9.5)).curve_to(at(17.0, 10.8), at(17.0, 13.2), at(15.5, 14.5)),
+                        Path::new().move_to(at(18.0, 7.0)).curve_to(at(21.2, 9.8), at(21.2, 14.2), at(18.0, 17.0)),
+                    )
+                } else {
+                    join(line(&[(16.0, 9.5), (21.0, 14.5)]), line(&[(21.0, 9.5), (16.0, 14.5)]))
+                };
+                (join(body, marks), Paint::Line)
+            }
+            Icon::Sun => {
+                let mut sun = circle(at(12.0, 12.0), 4.0 * unit);
+                for step in 0..8 {
+                    let angle = step as f32 * std::f32::consts::FRAC_PI_4;
+                    let (sine, cosine) = angle.sin_cos();
+                    sun.append(line(&[
+                        (12.0 + 7.0 * cosine, 12.0 + 7.0 * sine),
+                        (12.0 + 9.5 * cosine, 12.0 + 9.5 * sine),
+                    ]));
+                }
+                (sun, Paint::Line)
+            }
+            Icon::Bolt => (
+                solid(&[(13.5, 3.0), (6.0, 13.5), (11.0, 13.5), (10.0, 21.0), (18.0, 10.0), (13.0, 10.0)], 1.0),
+                Paint::Fill,
+            ),
+            Icon::Battery | Icon::BatteryLow => {
+                let body = solid(&[(3.0, 7.0), (19.0, 7.0), (19.0, 17.0), (3.0, 17.0)], 2.0);
+                let terminal = line(&[(21.5, 10.5), (21.5, 13.5)]);
+                let level = if self == Icon::Battery {
+                    join(line(&[(6.5, 10.5), (6.5, 13.5)]), line(&[(10.0, 10.5), (10.0, 13.5)]))
+                } else {
+                    line(&[(6.5, 10.5), (6.5, 13.5)])
+                };
+                (join(join(body, terminal), level), Paint::Line)
+            }
+            Icon::Microphone => {
+                let capsule = solid(&[(9.0, 3.0), (15.0, 3.0), (15.0, 12.0), (9.0, 12.0)], 3.0);
+                let cradle = Path::new().move_to(at(5.5, 11.0)).curve_to(at(5.5, 17.0), at(18.5, 17.0), at(18.5, 11.0));
+                let stand = join(line(&[(12.0, 16.5), (12.0, 21.0)]), line(&[(8.5, 21.0), (15.5, 21.0)]));
+                (join(join(capsule, cradle), stand), Paint::Line)
+            }
+            Icon::Camera => {
+                let body = solid(&[(3.0, 7.0), (15.0, 7.0), (15.0, 17.0), (3.0, 17.0)], 2.0);
+                let lens = line(&[(15.5, 10.5), (21.0, 7.5), (21.0, 16.5), (15.5, 13.5)]);
+                (join(body, lens), Paint::Line)
+            }
+            Icon::Bell => {
+                let dome = Path::new()
+                    .move_to(at(5.0, 17.0))
+                    .line_to(at(7.0, 15.0))
+                    .line_to(at(7.0, 10.5))
+                    .curve_to(at(7.0, 7.5), at(9.2, 5.5), at(12.0, 5.5))
+                    .curve_to(at(14.8, 5.5), at(17.0, 7.5), at(17.0, 10.5))
+                    .line_to(at(17.0, 15.0))
+                    .line_to(at(19.0, 17.0))
+                    .line_to(at(5.0, 17.0));
+                let clapper = Path::new()
+                    .move_to(at(10.2, 19.5))
+                    .curve_to(at(10.6, 20.5), at(11.2, 21.0), at(12.0, 21.0))
+                    .curve_to(at(12.8, 21.0), at(13.4, 20.5), at(13.8, 19.5));
+                (join(join(dome, clapper), line(&[(12.0, 3.5), (12.0, 5.5)])), Paint::Line)
+            }
+            Icon::Clipboard => {
+                let board = solid(&[(5.0, 5.0), (19.0, 5.0), (19.0, 21.0), (5.0, 21.0)], 2.0);
+                let clip = line(&[(9.0, 3.0), (15.0, 3.0)]);
+                let check = line(&[(8.5, 13.5), (11.0, 16.0), (15.5, 10.5)]);
+                (join(join(board, clip), check), Paint::Line)
+            }
             Icon::Lyrics => {
                 let bubble = solid(
                     &[(3.0, 4.0), (21.0, 4.0), (21.0, 16.0), (12.0, 16.0), (7.5, 20.5), (7.5, 16.0), (3.0, 16.0)],
@@ -150,6 +232,19 @@ impl Icon {
     }
 }
 
+/// A closed circle of four curves.
+fn circle(center: Point, radius: f32) -> Path {
+    const KAPPA: f32 = 0.552_284_8;
+    let (x, y, reach) = (center.x, center.y, radius * KAPPA);
+    Path::new()
+        .move_to(Point::new(x + radius, y))
+        .curve_to(Point::new(x + radius, y + reach), Point::new(x + reach, y + radius), Point::new(x, y + radius))
+        .curve_to(Point::new(x - reach, y + radius), Point::new(x - radius, y + reach), Point::new(x - radius, y))
+        .curve_to(Point::new(x - radius, y - reach), Point::new(x - reach, y - radius), Point::new(x, y - radius))
+        .curve_to(Point::new(x + reach, y - radius), Point::new(x + radius, y - reach), Point::new(x + radius, y))
+        .close()
+}
+
 /// Puts the figures of `second` after those of `first`.
 fn join(mut first: Path, second: Path) -> Path {
     first.append(second);
@@ -160,7 +255,7 @@ fn join(mut first: Path, second: Path) -> Path {
 mod tests {
     use super::*;
 
-    const ALL: [Icon; 8] = [
+    const ALL: [Icon; 18] = [
         Icon::Lyrics,
         Icon::Shuffle,
         Icon::Previous,
@@ -169,6 +264,16 @@ mod tests {
         Icon::Next,
         Icon::Repeat,
         Icon::RepeatOne,
+        Icon::Speaker,
+        Icon::SpeakerMuted,
+        Icon::Sun,
+        Icon::Bolt,
+        Icon::Battery,
+        Icon::BatteryLow,
+        Icon::Microphone,
+        Icon::Camera,
+        Icon::Clipboard,
+        Icon::Bell,
     ];
 
     #[test]
@@ -188,10 +293,13 @@ mod tests {
     #[test]
     fn solid_icons_are_filled_and_line_icons_are_stroked() {
         let paint = |icon: Icon| icon.path(Point::default(), 24.0).1;
-        for icon in [Icon::Play, Icon::Pause, Icon::Previous, Icon::Next] {
+        for icon in [Icon::Play, Icon::Pause, Icon::Previous, Icon::Next, Icon::Bolt] {
             assert_eq!(paint(icon), Paint::Fill);
         }
-        for icon in [Icon::Lyrics, Icon::Shuffle, Icon::Repeat, Icon::RepeatOne] {
+        for icon in ALL
+            .into_iter()
+            .filter(|icon| ![Icon::Play, Icon::Pause, Icon::Previous, Icon::Next, Icon::Bolt].contains(icon))
+        {
             assert_eq!(paint(icon), Paint::Line);
         }
     }
@@ -200,6 +308,18 @@ mod tests {
     fn repeat_one_adds_a_mark_to_repeat() {
         let count = |icon: Icon| icon.path(Point::default(), 24.0).0.points().count();
         assert!(count(Icon::RepeatOne) > count(Icon::Repeat));
+    }
+
+    #[test]
+    fn muting_the_speaker_replaces_its_waves_with_a_cross() {
+        let count = |icon: Icon| icon.path(Point::default(), 24.0).0.points().count();
+        assert_ne!(count(Icon::Speaker), count(Icon::SpeakerMuted));
+    }
+
+    #[test]
+    fn a_low_battery_shows_fewer_bars_than_a_battery() {
+        let count = |icon: Icon| icon.path(Point::default(), 24.0).0.points().count();
+        assert!(count(Icon::BatteryLow) < count(Icon::Battery));
     }
 
     #[test]

@@ -9,6 +9,7 @@ use windows::{
         System::{
             LibraryLoader::GetModuleHandleW,
             Performance::QueryPerformanceFrequency,
+            Power::POWERBROADCAST_SETTING,
             WinRT::{RO_INIT_MULTITHREADED, RoInitialize},
         },
         UI::{
@@ -28,6 +29,7 @@ use super::{
     tray,
 };
 use crate::{
+    activity::{Activity, SystemMessage, WM_ACTIVITY_NOTIFY},
     gfx::{Fonts, Surface},
     log,
     page::{Page, WM_PAGE_NOTIFY},
@@ -35,6 +37,10 @@ use crate::{
 
 // Not exported under WindowsAndMessaging by the windows crate.
 const WM_MOUSELEAVE: u32 = 0x02A3;
+const WM_POWERBROADCAST: u32 = 0x0218;
+const WM_CLIPBOARDUPDATE: u32 = 0x031D;
+/// The `wparam` of `WM_POWERBROADCAST` when a power setting registered with `listen_to_power_setting` changed.
+const PBT_POWERSETTINGCHANGE: usize = 0x8013;
 
 /// Registered message id the shell broadcasts when Explorer restarts and the tray is rebuilt.
 static TASKBAR_CREATED_MESSAGE: AtomicU32 = AtomicU32::new(0);
@@ -46,6 +52,28 @@ thread_local! {
 /// Runs `action` on the notch, skipping it if a message re-enters while the notch is already borrowed.
 fn with_notch<R>(action: impl FnOnce(&mut Notch) -> R) -> Option<R> {
     NOTCH.with(|cell| cell.try_borrow_mut().ok().and_then(|mut slot| slot.as_mut().map(action)))
+}
+
+/// Shows the tray menu and carries out the choice.
+fn show_menu(window: HWND) {
+    let activities = with_notch(|notch| notch.activity_menu()).unwrap_or_default();
+    match tray::show_context_menu(window, &activities) {
+        Some(tray::MenuChoice::Toggle(index)) => {
+            with_notch(|notch| notch.toggle_activity(index));
+        }
+        Some(tray::MenuChoice::Quit) => unsafe { PostQuitMessage(0) },
+        None => {}
+    }
+}
+
+/// The power setting a `WM_POWERBROADCAST` reports, if it is one with a 32-bit value.
+fn power_setting_message(lparam: LPARAM) -> Option<SystemMessage> {
+    let setting = unsafe { (lparam.0 as *const POWERBROADCAST_SETTING).as_ref()? };
+    if (setting.DataLength as usize) < size_of::<u32>() {
+        return None;
+    }
+    let value = unsafe { std::ptr::read_unaligned(setting.Data.as_ptr().cast::<u32>()) };
+    Some(SystemMessage::PowerSettingChanged { setting: setting.PowerSetting, value })
 }
 
 fn low_word_signed(value: isize) -> i32 {
@@ -91,12 +119,17 @@ extern "system" fn window_procedure(window: HWND, message: u32, wparam: WPARAM, 
             with_notch(|notch| notch.pointer_released(x, y));
             LRESULT(0)
         }
+        WM_MOUSEWHEEL | WM_MOUSEHWHEEL => {
+            let amount = high_word_signed(wparam.0 as isize);
+            with_notch(|notch| notch.scrolled(amount, message == WM_MOUSEHWHEEL));
+            LRESULT(0)
+        }
         WM_CAPTURECHANGED => {
             with_notch(|notch| notch.capture_lost());
             LRESULT(0)
         }
         WM_RBUTTONUP => {
-            tray::show_context_menu(window);
+            show_menu(window);
             LRESULT(0)
         }
         WM_MOUSEACTIVATE => LRESULT(MA_NOACTIVATE as isize),
@@ -108,11 +141,27 @@ extern "system" fn window_procedure(window: HWND, message: u32, wparam: WPARAM, 
             with_notch(|notch| notch.page_notified(wparam.0));
             LRESULT(0)
         }
+        WM_ACTIVITY_NOTIFY => {
+            with_notch(|notch| notch.activity_notified(wparam.0));
+            LRESULT(0)
+        }
+        WM_POWERBROADCAST => {
+            if wparam.0 == PBT_POWERSETTINGCHANGE
+                && let Some(message) = power_setting_message(lparam)
+            {
+                with_notch(|notch| notch.system_message(message));
+            }
+            LRESULT(1)
+        }
+        WM_CLIPBOARDUPDATE => {
+            with_notch(|notch| notch.system_message(SystemMessage::ClipboardChanged));
+            LRESULT(0)
+        }
         tray::WM_TRAY => {
             // Tray messages carry the originating mouse message in the low word of lparam.
             let mouse_message = (lparam.0 & 0xFFFF) as u32;
             if mouse_message == WM_RBUTTONUP || mouse_message == WM_CONTEXTMENU {
-                tray::show_context_menu(window);
+                show_menu(window);
             }
             LRESULT(0)
         }
@@ -130,7 +179,7 @@ extern "system" fn window_procedure(window: HWND, message: u32, wparam: WPARAM, 
 }
 
 /// Creates the notch window, starts the pages and runs the message loop until the notch quits.
-pub fn run(pages: Vec<Box<dyn Page>>) -> Result<()> {
+pub fn run(pages: Vec<Box<dyn Page>>, activities: Vec<Box<dyn Activity>>) -> Result<()> {
     unsafe {
         let _ = SetProcessDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2);
         RoInitialize(RO_INIT_MULTITHREADED)?;
@@ -183,6 +232,7 @@ pub fn run(pages: Vec<Box<dyn Page>>) -> Result<()> {
             fonts: Fonts::new(scale)?,
             settings,
             pages,
+            activities,
             ticks_per_second,
         });
         NOTCH.with(|cell| *cell.borrow_mut() = Some(notch));

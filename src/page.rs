@@ -5,12 +5,17 @@
 //! expanded. Everything else (input, timers, wake-ups from background threads) is an optional hook.
 //! See `ARCHITECTURE.md` for how to add a page.
 
-use windows::Win32::{
-    Foundation::{HWND, LPARAM, WPARAM},
-    UI::WindowsAndMessaging::{KillTimer, PostMessageW, SetTimer, WM_APP},
+use windows::{
+    Win32::{
+        Foundation::{HANDLE, HWND, LPARAM, WPARAM},
+        System::{DataExchange::AddClipboardFormatListener, Power::RegisterPowerSettingNotification},
+        UI::WindowsAndMessaging::{KillTimer, PostMessageW, REGISTER_NOTIFICATION_FLAGS, SetTimer, WM_APP},
+    },
+    core::GUID,
 };
 
 use crate::{
+    activity::Presence,
     gfx::{Canvas, Fonts, ImageBrush, ImageData, Point, Rect, Size, Surface},
     host::Settings,
 };
@@ -20,9 +25,11 @@ pub const RESTING_HEIGHT: f32 = 32.0;
 
 /// Message a `Notifier` posts to wake the host from another thread.
 pub(crate) const WM_PAGE_NOTIFY: u32 = WM_APP + 1;
-/// Win32 timer ids at or above this belong to pages; each page owns `TIMERS_PER_PAGE` of them.
+/// Win32 timer ids from this up to `PAGE_TIMER_LIMIT` belong to pages; each page owns `TIMERS_PER_PAGE` of them.
 pub(crate) const PAGE_TIMER_BASE: usize = 100;
 pub(crate) const TIMERS_PER_PAGE: usize = 16;
+/// Timer ids from here up belong to activities.
+pub(crate) const PAGE_TIMER_LIMIT: usize = 1000;
 
 /// How much a page wants to be shown right now; when several pages want to, the highest priority wins.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
@@ -117,6 +124,15 @@ pub trait Page {
     /// Called after a background thread used this page's `Notifier`.
     fn on_notify(&mut self, _context: &mut Context) {}
 
+    /// What this page shows in the collapsed pill while it is not the page on show, as an activity does: a moment
+    /// of its own (`Transient`) or a small mark kept beside the page that is on show (`Badge`). Asked after every event.
+    fn presence(&self) -> Option<Presence> {
+        None
+    }
+
+    /// Draws what `presence` asked for into `area` (device pixels), faded by `opacity`.
+    fn draw_presence(&self, _canvas: &Canvas, _area: Rect, _scale: f32, _opacity: f32) {}
+
     /// Advances the page's own animations; return true while any is still moving. Only called while animating.
     fn animate(&mut self, _elapsed_seconds: f32) -> bool {
         false
@@ -135,11 +151,14 @@ pub(crate) struct Requests {
 /// The page's way to ask the host for things. Created by the host for each hook call.
 pub struct Context<'a> {
     window: HWND,
-    page_index: usize,
+    /// Index of the owning page or activity, which selects its timers and its wake-up messages.
+    owner_index: usize,
+    timer_base: usize,
+    notify_message: u32,
     surface: &'a Surface,
     fonts: &'a Fonts,
     requests: &'a mut Requests,
-    /// Persistent settings shared by all pages; prefix keys with the page id.
+    /// Persistent settings shared by all pages and activities; prefix keys with the page or activity id.
     pub settings: &'a mut Settings,
 }
 
@@ -152,7 +171,37 @@ impl<'a> Context<'a> {
         requests: &'a mut Requests,
         settings: &'a mut Settings,
     ) -> Self {
-        Self { window, page_index, surface, fonts, requests, settings }
+        Self {
+            window,
+            owner_index: page_index,
+            timer_base: PAGE_TIMER_BASE,
+            notify_message: WM_PAGE_NOTIFY,
+            surface,
+            fonts,
+            requests,
+            settings,
+        }
+    }
+
+    /// The same context for an activity: its timers and wake-ups are kept apart from the pages'.
+    pub(crate) fn for_activity(
+        window: HWND,
+        activity_index: usize,
+        surface: &'a Surface,
+        fonts: &'a Fonts,
+        requests: &'a mut Requests,
+        settings: &'a mut Settings,
+    ) -> Self {
+        Self {
+            window,
+            owner_index: activity_index,
+            timer_base: crate::activity::ACTIVITY_TIMER_BASE,
+            notify_message: crate::activity::WM_ACTIVITY_NOTIFY,
+            surface,
+            fonts,
+            requests,
+            settings,
+        }
     }
 
     pub fn fonts(&self) -> &Fonts {
@@ -191,7 +240,19 @@ impl<'a> Context<'a> {
 
     /// A handle that background threads use to wake this page through `Page::on_notify`.
     pub fn notifier(&self) -> Notifier {
-        Notifier { window_address: self.window.0 as isize, page_index: self.page_index }
+        Notifier { window_address: self.window.0 as isize, owner_index: self.owner_index, message: self.notify_message }
+    }
+
+    /// Delivers changes of a Windows power setting as `SystemMessage::PowerSettingChanged`, starting with its
+    /// current value. The registration lives as long as the notch.
+    pub fn listen_to_power_setting(&self, setting: &GUID) {
+        let flags = REGISTER_NOTIFICATION_FLAGS(0);
+        let _ = unsafe { RegisterPowerSettingNotification(HANDLE(self.window.0), setting, flags) };
+    }
+
+    /// Delivers clipboard changes as `SystemMessage::ClipboardChanged`.
+    pub fn listen_to_clipboard(&self) {
+        let _ = unsafe { AddClipboardFormatListener(self.window) };
     }
 
     /// Uploads an image so `Canvas::image` can draw it. Usually called through `ImageSlot::sync`.
@@ -200,35 +261,50 @@ impl<'a> Context<'a> {
     }
 
     fn timer_key(&self, timer: TimerId) -> usize {
-        timer_key(self.page_index, timer)
+        owned_timer_key(self.timer_base, self.owner_index, timer)
     }
 }
 
 /// The Win32 timer key for one of a page's timers.
+#[cfg(test)]
 pub(crate) fn timer_key(page_index: usize, timer: TimerId) -> usize {
+    owned_timer_key(PAGE_TIMER_BASE, page_index, timer)
+}
+
+/// The Win32 timer key for a timer of the page or activity at `owner_index`, with timers starting at `timer_base`.
+pub(crate) fn owned_timer_key(timer_base: usize, owner_index: usize, timer: TimerId) -> usize {
     debug_assert!(usize::from(timer.0) < TIMERS_PER_PAGE, "timer ids must be below {TIMERS_PER_PAGE}");
-    PAGE_TIMER_BASE + page_index * TIMERS_PER_PAGE + usize::from(timer.0)
+    timer_base + owner_index * TIMERS_PER_PAGE + usize::from(timer.0)
 }
 
 /// The page and timer a Win32 timer key belongs to; `None` for keys that are not page timers.
 pub(crate) fn split_timer_key(key: usize) -> Option<(usize, TimerId)> {
-    let offset = key.checked_sub(PAGE_TIMER_BASE)?;
+    split_owned_timer_key(PAGE_TIMER_BASE, PAGE_TIMER_LIMIT, key)
+}
+
+/// The owner and timer of a key in `timer_base..limit`.
+pub(crate) fn split_owned_timer_key(timer_base: usize, limit: usize, key: usize) -> Option<(usize, TimerId)> {
+    if key >= limit {
+        return None;
+    }
+    let offset = key.checked_sub(timer_base)?;
     Some((offset / TIMERS_PER_PAGE, TimerId((offset % TIMERS_PER_PAGE) as u8)))
 }
 
-/// Wakes a page from any thread. Cheap to clone; keep one in the background worker.
+/// Wakes a page or activity from any thread. Cheap to clone; keep one in the background worker.
 #[derive(Clone, Copy, Debug)]
 pub struct Notifier {
     // The window handle crosses threads as an integer, since the raw handle type is not thread-safe.
     window_address: isize,
-    page_index: usize,
+    owner_index: usize,
+    message: u32,
 }
 
 impl Notifier {
     pub fn notify(&self) {
         let window = HWND(self.window_address as *mut _);
         unsafe {
-            let _ = PostMessageW(Some(window), WM_PAGE_NOTIFY, WPARAM(self.page_index), LPARAM(0));
+            let _ = PostMessageW(Some(window), self.message, WPARAM(self.owner_index), LPARAM(0));
         }
     }
 }
@@ -268,5 +344,11 @@ mod tests {
     fn keys_below_the_page_range_belong_to_the_host() {
         assert_eq!(split_timer_key(0), None);
         assert_eq!(split_timer_key(PAGE_TIMER_BASE - 1), None);
+    }
+
+    #[test]
+    fn keys_from_the_activity_range_up_are_not_page_timers() {
+        assert_eq!(split_timer_key(PAGE_TIMER_LIMIT), None);
+        assert!(split_timer_key(PAGE_TIMER_LIMIT - 1).is_some());
     }
 }

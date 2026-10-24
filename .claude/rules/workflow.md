@@ -7,5 +7,5 @@
 - Mouse-driven checks (`scripts/perf.sh`) and screenshots need an unlocked screen; while it is locked (a `LogonUI`
   process runs) screenshots come out black. Verify through the `NOTCH_DEBUG` log or unit tests then.
 - When the `Page` trait or anything pages use changes, update `docs/adding-a-page.md`; its example is a real page
-  that compiled.
+  that compiled. Do the same for the `Activity` trait and `docs/adding-an-activity.md`.
 - Commit only when the user asks.

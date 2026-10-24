@@ -7,15 +7,42 @@ no CPU while idle.
 
 ## What it includes
 
-Two pages out of the box. Pages are separate modules, so you can add your own or remove these.
+Three pages out of the box. Pages are separate modules, so you can add your own or remove these.
 
 | Page      | Collapsed                                                 | Open                                                                                                                    |
 | --------- | --------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------- |
 | **Clock** | the time                                                  | the time and date                                                                                                       |
 | **Media** | the app icon, title and artist, or the current lyric line | album art, title, artist, seek bar, time left, play/pause, previous, next, shuffle, repeat, and scrolling synced lyrics |
+| **Timer** | while running: a progress ring and the time left, beside the other page | focus timer: the time, pause, +5 min and stop; start, and the length of a session |
+
+The timer runs focus sessions (25 minutes by default, four to a round) and breaks (5 minutes, 15 after the fourth
+session). A ring and the minutes left show in the collapsed pill (seconds in the last ten minutes), and when a phase
+ends the notch shows an alert and plays the Windows notification sound; open the notch to start the break or skip it.
+The timer keeps real time, so it survives restarting the notch. Break lengths can be set by hand in the settings file
+(see [docs/configuration.md](docs/configuration.md)).
 
 The media page works with any player that reports to the Windows media controls (Spotify, browsers, and so on). It
 has been tested with Spotify. A tray icon lets you quit.
+
+Activities show up in the collapsed pill while something happens, and each can be switched off from the tray menu:
+
+| Activity              | Shows                                                           |
+| --------------------- | --------------------------------------------------------------- |
+| **Volume**            | a bar with the value, or "Muted"                                |
+| **Brightness**        | a bar with the value (laptop screens)                           |
+| **Charger / battery** | "Charging", "On battery", and "Low battery" at 20 % and 10 %    |
+| **Microphone**        | "Microphone on", then an orange dot while an app has it open    |
+| **Camera**            | "Camera on", then a green dot while an app has it open          |
+| **Copied**            | "Copied" when something is copied (never reads what you copied) |
+
+Limits of the microphone and camera activities:
+
+- They show that an app has the device **open**, not that it is recording or sending. An app that keeps the device
+  open while you are muted (Google Meet in a browser keeps the microphone open) keeps the orange dot.
+- The microphone follows the default recording device at the time the notch starts.
+- The camera is found through the Windows Frame Server log, so it misses apps that reach the camera another way (some
+  older DirectShow programs) and a camera that is already on when the notch starts. This relies on how Windows 11
+  build 26300 behaves; other Windows versions are untested.
 
 ## Device requirements
 
@@ -41,6 +68,9 @@ own page, and [docs/architecture.md](docs/architecture.md) explains how the code
 ## Using it
 
 - **Hover** over the pill at the top of the screen to open it; move away to close it.
+- **Pages:** when more than one page has something to show, dots appear at the bottom of the open notch. Scroll the
+  mouse wheel (or swipe two fingers on a touchpad) or click a dot to move between them; the notch opens on the page you
+  left.
 - **Media page:** click the buttons, or click or drag the progress bar to jump to a point in the song. The
   speech-bubble button turns the lyrics on and off, and your choice is remembered.
 - **Quit:** right-click the tray icon (on Windows 11 it may be under the `^` overflow menu) or the notch, and choose
@@ -84,7 +114,8 @@ notch.
 | [docs/testing.md](docs/testing.md)             | where the tests live, how to write one, the performance check                       |
 | [docs/architecture.md](docs/architecture.md)   | how the code is organized                                                           |
 | [docs/adding-a-page.md](docs/adding-a-page.md) | write, register and remove a page                                                   |
-| [docs/configuration.md](docs/configuration.md) | which pages are on, settings file, environment variables                            |
+| [docs/adding-an-activity.md](docs/adding-an-activity.md) | write, register and remove an activity                                    |
+| [docs/configuration.md](docs/configuration.md) | which pages and activities are on, settings file, environment variables             |
 | [docs/releasing.md](docs/releasing.md)         | the CI and release workflows, and how to publish a release                          |
 
 For an AI coding agent, [CLAUDE.md](CLAUDE.md) and `.claude/rules/` hold the project rules.

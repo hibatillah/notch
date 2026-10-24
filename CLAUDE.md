@@ -26,7 +26,7 @@ The rules are in `.claude/rules/`; the ones without a `paths` filter always appl
 | `performance.md` | always | 0 % idle CPU, memory budget, no polling |
 | `contributions.md` | always | no outside contributions |
 | `code-style.md` | `src/**/*.rs` | naming, comments, units, `unsafe` |
-| `pages-and-host.md` | `src/pages`, `host`, `page.rs`, `gfx`, `ui` | what may depend on what, timer ids, settings keys |
+| `pages-and-host.md` | `src/pages`, `activities`, `host`, `page.rs`, `activity.rs`, `gfx`, `ui` | what may depend on what, timer ids, settings keys |
 | `windows-and-hover.md` | `src/host`, `src/gfx`, `Cargo.toml` | pinned crates, hover tracking, window shape |
 | `testing.md` | `src/**/*.rs`, `scripts/**` | where tests live, how to write them |
 | `scripts.md` | `scripts/**` | thin `.sh` runners, logic in separate files |
@@ -36,10 +36,10 @@ The rules are in `.claude/rules/`; the ones without a `paths` filter always appl
 ## Docs
 
 `docs/development.md` (build, run, checks, style, licenses), `docs/testing.md`, `docs/architecture.md`,
-`docs/adding-a-page.md`, `docs/configuration.md`, `docs/releasing.md`.
+`docs/adding-a-page.md`, `docs/adding-an-activity.md`, `docs/configuration.md`, `docs/releasing.md`.
 
 ## Debugging
 
 `NOTCH_DEBUG=<file>` writes a timestamped log (Unix milliseconds). `NOTCH_PAGES=clock,media` picks pages,
 `NOTCH_LYRICS=off` stops lyric lookups, `NOTCH_TOP=<px>` moves the pill down. Settings are in
-`%APPDATA%\notch\settings.txt`.
+`%APPDATA%\notch\settings.txt`; `activity.<id>=off` switches an activity off (the tray menu does it too).

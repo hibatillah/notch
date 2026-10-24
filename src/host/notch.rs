@@ -3,18 +3,26 @@ use std::cell::Cell;
 use windows::Win32::{
     Foundation::{HWND, POINT, RECT},
     Media::{timeBeginPeriod, timeEndPeriod},
-    System::Performance::QueryPerformanceCounter,
+    System::{Performance::QueryPerformanceCounter, SystemInformation::GetTickCount64},
     UI::{
         Input::KeyboardAndMouse::{ReleaseCapture, SetCapture},
         WindowsAndMessaging::{GetCursorPos, GetWindowRect, KillTimer, SetTimer},
     },
 };
 
-use super::{display, settings::Settings};
+use super::{
+    activity_layout::{self, BADGE_EDGE_PADDING, DIVIDER_WIDTH},
+    display, navigation,
+    settings::Settings,
+};
 use crate::{
-    gfx::{Color, Fonts, Point, Rect, Size, Spring, Surface, lerp},
+    activity::{ACTIVITY_TIMER_BASE, Activity, Presence, SystemMessage},
+    gfx::{Canvas, Color, Fonts, Point, Rect, Size, Spring, Surface, lerp},
     log,
-    page::{Context, Frame, Mode, Page, PageSizes, PointerEvent, Priority, RESTING_HEIGHT, Requests, split_timer_key},
+    page::{
+        Context, Frame, Mode, Page, PageSizes, PointerEvent, Priority, RESTING_HEIGHT, Requests, split_owned_timer_key,
+        split_timer_key,
+    },
 };
 
 /// Wide enough for a long lyric line; the window only occupies the pill's area, so this costs no screen space.
@@ -32,6 +40,24 @@ const HOVER_WATCH_TIMER_ID: usize = 2;
 const HOVER_WATCH_INTERVAL_MILLISECONDS: u32 = 120;
 /// The expansion past which content starts to appear; below it only the collapsed content shows.
 const EXPANDED_CONTENT_START: f32 = 0.55;
+/// How far page content slides while switching pages, in device-independent pixels.
+const PAGE_SLIDE_TRAVEL: f32 = 40.0;
+/// The setting that remembers the page that was open last.
+const LAST_PAGE_SETTING: &str = "navigation.page";
+
+/// Who is showing something in the collapsed pill: an activity, or a page that also has something to say while closed.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum Source {
+    Activity(usize),
+    Page(usize),
+}
+
+/// An activity and whether the user has it switched on; it only runs once it has been started.
+struct ActivitySlot {
+    activity: Box<dyn Activity>,
+    is_enabled: bool,
+    is_started: bool,
+}
 
 /// Owns the window's state: it animates the pill, tracks the pointer and decides which page is shown.
 pub struct Notch {
@@ -42,15 +68,34 @@ pub struct Notch {
     fonts: Fonts,
     settings: Settings,
     pages: Vec<Box<dyn Page>>,
+    activities: Vec<ActivitySlot>,
+    /// The order in which the transients now on screen appeared; the newest ones are shown.
+    transient_order: Vec<Source>,
+    /// The activities drawn in place of the page while collapsed, and the badges drawn beside it, with their widths.
+    shown_transients: Vec<(Source, f32)>,
+    shown_badges: Vec<(Source, f32)>,
     /// The page drawn while collapsed and the page drawn while open; they can differ.
     resting_index: usize,
     expanded_index: usize,
+    /// The page the user moved to last; it stays open until they move again.
+    selected_page: Option<usize>,
+    /// The pages that can be opened right now, in order; the dots show them.
+    navigable: Vec<usize>,
+    wheel: navigation::Wheel,
+    /// While switching pages: the page being left, the direction (1 toward the next page) and the progress.
+    previous_index: Option<usize>,
+    slide_direction: f32,
+    slide: Spring,
     /// Requests collected from page hooks, applied by `flush`.
     pending: Requests,
     expansion: Spring,
     resting_width: Spring,
     expanded_width: Spring,
     expanded_height: Spring,
+    /// 0 while the page shows in the collapsed pill, 1 while transient activities take its place.
+    activity_blend: Spring,
+    /// Room kept at the right end of the collapsed pill for badges.
+    badge_width: Spring,
     is_hovering: bool,
     is_animating: bool,
     pointer_captured: bool,
@@ -70,13 +115,31 @@ pub struct NotchParts {
     pub fonts: Fonts,
     pub settings: Settings,
     pub pages: Vec<Box<dyn Page>>,
+    pub activities: Vec<Box<dyn Activity>>,
     pub ticks_per_second: i64,
 }
 
 impl Notch {
     pub fn new(parts: NotchParts) -> Self {
-        let NotchParts { window, scale, screen_position, surface, fonts, settings, pages, ticks_per_second } = parts;
+        let NotchParts {
+            window,
+            scale,
+            screen_position,
+            surface,
+            fonts,
+            settings,
+            pages,
+            activities,
+            ticks_per_second,
+        } = parts;
         assert!(!pages.is_empty(), "the notch needs at least one page");
+        let activities = activities
+            .into_iter()
+            .map(|activity| {
+                let is_enabled = settings.get_bool(&activity_setting_key(activity.id()), true);
+                ActivitySlot { activity, is_enabled, is_started: false }
+            })
+            .collect();
         Self {
             window,
             scale,
@@ -85,13 +148,25 @@ impl Notch {
             fonts,
             settings,
             pages,
+            activities,
+            transient_order: Vec::new(),
+            shown_transients: Vec::new(),
+            shown_badges: Vec::new(),
             resting_index: 0,
             expanded_index: 0,
+            selected_page: None,
+            navigable: Vec::new(),
+            wheel: navigation::Wheel::default(),
+            previous_index: None,
+            slide_direction: 1.0,
+            slide: Spring::new(1.0, 260.0, 26.0),
             pending: Requests::default(),
             expansion: Spring::new(0.0, 260.0, 22.0),
             resting_width: Spring::new(0.0, 220.0, 26.0),
             expanded_width: Spring::new(0.0, 200.0, 26.0),
             expanded_height: Spring::new(0.0, 220.0, 26.0),
+            activity_blend: Spring::new(0.0, 300.0, 28.0),
+            badge_width: Spring::new(0.0, 220.0, 26.0),
             is_hovering: false,
             is_animating: false,
             pointer_captured: false,
@@ -107,11 +182,20 @@ impl Notch {
         for (index, page) in self.pages.iter().enumerate() {
             log::debug(&format!("page {index}: {}", page.id()));
         }
+        self.selected_page = self
+            .settings
+            .get_string(LAST_PAGE_SETTING)
+            .and_then(|id| self.pages.iter().position(|page| page.id() == id));
         for index in 0..self.pages.len() {
             self.with_page(index, |page, context| page.on_start(context));
         }
+        for index in 0..self.activities.len() {
+            if self.activities[index].is_enabled {
+                self.start_activity(index);
+            }
+        }
         self.refresh_layout();
-        for spring in [&mut self.resting_width, &mut self.expanded_width, &mut self.expanded_height] {
+        for spring in self.layout_springs() {
             spring.snap_to_target();
         }
         self.flush();
@@ -132,8 +216,26 @@ impl Notch {
 
     pub fn pointer_pressed(&mut self, window_x: i32, window_y: i32) {
         let point = self.to_surface_space(window_x, window_y);
+        if self.press_page_dot(point) {
+            self.flush();
+            return;
+        }
         self.route_pointer(PointerEvent::Pressed(point));
         self.flush();
+    }
+
+    /// Scrolling the wheel or swiping a touchpad moves between pages while the notch is open.
+    pub fn scrolled(&mut self, amount: i32, is_horizontal: bool) {
+        if !self.is_hovering {
+            return;
+        }
+        // Scrolling down, or to the right, goes to the next page.
+        let toward_next = if is_horizontal { amount } else { -amount };
+        let step = self.wheel.add(toward_next, unsafe { GetTickCount64() });
+        if step != 0 {
+            self.navigate(step);
+            self.flush();
+        }
     }
 
     pub fn pointer_released(&mut self, window_x: i32, window_y: i32) {
@@ -191,6 +293,13 @@ impl Notch {
                     self.flush();
                 }
             }
+            key if key >= ACTIVITY_TIMER_BASE => {
+                let Some((index, timer)) = split_owned_timer_key(ACTIVITY_TIMER_BASE, usize::MAX, key) else { return };
+                if index < self.activities.len() {
+                    self.with_activity(index, |activity, context| activity.on_timer(timer, context));
+                    self.flush();
+                }
+            }
             key => {
                 let Some((index, timer)) = split_timer_key(key) else { return };
                 if index < self.pages.len() {
@@ -208,7 +317,63 @@ impl Notch {
         }
     }
 
+    pub fn activity_notified(&mut self, index: usize) {
+        if index < self.activities.len() && self.activities[index].is_started {
+            self.with_activity(index, |activity, context| activity.on_notify(context));
+            self.flush();
+        }
+    }
+
+    /// Hands a system message to every activity that is running, whether or not it is switched on right now.
+    pub fn system_message(&mut self, message: SystemMessage) {
+        for index in 0..self.activities.len() {
+            if self.activities[index].is_started {
+                self.with_activity(index, |activity, context| activity.on_system_message(&message, context));
+            }
+        }
+        self.flush();
+    }
+
+    /// The name and on/off state of every activity, for the tray menu.
+    pub fn activity_menu(&self) -> Vec<(&'static str, bool)> {
+        self.activities.iter().map(|slot| (slot.activity.label(), slot.is_enabled)).collect()
+    }
+
+    /// Switches an activity on or off and remembers the choice; switching on starts it the first time.
+    pub fn toggle_activity(&mut self, index: usize) {
+        let Some(slot) = self.activities.get_mut(index) else { return };
+        slot.is_enabled = !slot.is_enabled;
+        let (key, is_enabled) = (activity_setting_key(slot.activity.id()), slot.is_enabled);
+        self.settings.set_bool(&key, is_enabled);
+        if is_enabled {
+            self.start_activity(index);
+        }
+        self.flush();
+    }
+
+    fn start_activity(&mut self, index: usize) {
+        if self.activities[index].is_started {
+            return;
+        }
+        self.activities[index].is_started = true;
+        log::debug(&format!("activity {index}: {}", self.activities[index].activity.id()));
+        self.with_activity(index, |activity, context| activity.on_start(context));
+    }
+
     // ---- page plumbing --------------------------------------------------------------------------------------
+
+    /// Runs an activity hook with a `Context`; whatever the activity requests is applied by the next `flush`.
+    fn with_activity<R>(&mut self, index: usize, hook: impl FnOnce(&mut dyn Activity, &mut Context) -> R) -> R {
+        let mut context = Context::for_activity(
+            self.window,
+            index,
+            &self.surface,
+            &self.fonts,
+            &mut self.pending,
+            &mut self.settings,
+        );
+        hook(self.activities[index].activity.as_mut(), &mut context)
+    }
 
     /// Runs a page hook with a `Context`; whatever the page requests is applied by the next `flush`.
     fn with_page<R>(&mut self, index: usize, hook: impl FnOnce(&mut dyn Page, &mut Context) -> R) -> R {
@@ -217,8 +382,52 @@ impl Notch {
         hook(self.pages[index].as_mut(), &mut context)
     }
 
-    fn route_pointer(&mut self, event: PointerEvent) {
+    /// Moves `step` pages along (negative goes back), sliding the content.
+    fn navigate(&mut self, step: i32) {
+        if let Some(target) = navigation::neighbour(&self.navigable, self.expanded_index, step) {
+            self.go_to_page(target, step.signum());
+        }
+    }
+
+    fn go_to_page(&mut self, target: usize, direction: i32) {
+        if target == self.expanded_index {
+            return;
+        }
+        self.previous_index = Some(self.expanded_index);
+        self.slide_direction = direction as f32;
+        self.slide.jump_to(0.0);
+        self.slide.target = 1.0;
+        self.selected_page = Some(target);
+        let id = self.pages[target].id();
+        self.settings.set_string(LAST_PAGE_SETTING, id);
+        self.start_animation();
+    }
+
+    /// Opens the page whose dot was pressed; returns true when a dot was hit.
+    fn press_page_dot(&mut self, point: Point) -> bool {
+        if self.navigable.len() < 2 {
+            return false;
+        }
         let frame = self.frame();
+        if !frame.is_open() {
+            return false;
+        }
+        let centers = navigation::dot_centers(self.navigable.len(), frame.bounds, self.scale);
+        let Some(position) = navigation::dot_at(&centers, point, self.scale) else { return false };
+        let target = self.navigable[position];
+        let direction = if target > self.expanded_index { 1 } else { -1 };
+        self.go_to_page(target, direction);
+        true
+    }
+
+    /// The frame a page draws and receives pointer events in: the open notch without the strip that holds the dots.
+    fn page_frame(&self, frame: &Frame) -> Frame {
+        let strip = if self.navigable.len() >= 2 { navigation::STRIP_HEIGHT * self.scale } else { 0.0 };
+        Frame { bounds: Rect { bottom: frame.bounds.bottom - strip, ..frame.bounds }, ..*frame }
+    }
+
+    fn route_pointer(&mut self, event: PointerEvent) {
+        let frame = self.page_frame(&self.frame());
         let index = self.expanded_index;
         self.with_page(index, |page, context| page.on_pointer(event, &frame, context));
     }
@@ -251,18 +460,34 @@ impl Notch {
     /// Picks the page to show in each mode and animates toward its sizes; returns true if the selection changed.
     fn refresh_layout(&mut self) -> bool {
         let resting_index = self.best_page(Mode::Resting).unwrap_or(self.resting_index);
-        let expanded_index = self.best_page(Mode::Expanded).unwrap_or(self.expanded_index);
-        let selection_changed = resting_index != self.resting_index || expanded_index != self.expanded_index;
+        let expanded_priorities: Vec<Option<Priority>> =
+            self.pages.iter().map(|page| page.priority(Mode::Expanded)).collect();
+        self.navigable = navigation::navigable(&expanded_priorities);
+        let expanded_index =
+            navigation::choose(self.selected_page, &expanded_priorities).unwrap_or(self.expanded_index);
+        let activities_changed = self.refresh_activities();
+        let selection_changed =
+            resting_index != self.resting_index || expanded_index != self.expanded_index || activities_changed;
         self.resting_index = resting_index;
         self.expanded_index = expanded_index;
 
         let PageSizes { resting_width, .. } = self.pages[resting_index].sizes();
         let PageSizes { expanded, .. } = self.pages[expanded_index].sizes();
+        let strip = if self.navigable.len() >= 2 { navigation::STRIP_HEIGHT } else { 0.0 };
+        let transient_widths: Vec<f32> = self.shown_transients.iter().map(|&(_, width)| width).collect();
+        let badge_space = badge_space(&self.shown_badges);
+        let resting_target = if transient_widths.is_empty() {
+            resting_width + badge_space
+        } else {
+            activity_layout::total_width(&transient_widths)
+        };
         let mut targets_changed = false;
         for (spring, target) in [
-            (&mut self.resting_width, resting_width),
+            (&mut self.resting_width, resting_target),
             (&mut self.expanded_width, expanded.width),
-            (&mut self.expanded_height, expanded.height),
+            (&mut self.expanded_height, expanded.height + strip),
+            (&mut self.activity_blend, if transient_widths.is_empty() { 0.0 } else { 1.0 }),
+            (&mut self.badge_width, badge_space),
         ] {
             if (spring.target - target).abs() > f32::EPSILON {
                 spring.target = target;
@@ -273,6 +498,49 @@ impl Notch {
             self.start_animation();
         }
         selection_changed
+    }
+
+    /// Collects what the running activities and the pages want to show in the collapsed pill; returns true if the
+    /// transients or badges changed.
+    fn refresh_activities(&mut self) -> bool {
+        let mut transients = Vec::new();
+        let mut badges = Vec::new();
+        let activity_presences = self
+            .activities
+            .iter()
+            .enumerate()
+            .filter(|(_, slot)| slot.is_enabled && slot.is_started)
+            .map(|(index, slot)| (Source::Activity(index), slot.activity.presence()));
+        let page_presences = self.pages.iter().enumerate().map(|(index, page)| (Source::Page(index), page.presence()));
+        for (source, presence) in activity_presences.chain(page_presences) {
+            match presence {
+                Some(Presence::Transient { width }) => transients.push((source, width)),
+                Some(Presence::Badge { width }) => badges.push((source, width)),
+                None => {}
+            }
+        }
+        let active: Vec<Source> = transients.iter().map(|&(source, _)| source).collect();
+        activity_layout::track_order(&mut self.transient_order, &active);
+        let shown: Vec<(Source, f32)> = activity_layout::newest(&self.transient_order)
+            .iter()
+            .filter_map(|&source| transients.iter().copied().find(|&(candidate, _)| candidate == source))
+            .collect();
+        let changed = shown != self.shown_transients || badges != self.shown_badges;
+        self.shown_transients = shown;
+        self.shown_badges = badges;
+        changed
+    }
+
+    /// The springs that decide the size of the pill.
+    fn layout_springs(&mut self) -> [&mut Spring; 6] {
+        [
+            &mut self.resting_width,
+            &mut self.expanded_width,
+            &mut self.expanded_height,
+            &mut self.activity_blend,
+            &mut self.badge_width,
+            &mut self.slide,
+        ]
     }
 
     /// The page with the highest priority in `mode`; the earliest registered page wins ties.
@@ -356,10 +624,10 @@ impl Notch {
         let elapsed_seconds = ((now - self.last_tick) as f32 / self.ticks_per_second as f32).clamp(0.0, 0.05);
         self.last_tick = now;
 
-        let springs =
-            [&mut self.expansion, &mut self.resting_width, &mut self.expanded_width, &mut self.expanded_height];
         let mut is_settled = true;
-        for spring in springs {
+        self.expansion.step(elapsed_seconds);
+        is_settled &= self.expansion.is_settled();
+        for spring in self.layout_springs() {
             spring.step(elapsed_seconds);
             is_settled &= spring.is_settled();
         }
@@ -369,9 +637,9 @@ impl Notch {
         }
 
         if is_settled && !pages_busy {
-            for spring in
-                [&mut self.expansion, &mut self.resting_width, &mut self.expanded_width, &mut self.expanded_height]
-            {
+            self.previous_index = None;
+            self.expansion.snap_to_target();
+            for spring in self.layout_springs() {
                 spring.snap_to_target();
             }
             self.stop_animation();
@@ -415,6 +683,9 @@ impl Notch {
         let region = self.pill_region(&frame);
         self.region_origin.set((region.left, region.top));
         let resting_opacity = (1.0 - frame.expansion * 2.2).clamp(0.0, 1.0);
+        let blend = self.activity_blend.position.clamp(0.0, 1.0);
+        let page_opacity = resting_opacity * (1.0 - blend);
+        let activity_opacity = resting_opacity * blend;
         let expanded_opacity =
             ((frame.expansion - EXPANDED_CONTENT_START) / (1.0 - EXPANDED_CONTENT_START)).clamp(0.0, 1.0);
 
@@ -436,11 +707,18 @@ impl Notch {
                 );
                 canvas.fill_top_flares(bounds, self.flare_size(&frame), Color::BLACK);
                 canvas.clipped(bounds, || {
-                    if resting_opacity > 0.01 {
-                        self.pages[self.resting_index].draw_resting(canvas, &frame, resting_opacity);
+                    if page_opacity > 0.01 {
+                        // Badges take the right end of the pill, so the page draws in what is left of it.
+                        let badge_room = self.badge_width.position.max(0.0) * self.scale;
+                        let page_frame = Frame { bounds: Rect { right: bounds.right - badge_room, ..bounds }, ..frame };
+                        self.pages[self.resting_index].draw_resting(canvas, &page_frame, page_opacity);
+                        self.draw_badges(canvas, &frame, page_opacity);
+                    }
+                    if activity_opacity > 0.01 {
+                        self.draw_transients(canvas, &frame, activity_opacity);
                     }
                     if expanded_opacity > 0.01 {
-                        self.pages[self.expanded_index].draw_expanded(canvas, &frame, expanded_opacity);
+                        self.draw_open_pages(canvas, &frame, expanded_opacity);
                     }
                 });
             },
@@ -449,6 +727,86 @@ impl Notch {
             log::debug(&format!("paint failed: {error}"));
         }
     }
+
+    /// Draws the open page, or the two pages passing each other while switching, and the dots below them.
+    fn draw_open_pages(&self, canvas: &Canvas, frame: &Frame, opacity: f32) {
+        let page_frame = self.page_frame(frame);
+        let shifted = |offset: f32| {
+            let mut shifted = page_frame;
+            shifted.bounds.left += offset;
+            shifted.bounds.right += offset;
+            shifted
+        };
+        match self.previous_index {
+            Some(previous) => {
+                let progress = self.slide.position.clamp(0.0, 1.0);
+                let travel = PAGE_SLIDE_TRAVEL * self.scale * self.slide_direction;
+                self.pages[previous].draw_expanded(canvas, &shifted(-progress * travel), opacity * (1.0 - progress));
+                self.pages[self.expanded_index].draw_expanded(
+                    canvas,
+                    &shifted((1.0 - progress) * travel),
+                    opacity * progress,
+                );
+            }
+            None => self.pages[self.expanded_index].draw_expanded(canvas, &page_frame, opacity),
+        }
+        if self.navigable.len() >= 2 {
+            let centers = navigation::dot_centers(self.navigable.len(), frame.bounds, self.scale);
+            for (position, center) in centers.into_iter().enumerate() {
+                let is_active = self.navigable[position] == self.expanded_index;
+                let color = if is_active { Color::WHITE } else { Color::gray(0.42) };
+                canvas.fill_circle(center, navigation::dot_radius(is_active, self.scale), color.faded(opacity));
+            }
+        }
+    }
+
+    /// Draws the transient activities side by side, centered in the pill, with a thin line between them.
+    fn draw_transients(&self, canvas: &Canvas, frame: &Frame, opacity: f32) {
+        let scale = self.scale;
+        let widths: Vec<f32> = self.shown_transients.iter().map(|&(_, width)| width).collect();
+        let offsets = activity_layout::offsets(&widths);
+        let total = activity_layout::total_width(&widths) * scale;
+        let first_left = frame.bounds.left + (frame.bounds.width() - total) / 2.0;
+        let (top, bottom) = (frame.bounds.top, frame.bounds.top + RESTING_HEIGHT * scale);
+        for (position, &(source, width)) in self.shown_transients.iter().enumerate() {
+            let left = first_left + offsets[position] * scale;
+            let area = Rect::new(left, top, left + width * scale, bottom);
+            self.draw_source(source, canvas, area, opacity);
+            if position > 0 {
+                let divider = Rect::new(left - DIVIDER_WIDTH * scale, top + 9.0 * scale, left, bottom - 9.0 * scale);
+                canvas.fill_rounded_rect(divider, 0.0, Color::gray(0.35).faded(opacity));
+            }
+        }
+    }
+
+    /// Draws the badges from the right end of the pill inward.
+    fn draw_badges(&self, canvas: &Canvas, frame: &Frame, opacity: f32) {
+        let scale = self.scale;
+        let (top, bottom) = (frame.bounds.top, frame.bounds.top + RESTING_HEIGHT * scale);
+        let mut right = frame.bounds.right - BADGE_EDGE_PADDING * scale;
+        for &(source, width) in &self.shown_badges {
+            let area = Rect::new(right - width * scale, top, right, bottom);
+            self.draw_source(source, canvas, area, opacity);
+            right = area.left;
+        }
+    }
+
+    fn draw_source(&self, source: Source, canvas: &Canvas, area: Rect, opacity: f32) {
+        match source {
+            Source::Activity(index) => self.activities[index].activity.draw(canvas, area, self.scale, opacity),
+            Source::Page(index) => self.pages[index].draw_presence(canvas, area, self.scale, opacity),
+        }
+    }
+}
+
+/// The settings key that switches an activity on or off.
+fn activity_setting_key(id: &str) -> String {
+    format!("activity.{id}")
+}
+
+/// Room the collapsed pill keeps for these badges, in device-independent pixels.
+fn badge_space(badges: &[(Source, f32)]) -> f32 {
+    if badges.is_empty() { 0.0 } else { badges.iter().map(|&(_, width)| width).sum::<f32>() + BADGE_EDGE_PADDING }
 }
 
 /// Index of the highest priority; `None` entries are skipped and the earliest entry wins ties.
@@ -489,5 +847,16 @@ mod tests {
     #[test]
     fn pages_with_nothing_to_show_are_skipped() {
         assert_eq!(highest_priority([None, Some(LOW), None]), Some(1));
+    }
+
+    #[test]
+    fn an_activity_is_switched_off_by_its_own_settings_key() {
+        assert_eq!(activity_setting_key("volume"), "activity.volume");
+    }
+
+    #[test]
+    fn badges_reserve_their_widths_plus_the_edge_padding() {
+        assert_eq!(badge_space(&[]), 0.0);
+        assert_eq!(badge_space(&[(Source::Activity(0), 14.0), (Source::Page(3), 14.0)]), 28.0 + BADGE_EDGE_PADDING);
     }
 }

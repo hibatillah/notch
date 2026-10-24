@@ -6,9 +6,10 @@
 
 mod clock;
 mod media;
+mod timer;
 
 use crate::page::Page;
 
 pub fn all() -> Vec<Box<dyn Page>> {
-    vec![Box::new(clock::ClockPage::new()), Box::new(media::MediaPage::new())]
+    vec![Box::new(clock::ClockPage::new()), Box::new(media::MediaPage::new()), Box::new(timer::TimerPage::new())]
 }

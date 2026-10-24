@@ -1,25 +1,29 @@
 # Architecture
 
 The notch is a small window pinned to the top of the screen. It shows one **page** at a time, either collapsed
-(a slim pill) or open (while the pointer is over it). The code is split so that adding or removing a page never
-touches the host.
+(a slim pill) or open (while the pointer is over it). While it is collapsed, **activities** (a volume change, a
+charger being plugged in, the microphone turning on) take over the pill for a moment or add a small badge to it. The
+code is split so that adding or removing a page or an activity never touches the host.
 
 ```
 src/
   main.rs         entry point: starts the host with the registered pages
   page.rs         the whole contract for a page: the Page trait, Context, Frame, events
+  activity.rs     the whole contract for an activity: the Activity trait, Presence, SystemMessage, Flash
   log.rs          optional debug log (set NOTCH_DEBUG to a file path)
   host/           the notch itself: window, animation, hover, tray, settings. Knows no page.
   gfx/            drawing toolkit for pages: Canvas, fonts, colors, images, springs, geometry
-  ui/             reusable widgets: IconButton (ghost hover), ProgressBar
+  ui/             reusable widgets: IconButton (ghost hover), ProgressBar, icons, the HUD layouts for activities
+  activities/     the registry (mod.rs) and one file per activity: volume, brightness, battery, microphone, camera, clipboard
   pages/
     mod.rs        the registry: the only place pages are listed
     clock/        fallback page: the time and date
     media/        media player: session, controls, seek bar, lyrics, artwork, app icon
 ```
 
-Dependencies point one way. Pages use `page`, `gfx` and `ui`. The host uses `page` and `gfx`. Nothing in `gfx`, `ui`
-or `page` knows about a particular page, and pages never use each other.
+Dependencies point one way. Pages use `page`, `gfx` and `ui`; activities use `activity`, `page` (for `Context`), `gfx`
+and `ui`. The host uses `page`, `activity` and `gfx`. Nothing in `gfx`, `ui`, `page` or `activity` knows about a
+particular page or activity, and pages and activities never use each other.
 
 ## The host
 
@@ -30,8 +34,10 @@ or `page` knows about a particular page, and pages never use each other.
 | `window.rs` | creates the window, runs the message loop, turns Windows messages into calls on the notch |
 | `notch.rs` | the `Notch`: animates the pill, tracks hover, selects pages, routes input, paints |
 | `registry.rs` | decides which registered pages are switched on (`NOTCH_PAGES`, the `pages` setting) |
-| `settings.rs` | the persistent key-value store pages share |
-| `tray.rs` | the tray icon and its Quit menu |
+| `navigation.rs` | which page opens, wheel steps, the page dots (pure functions) |
+| `activity_layout.rs` | which transient activities show and where each one starts (pure functions) |
+| `settings.rs` | the persistent key-value store pages and activities share |
+| `tray.rs` | the tray icon and its menu: one checkable item per activity, then Quit |
 | `display.rs` | display scale and refresh rate |
 
 ### Choosing a page
@@ -39,10 +45,24 @@ or `page` knows about a particular page, and pages never use each other.
 Each page answers `priority(mode)` for `Mode::Resting` (collapsed) and `Mode::Expanded` (open). `None` means
 "nothing to show". The host shows the highest priority in each mode, and the earlier registered page wins ties.
 
+While collapsed the highest priority is always the page shown. While open it is only the starting point: with two or
+more pages that have something to show, the user moves between them (see Navigation below), and the page they moved
+to stays open until they move again.
+
 The two modes are independent. The media page, for example, is shown collapsed only while music plays, but stays up
 when open while paused so playback can be resumed. The clock answers `Some(BACKGROUND)` in both modes, so
 something is always shown. The host asks again after every event, so a page changes what it shows by changing its
 own state.
+
+### Navigation
+
+With two or more pages that answer `Some` for `Mode::Expanded`, the open notch shows one dot per page in a strip at
+its bottom (`navigation::STRIP_HEIGHT`, 16 px) and the page draws in the space above it. The user moves between pages
+by scrolling the mouse wheel (up or left goes back, down or right goes forward), swiping two fingers on a touchpad
+(sent as scrolling), or clicking a dot. One gesture moves one page and stops at the first and last page; the content
+slides sideways while the pill resizes to the new page. The page left open is remembered as `navigation.page` in the
+settings, so the notch opens on it next time. `host/navigation.rs` holds the rules as pure functions; `notch.rs`
+applies them.
 
 ### Sizes
 
@@ -63,6 +83,17 @@ Windows messages reach `window.rs`, which calls the notch. The notch converts po
 routes pointer events to the page chosen for the open mode. A page's timers (`Context::set_timer`) are Windows
 timers whose ids encode the page and the timer number, so each page has its own.
 
+### Activities
+
+The host asks every running activity for its `presence()` after each event. A **transient** (up to two, newest win)
+replaces the page's collapsed content: the pill resizes to the transient widths and a blend spring cross-fades the
+two. A **badge** stays beside the page's content at the right end of the pill, which the page is told to leave free.
+Activities start only when switched on (`activity.<id>` in the settings, or the tray menu). The host registers the
+window for Windows power-setting and clipboard messages on their behalf (`Context::listen_to_power_setting`,
+`listen_to_clipboard`) and hands them to every running activity as a `SystemMessage`. Activity timers use ids from
+1000 up and their wake-ups use their own window message, so they never clash with a page's. See
+[adding-an-activity.md](adding-an-activity.md).
+
 ### Threads
 
 All drawing and page code runs on the single UI thread. A page that needs background work (the media page watches
@@ -77,7 +108,9 @@ has no timers running except a page's own (the clock wakes once a minute), which
 
 ## Pages
 
-`pages/mod.rs` is the registry. See [adding-a-page.md](adding-a-page.md) to write one.
+`pages/mod.rs` is the registry. See [adding-a-page.md](adding-a-page.md) to write one. A page may also answer
+`presence()` to show something in the collapsed pill beside or instead of the page on show (the timer does); the host
+treats it like an activity's presence.
 
 The media page is the largest example of how to split a page:
 
@@ -92,6 +125,15 @@ The media page is the largest example of how to split a page:
 | `resting.rs`, `expanded.rs` | draw the collapsed and open views |
 | `controls.rs`, `seek.rs`, `lyric_panel.rs` | the buttons, the progress bar and the scrolling lyrics |
 | `styles.rs` | the page's text styles |
+
+The timer page is the example of a page that also has a collapsed presence:
+
+| File | Job |
+| --- | --- |
+| `mod.rs` | the `TimerPage` type: input, timers, the alert, the `Page` implementation |
+| `session.rs` | the rules: phases, the session counter, pause, extend, when to wake next, saving; pure |
+| `view.rs` | what is said and offered in each state, and the compact text; pure |
+| `layout.rs` | where the title, the time and the buttons go |
 
 ## Tests
 

@@ -31,9 +31,12 @@ spread over many files:
 | Area | Files with tests |
 | --- | --- |
 | page contract | `src/page.rs` |
-| host | `src/host/notch.rs` (page choice), `registry.rs`, `settings.rs` |
+| activity contract | `src/activity.rs` (change detection) |
+| host | `src/host/notch.rs` (page choice, badge room), `navigation.rs` (page steps, wheel, dots), `activity_layout.rs`, `registry.rs`, `settings.rs`, `tray.rs` (menu commands) |
 | drawing toolkit | `src/gfx/color.rs`, `geometry.rs`, `spring.rs`, `image.rs`, `path.rs`, `raster.rs`, `canvas.rs` (flare shape) |
-| widgets | `src/ui/icon_button.rs`, `icons.rs`, `progress_bar.rs` |
+| widgets | `src/ui/icon_button.rs`, `icons.rs`, `progress_bar.rs`, `hud.rs` |
+| timer page | `src/pages/timer/session.rs` (rules, saving), `view.rs`, `layout.rs` |
+| activities | `src/activities/battery.rs` (charge rules), `volume.rs`, `camera.rs`, `privacy.rs` |
 | clock page | `src/pages/clock/mod.rs` |
 | media page | `src/pages/media/mod.rs`, `layout.rs`, `resting.rs`, `session.rs`, `lyric_follower.rs`, `lyrics/mod.rs`, `lyrics/client.rs` |
 
@@ -111,3 +114,22 @@ For a change that affects drawing or input, run `scripts/reload.sh` and check:
 - clicking and dragging the progress bar jumps to that point
 - the lyric button hides and shows lyrics, and the choice is remembered after restarting
 - the tray icon's Quit closes the notch and removes the icon
+
+For a change to the timer, seed a short session by hand (stop the notch, put `timer.state=running focus 30000 <end>` in
+the settings file, where `<end>` is the Unix time in milliseconds 30 seconds from now, and start it) and check: the ring
+and the time show beside the clock, the alert and sound arrive at the end, the open page then offers the break, and
+pause, +5 min and stop work.
+
+For a change to navigation, play something so the media page appears, then check: scrolling the wheel (and swiping a
+touchpad, and scrolling sideways) moves one page at a time and stops at the first and last page, clicking a dot opens
+that page, and the notch opens on the page you left.
+
+For a change to activities, also check (each one is a real event, so run them on a laptop):
+
+- change the volume and press mute: a bar with the value, or "Muted", for about a second and a half
+- change the brightness with the slider and with the brightness keys: a bar with the value
+- copy something: "Copied"; copy a password from a password manager: nothing
+- start recording in any app: "Microphone on", then an orange dot until it stops, then "Microphone off"
+- open the camera in a browser or a video-call app: "Camera on", then a green dot, then "Camera off"
+- plug and unplug the charger, and let the battery fall through 20 % and 10 %: the matching message
+- untick an activity in the tray menu: it no longer shows, and stays off after restarting

@@ -13,7 +13,7 @@ impl Settings {
         )
     }
 
-    fn at(path: Option<PathBuf>) -> Self {
+    pub(crate) fn at(path: Option<PathBuf>) -> Self {
         let values =
             path.as_ref().and_then(|path| fs::read_to_string(path).ok()).map(|text| parse(&text)).unwrap_or_default();
         Self { path, values }
@@ -29,6 +29,11 @@ impl Settings {
             Some("off") | Some("false") => false,
             _ => default,
         }
+    }
+
+    pub fn set_string(&mut self, key: &str, value: &str) {
+        self.values.insert(key.to_owned(), value.to_owned());
+        self.save();
     }
 
     pub fn set_bool(&mut self, key: &str, value: bool) {
@@ -92,6 +97,15 @@ mod tests {
         assert!(!reloaded.get_bool("media.lyrics", true));
         assert!(reloaded.get_bool("clock.seconds", false));
         let _ = fs::remove_dir_all(path.parent().unwrap());
+    }
+
+    #[test]
+    fn text_values_are_stored_and_replaced() {
+        let mut settings = Settings { path: None, values: BTreeMap::new() };
+        settings.set_string("navigation.page", "media");
+        assert_eq!(settings.get_string("navigation.page"), Some("media"));
+        settings.set_string("navigation.page", "clock");
+        assert_eq!(settings.get_string("navigation.page"), Some("clock"));
     }
 
     #[test]

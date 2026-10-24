@@ -25,6 +25,12 @@ notch.exe
 
 To change which pages are *compiled in*, edit `src/pages/mod.rs`; see [adding-a-page.md](adding-a-page.md).
 
+## Which activities are on
+
+Activities (volume, brightness, charger and battery, microphone, camera, copied) are all on by default. Right-click the
+notch or its tray icon and tick or untick them: the choice is remembered. It is stored as `activity.<id>` in the
+settings file; an activity that is off at start is never started, so it costs nothing.
+
 ## Settings file
 
 `%APPDATA%\notch\settings.txt` is a plain text file with one `key=value` per line. The notch writes it when you
@@ -34,6 +40,11 @@ change something; you can also edit it by hand while the notch is not running.
 | --- | --- | --- |
 | `pages` | comma-separated page ids | which pages are on (see above) |
 | `media.lyrics` | `on`, `off` | show lyrics on the media page (the speech-bubble button changes this) |
+| `timer.focus_minutes` | 5 to 120 | length of a focus session; the timer page changes it in steps of 5 |
+| `timer.short_break_minutes`, `timer.long_break_minutes` | minutes | break lengths (default 5 and 15); set by hand |
+| `timer.state`, `timer.completed` | written by the notch | the running timer and the focus sessions finished in this round, so a restart keeps them |
+| `navigation.page` | a page id | the page that was open last; the notch opens on it (the notch writes this when you change page) |
+| `activity.<id>` | `on`, `off` | show that activity; ids are `volume`, `brightness`, `battery`, `microphone`, `camera`, `clipboard` (the tray menu changes this) |
 
 Pages add their own keys, always starting with the page id. A page reads and writes them through
 `Context::settings`.
@@ -54,6 +65,7 @@ Things a developer tunes by editing source:
 | What | Where |
 | --- | --- |
 | which pages exist and their order (the order breaks priority ties) | `src/pages/mod.rs` |
+| which activities exist and their order (tray menu, badges) | `src/activities/mod.rs` |
 | when a page is shown | the page's `priority()` |
 | how big a page is | the page's `sizes()` |
 | corner radius, spring stiffness, window size | `src/host/notch.rs` |

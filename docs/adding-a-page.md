@@ -105,8 +105,10 @@ impl Page for GreetingPage {
 
 What each part does:
 
-- `priority` answers "do you want to be shown?" for the collapsed and the open notch. `None` means no. The highest
-  priority wins; `Priority::NORMAL` beats the clock's `BACKGROUND`.
+- `priority` answers "do you want to be shown?" for the collapsed and the open notch. `None` means no. Collapsed, the
+  highest priority wins; `Priority::NORMAL` beats the clock's `BACKGROUND`. Open, every page that answers `Some` can be
+  reached by scrolling or by the page dots, and the highest priority is only the page shown first.
+- Keep the open size at most 159 px high: the window is 175 px and the dots strip takes 16 px of it.
 - `sizes` is the size you want, in device-independent pixels. Ask again whenever your content changes size; the host
   asks after every event and animates the change.
 - `draw_resting` and `draw_expanded` draw your content. Multiply sizes by `frame.scale` to get device pixels, and fade
@@ -174,6 +176,13 @@ To only turn a page off without deleting it, list the pages you want in `NOTCH_P
 | `on_timer(timer, context)` | no | when one of the page's timers fires |
 | `on_notify(context)` | no | after a background thread used the page's `Notifier` |
 | `animate(elapsed_seconds)` | no | each frame while the notch animates; return true while the page is still moving |
+| `presence()` and `draw_presence(canvas, area, scale, opacity)` | no | after every event: something the page shows in the collapsed pill even when it is not the page on show, as an activity does |
+
+A page that also has something to say while closed (the timer's ring and minutes, the alert when a phase ends) answers
+`presence()` with `Presence::Badge { width }` (a mark kept beside the page on show) or `Presence::Transient { width }`
+(takes over the pill for a moment), and draws it in `draw_presence` into the area the host gives. It can use
+`activity::Flash` for a transient that comes and goes, and its own timers and settings as usual. See
+[adding-an-activity.md](adding-an-activity.md) for how the host lays these out.
 
 `PointerEvent` is `Moved`, `Pressed`, `Released`, `Left` (the pointer left the notch) and `CaptureLost`. Positions
 are device pixels.
