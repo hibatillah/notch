@@ -1,6 +1,7 @@
-//! The media player page: what is playing, with controls, a seek bar and synced lyrics.
+//! The media player page: what is playing, with previous, play or pause, next and synced lyrics.
 //!
-//! `session` mirrors the system media session into plain data; the other modules draw it or react to input.
+//! `session` mirrors the system media session into plain data; the other modules draw it or react to input. There is
+//! no progress bar, so nothing in the open notch redraws every second.
 
 mod app_icon;
 mod artwork;
@@ -11,7 +12,6 @@ mod lyric_follower;
 mod lyric_panel;
 mod lyrics;
 mod resting;
-mod seek;
 mod session;
 mod styles;
 
@@ -29,11 +29,11 @@ use crate::{
 };
 
 const SETTING_LYRICS: &str = "media.lyrics";
-/// Repaints the open notch so the progress bar and time left keep moving.
-const PROGRESS_TIMER: TimerId = TimerId(0);
-const PROGRESS_INTERVAL_MILLISECONDS: u32 = 250;
 /// Fires when the next lyric line starts.
 const LYRIC_TIMER: TimerId = TimerId(1);
+/// Ends the moment after a track change in which the collapsed pill shows the title and the artist.
+const TITLE_TIMER: TimerId = TimerId(2);
+const TITLE_SHOWN_MILLISECONDS: u32 = 3000;
 
 pub struct MediaPage {
     watcher: Option<MediaWatcher>,
@@ -49,10 +49,8 @@ pub struct MediaPage {
     measured_artist: String,
     artist_width: f32,
     hovered_control: Option<Control>,
-    /// Fraction under the pointer while the user drags the seek bar.
-    seek_drag: Option<f32>,
-    is_notch_open: bool,
-    is_progress_timer_running: bool,
+    /// True for a few seconds after the track changes, while the collapsed pill names it.
+    is_title_shown: bool,
 }
 
 impl MediaPage {
@@ -69,9 +67,7 @@ impl MediaPage {
             measured_artist: String::new(),
             artist_width: 0.0,
             hovered_control: None,
-            seek_drag: None,
-            is_notch_open: false,
-            is_progress_timer_running: false,
+            is_title_shown: false,
         }
     }
 
@@ -93,6 +89,18 @@ impl MediaPage {
         self.info.is_playing && self.is_lyric_panel_visible()
     }
 
+    /// What the collapsed pill shows: the title for a moment after a track change, else the lyric line being sung
+    /// when there is one, else the art with still bars.
+    fn resting_view(&self) -> resting::View {
+        if self.is_title_shown {
+            resting::View::TrackChange
+        } else if self.is_lyric_mode() && !self.follower.current().is_empty() {
+            resting::View::Lyrics
+        } else {
+            resting::View::Bars
+        }
+    }
+
     fn visible_lyric_lines(&self) -> Option<&[LyricLine]> {
         match &self.info.lyrics {
             LyricsStatus::Found(lyrics) if self.lyrics_enabled && self.info.available => Some(&lyrics.lines),
@@ -102,25 +110,29 @@ impl MediaPage {
 
     /// Takes the latest state from the media session and brings everything derived from it up to date.
     fn apply_snapshot(&mut self, context: &mut Context) {
+        let previous_title = std::mem::take(&mut self.measured_title);
         if let Some(watcher) = &self.watcher {
             self.info = watcher.snapshot();
         }
         self.artwork.sync(self.info.artwork.as_deref(), |image| context.upload_image(image));
         self.app_icon.sync(self.info.app_icon.as_deref(), |image| context.upload_image(image));
         self.measure_text(context);
+        if self.measured_title != previous_title && !self.measured_title.is_empty() && self.info.is_playing {
+            self.is_title_shown = true;
+            context.set_timer(TITLE_TIMER, TITLE_SHOWN_MILLISECONDS);
+        }
         self.update_lyrics(context);
-        self.update_progress_timer(context);
         context.request_repaint();
     }
 
     fn measure_text(&mut self, context: &Context) {
         if self.info.title != self.measured_title {
             self.measured_title = self.info.title.clone();
-            self.title_width = context.fonts().measure(&styles::RESTING_TITLE, &self.measured_title);
+            self.title_width = context.fonts().measure(&styles::COMPACT_TITLE, &self.measured_title);
         }
         if self.info.artist != self.measured_artist {
             self.measured_artist = self.info.artist.clone();
-            self.artist_width = context.fonts().measure(&styles::RESTING_TITLE, &self.measured_artist);
+            self.artist_width = context.fonts().measure(&styles::COMPACT_ARTIST, &self.measured_artist);
         }
     }
 
@@ -150,20 +162,6 @@ impl MediaPage {
         }
     }
 
-    /// Ticks only while the open notch shows a playing track, so the idle notch never wakes up.
-    fn update_progress_timer(&mut self, context: &mut Context) {
-        let needed = self.is_notch_open && self.info.is_playing && self.info.duration_ticks > 0;
-        if needed == self.is_progress_timer_running {
-            return;
-        }
-        self.is_progress_timer_running = needed;
-        if needed {
-            context.set_timer(PROGRESS_TIMER, PROGRESS_INTERVAL_MILLISECONDS);
-        } else {
-            context.kill_timer(PROGRESS_TIMER);
-        }
-    }
-
     fn toggle_lyrics(&mut self, context: &mut Context) {
         self.lyrics_enabled = !self.lyrics_enabled;
         context.settings.set_bool(SETTING_LYRICS, self.lyrics_enabled);
@@ -178,12 +176,10 @@ impl MediaPage {
         }
         let Some(watcher) = &self.watcher else { return };
         match control {
-            Control::Lyrics => {}
-            Control::Shuffle => watcher.toggle_shuffle(),
             Control::Previous => watcher.skip_previous(),
             Control::PlayPause => watcher.toggle_play_pause(),
             Control::Next => watcher.skip_next(),
-            Control::Repeat => watcher.cycle_repeat(),
+            Control::Lyrics => {}
         }
     }
 }
@@ -211,11 +207,19 @@ impl Page for MediaPage {
     }
 
     fn sizes(&self) -> PageSizes {
-        let lyric_width = self.is_lyric_mode().then(|| self.follower.width());
-        let expanded_width = if self.is_lyric_panel_visible() { layout::LYRICS_WIDTH } else { layout::PLAIN_WIDTH };
+        let (width, height) = if self.is_lyric_panel_visible() {
+            (layout::LYRICS_WIDTH, layout::LYRICS_HEIGHT)
+        } else {
+            (layout::PLAIN_WIDTH, layout::PLAIN_HEIGHT)
+        };
         PageSizes {
-            resting_width: resting::width(self.title_width, self.artist_width, lyric_width),
-            expanded: Size::new(expanded_width, layout::EXPANDED_HEIGHT),
+            resting_width: resting::width(
+                self.resting_view(),
+                self.title_width,
+                self.artist_width,
+                self.follower.width(),
+            ),
+            expanded: Size::new(width, height),
         }
     }
 
@@ -240,62 +244,39 @@ impl Page for MediaPage {
         self.apply_snapshot(context);
     }
 
-    fn on_hover_changed(&mut self, is_hovering: bool, context: &mut Context) {
-        self.is_notch_open = is_hovering;
-        self.update_progress_timer(context);
-    }
-
     fn on_pointer(&mut self, event: PointerEvent, frame: &Frame, context: &mut Context) {
         let layout = Layout::new(frame);
         let can_use_controls = frame.is_open() && self.info.available;
         match event {
             PointerEvent::Moved(point) => {
-                if self.seek_drag.is_some() {
-                    self.seek_drag = Some(layout.progress_bar().fraction_at(point.x));
-                    context.request_repaint();
-                }
-                let hovered = if can_use_controls { controls::hit_test(&layout, &self.info, point) } else { None };
+                let hovered = if can_use_controls { controls::hit_test(&layout, point) } else { None };
                 if hovered != self.hovered_control {
                     self.hovered_control = hovered;
                     context.request_repaint();
                 }
             }
-            PointerEvent::Pressed(point) => {
-                if can_use_controls && seek::can_grab(&layout, &self.info, point) {
-                    context.capture_pointer();
-                    self.seek_drag = Some(layout.progress_bar().fraction_at(point.x));
-                    context.request_repaint();
-                }
-            }
-            PointerEvent::Released(point) => {
-                if self.seek_drag.take().is_some() {
-                    context.release_pointer();
-                    let fraction = layout.progress_bar().fraction_at(point.x);
-                    if let Some(watcher) = &self.watcher {
-                        watcher.seek((fraction * self.info.duration_ticks as f32) as i64);
-                    }
-                    context.request_repaint();
-                } else if can_use_controls && let Some(control) = controls::hit_test(&layout, &self.info, point) {
+            PointerEvent::Released(point) if can_use_controls => {
+                if let Some(control) = controls::hit_test(&layout, point) {
                     self.activate(control, context);
                 }
             }
-            PointerEvent::Left => {
+            PointerEvent::Left | PointerEvent::CaptureLost => {
                 self.hovered_control = None;
                 context.request_repaint();
             }
-            PointerEvent::CaptureLost => {
-                self.seek_drag = None;
-                context.request_repaint();
-            }
-            PointerEvent::SecondaryReleased(_) => {}
+            _ => {}
         }
     }
 
     fn on_timer(&mut self, timer: TimerId, context: &mut Context) {
         match timer {
-            PROGRESS_TIMER => context.request_repaint(),
             LYRIC_TIMER => {
                 self.update_lyrics(context);
+                context.request_repaint();
+            }
+            TITLE_TIMER => {
+                self.is_title_shown = false;
+                context.kill_timer(TITLE_TIMER);
                 context.request_repaint();
             }
             _ => {}
@@ -351,14 +332,15 @@ mod tests {
     }
 
     #[test]
-    fn the_open_pill_widens_only_while_lyrics_are_shown() {
-        let plain = playing_page().sizes().expanded.width;
+    fn the_open_player_widens_only_while_lyrics_are_shown() {
+        let plain = playing_page().sizes().expanded;
         let mut page = with_lyrics(playing_page());
         assert_eq!(page.sizes().expanded.width, layout::LYRICS_WIDTH);
-        assert!(page.sizes().expanded.width > plain);
+        assert!(page.sizes().expanded.width > plain.width);
 
         page.lyrics_enabled = false;
-        assert_eq!(page.sizes().expanded.width, plain);
+        assert_eq!(page.sizes().expanded.width, plain.width);
+        assert_eq!(page.sizes().expanded.height, plain.height);
     }
 
     #[test]
@@ -377,5 +359,19 @@ mod tests {
         page.info.is_playing = false;
         assert!(!page.is_lyric_mode());
         assert!(page.is_lyric_panel_visible(), "the open view still shows them while paused");
+    }
+
+    #[test]
+    fn the_collapsed_pill_shows_still_bars_by_default_and_the_title_after_a_track_change() {
+        let mut page = playing_page();
+        assert_eq!(page.resting_view(), resting::View::Bars);
+        page.is_title_shown = true;
+        assert_eq!(page.resting_view(), resting::View::TrackChange);
+        assert!(page.sizes().resting_width >= 150.0);
+    }
+
+    #[test]
+    fn the_collapsed_pill_is_small_with_bars() {
+        assert_eq!(playing_page().sizes().resting_width, 96.0);
     }
 }

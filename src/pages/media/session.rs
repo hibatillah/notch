@@ -9,12 +9,9 @@ use std::{
 
 use windows::{
     Foundation::TypedEventHandler,
-    Media::{
-        Control::{
-            GlobalSystemMediaTransportControlsSession, GlobalSystemMediaTransportControlsSessionManager,
-            GlobalSystemMediaTransportControlsSessionPlaybackStatus,
-        },
-        MediaPlaybackAutoRepeatMode,
+    Media::Control::{
+        GlobalSystemMediaTransportControlsSession, GlobalSystemMediaTransportControlsSessionManager,
+        GlobalSystemMediaTransportControlsSessionPlaybackStatus,
     },
     Win32::System::SystemInformation::GetSystemTimeAsFileTime,
     core::Result,
@@ -26,18 +23,8 @@ use super::{
 };
 use crate::gfx::ImageData;
 
-const TICKS_PER_SECOND: i64 = 10_000_000;
-
 /// Delay before a lyrics lookup, so the new track's length has arrived and the match is exact.
 const LYRICS_LOOKUP_DELAY: Duration = Duration::from_millis(600);
-
-#[derive(Clone, Copy, Default, PartialEq, Eq)]
-pub enum RepeatMode {
-    #[default]
-    Off,
-    Track,
-    List,
-}
 
 #[derive(Clone, Default)]
 pub enum LyricsStatus {
@@ -59,16 +46,10 @@ pub struct MediaInfo {
     /// Windows app identifier of the player, such as `Spotify.exe`.
     pub source_app: String,
     pub app_icon: Option<Arc<ImageData>>,
-    pub shuffle_enabled: bool,
-    pub shuffle_active: bool,
-    pub repeat_enabled: bool,
-    pub repeat_mode: RepeatMode,
     pub lyrics: LyricsStatus,
     track_key: String,
     /// Track length in 100 ns ticks; zero when the source reports no timeline.
     pub duration_ticks: i64,
-    pub can_seek: bool,
-    start_ticks: i64,
     position_ticks: i64,
     position_updated_at_ticks: i64,
 }
@@ -85,12 +66,6 @@ impl MediaInfo {
 pub fn now_ticks() -> i64 {
     let file_time = unsafe { GetSystemTimeAsFileTime() };
     (i64::from(file_time.dwHighDateTime) << 32) | i64::from(file_time.dwLowDateTime)
-}
-
-pub fn format_seconds(ticks: i64) -> String {
-    let total_seconds = (ticks.max(0) / TICKS_PER_SECOND) as u64;
-    let (hours, minutes, seconds) = (total_seconds / 3600, (total_seconds / 60) % 60, total_seconds % 60);
-    if hours > 0 { format!("{hours}:{minutes:02}:{seconds:02}") } else { format!("{minutes}:{seconds:02}") }
 }
 
 struct SessionSubscription {
@@ -155,37 +130,6 @@ impl MediaWatcher {
         if let Ok(session) = self.manager.GetCurrentSession() {
             let _ = session.TrySkipPreviousAsync();
         }
-    }
-
-    pub fn toggle_shuffle(&self) {
-        let is_active = self.shared.info.lock().map(|info| info.shuffle_active).unwrap_or(false);
-        if let Ok(session) = self.manager.GetCurrentSession() {
-            let _ = session.TryChangeShuffleActiveAsync(!is_active);
-        }
-    }
-
-    /// Cycles off, repeat all, repeat one, which is the order players show them in.
-    pub fn cycle_repeat(&self) {
-        let current = self.shared.info.lock().map(|info| info.repeat_mode).unwrap_or_default();
-        let next = match current {
-            RepeatMode::Off => MediaPlaybackAutoRepeatMode::List,
-            RepeatMode::List => MediaPlaybackAutoRepeatMode::Track,
-            RepeatMode::Track => MediaPlaybackAutoRepeatMode::None,
-        };
-        if let Ok(session) = self.manager.GetCurrentSession() {
-            let _ = session.TryChangeAutoRepeatModeAsync(next);
-        }
-    }
-
-    /// Jumps to `position_ticks` from the track start and updates the local position without waiting for the source.
-    pub fn seek(&self, position_ticks: i64) {
-        let Ok(session) = self.manager.GetCurrentSession() else { return };
-        let start_ticks = self.shared.info.lock().map(|info| info.start_ticks).unwrap_or(0);
-        let _ = session.TryChangePlaybackPositionAsync(start_ticks + position_ticks);
-        update_info(&self.shared, |info| {
-            info.position_ticks = position_ticks;
-            info.position_updated_at_ticks = now_ticks();
-        });
     }
 }
 
@@ -334,16 +278,6 @@ fn refresh_playback(shared: &Arc<Shared>, session: &GlobalSystemMediaTransportCo
     let is_playing = playback
         .PlaybackStatus()
         .is_ok_and(|status| status == GlobalSystemMediaTransportControlsSessionPlaybackStatus::Playing);
-    let can_seek = playback.Controls().and_then(|controls| controls.IsPlaybackPositionEnabled()).unwrap_or(false);
-    let controls = playback.Controls().ok();
-    let shuffle_enabled = controls.as_ref().and_then(|controls| controls.IsShuffleEnabled().ok()).unwrap_or(false);
-    let repeat_enabled = controls.as_ref().and_then(|controls| controls.IsRepeatEnabled().ok()).unwrap_or(false);
-    let shuffle_active = playback.IsShuffleActive().and_then(|value| value.Value()).unwrap_or(false);
-    let repeat_mode = match playback.AutoRepeatMode().and_then(|value| value.Value()) {
-        Ok(MediaPlaybackAutoRepeatMode::Track) => RepeatMode::Track,
-        Ok(MediaPlaybackAutoRepeatMode::List) => RepeatMode::List,
-        _ => RepeatMode::Off,
-    };
     let timeline = session.GetTimelineProperties().ok().and_then(|timeline| {
         Some((
             timeline.StartTime().ok()?.Duration,
@@ -355,13 +289,7 @@ fn refresh_playback(shared: &Arc<Shared>, session: &GlobalSystemMediaTransportCo
     update_info(shared, |info| {
         info.available = true;
         info.is_playing = is_playing;
-        info.can_seek = can_seek;
-        info.shuffle_enabled = shuffle_enabled;
-        info.shuffle_active = shuffle_active;
-        info.repeat_enabled = repeat_enabled;
-        info.repeat_mode = repeat_mode;
         if let Some((start, end, position, updated_at)) = timeline {
-            info.start_ticks = start;
             info.duration_ticks = (end - start).max(0);
             info.position_ticks = (position - start).max(0);
             info.position_updated_at_ticks = updated_at;
@@ -380,18 +308,6 @@ mod tests {
     use super::*;
 
     const SECOND: i64 = 10_000_000;
-
-    #[test]
-    fn formats_times_as_minutes_and_seconds() {
-        assert_eq!(format_seconds(0), "0:00");
-        assert_eq!(format_seconds(65 * SECOND), "1:05");
-        assert_eq!(format_seconds(3661 * SECOND), "1:01:01");
-    }
-
-    #[test]
-    fn negative_times_show_as_zero() {
-        assert_eq!(format_seconds(-5 * SECOND), "0:00");
-    }
 
     fn info(is_playing: bool, position_seconds: i64) -> MediaInfo {
         MediaInfo {

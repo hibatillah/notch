@@ -1,14 +1,16 @@
 use super::{MediaPage, layout::Layout, styles};
 use crate::gfx::{Canvas, Color, Point, Rect, lerp};
 
-/// Distance between lyric line centers; wrapped lines may overlap their neighbours slightly, which is acceptable.
-const ROW_SPACING: f32 = 38.0;
-/// Room given to one lyric line, enough for two wrapped lines.
-const ROW_HEIGHT: f32 = 56.0;
+/// Distance between lyric line centers.
+const ROW_SPACING: f32 = 24.0;
+const ROW_HEIGHT: f32 = 22.0;
 /// Size of the previous and next lines relative to the current one.
-const NEIGHBOR_SCALE: f32 = 0.78;
+const NEIGHBOR_SCALE: f32 = 0.93;
+/// The gray of the lines before and after the current one.
+const NEIGHBOR_GRAY: f32 = 0.36;
 
-/// Scrolling lyric column beside the controls: the line being sung is white and centered, neighbours are smaller and fade out.
+/// Three lyric lines beside the player: the line being sung is white and centered, the ones before and after are
+/// smaller and gray. When the line changes, all of them slide up by one place.
 pub fn draw(page: &MediaPage, canvas: &Canvas, layout: &Layout, opacity: f32) {
     let Some(lines) = page.visible_lyric_lines() else { return };
     let scale = layout.scale;
@@ -26,15 +28,15 @@ pub fn draw(page: &MediaPage, canvas: &Canvas, layout: &Layout, opacity: f32) {
             if line.text.is_empty() {
                 continue;
             }
-            // Every row slides up by one slot while the transition runs, then rests.
+            // Every row slides up by one place while the transition runs, then rests.
             let rows_from_center = relative as f32 + (1.0 - transition);
             let distance = rows_from_center.abs();
             let center = center_y + rows_from_center * ROW_SPACING * scale;
-            let gray = lerp(0.5, 1.0, (1.0 - distance).clamp(0.0, 1.0));
-            let alpha = (1.0 - 0.55 * distance).clamp(0.12, 1.0);
+            let gray = lerp(NEIGHBOR_GRAY, 1.0, (1.0 - distance).clamp(0.0, 1.0));
+            let alpha = (1.0 - 0.5 * distance).clamp(0.0, 1.0);
 
-            // Neighbours are scaled about their left edge and row center; the layout is widened by the same
-            // factor so wrapping still fills the panel.
+            // Neighbours are scaled about their left edge and row center; the row is widened by the same factor so
+            // the text still fills the panel.
             let text_scale = lerp(1.0, NEIGHBOR_SCALE, distance.min(1.0));
             let half_height = ROW_HEIGHT * scale / 2.0;
             let row = Rect::new(
@@ -44,7 +46,7 @@ pub fn draw(page: &MediaPage, canvas: &Canvas, layout: &Layout, opacity: f32) {
                 center + half_height,
             );
             canvas.scaled_about(Point::new(panel.left, center), text_scale, || {
-                canvas.text(&styles::PANEL_LINE, &line.text, row, Color::gray(gray).with_alpha(opacity * alpha));
+                canvas.text(&styles::LYRIC_LINE, &line.text, row, Color::gray(gray).with_alpha(opacity * alpha));
             });
         }
     });

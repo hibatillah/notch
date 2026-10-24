@@ -654,19 +654,6 @@ impl Notch {
     /// Applies what pages asked for, re-selects the shown pages and repaints if anything changed.
     fn flush(&mut self) {
         let requests = std::mem::take(&mut self.pending);
-        match requests.pointer_capture {
-            Some(true) => {
-                self.pointer_captured = true;
-                unsafe { SetCapture(self.window) };
-            }
-            Some(false) => {
-                self.pointer_captured = false;
-                unsafe {
-                    let _ = ReleaseCapture();
-                }
-            }
-            None => {}
-        }
         let layout_changed = self.refresh_layout();
         if requests.animate {
             self.start_animation();

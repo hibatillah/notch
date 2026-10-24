@@ -88,7 +88,7 @@ pub enum PointerEvent {
     Released(Point),
     /// The pointer left the notch.
     Left,
-    /// A pointer capture requested with `Context::capture_pointer` ended.
+    /// The pointer was captured for a drag in the notch itself, and the capture ended.
     CaptureLost,
     /// The secondary (right) button was released.
     SecondaryReleased(Point),
@@ -183,8 +183,6 @@ pub trait Page {
 pub(crate) struct Requests {
     pub repaint: bool,
     pub animate: bool,
-    /// `Some(true)` to capture the pointer, `Some(false)` to release it.
-    pub pointer_capture: Option<bool>,
 }
 
 /// The page's way to ask the host for things. Created by the host for each hook call.
@@ -260,15 +258,6 @@ impl<'a> Context<'a> {
     /// Start the frame timer so `Page::animate` gets called; use after starting an animation of the page's own.
     pub fn request_animation(&mut self) {
         self.requests.animate = true;
-    }
-
-    /// Receive all pointer events, even outside the notch, until `release_pointer`; used for dragging.
-    pub fn capture_pointer(&mut self) {
-        self.requests.pointer_capture = Some(true);
-    }
-
-    pub fn release_pointer(&mut self) {
-        self.requests.pointer_capture = Some(false);
     }
 
     /// Calls `Page::on_timer` with `timer` after `milliseconds`, repeating until killed. Setting it again re-arms it.

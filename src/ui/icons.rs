@@ -13,13 +13,10 @@ const MARGIN: u32 = 1;
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub enum Icon {
     Lyrics,
-    Shuffle,
     Previous,
     Play,
     Pause,
     Next,
-    Repeat,
-    RepeatOne,
     Speaker,
     SpeakerMuted,
     Sun,
@@ -112,50 +109,6 @@ impl Icon {
                 ),
                 Paint::Fill,
             ),
-            Icon::Shuffle => {
-                let curve_down = Path::new()
-                    .move_to(at(3.0, 17.0))
-                    .line_to(at(6.0, 17.0))
-                    .curve_to(at(9.5, 17.0), at(10.5, 7.0), at(14.0, 7.0))
-                    .line_to(at(20.0, 7.0));
-                let curve_up = Path::new().move_to(at(3.0, 7.0)).line_to(at(6.0, 7.0)).curve_to(
-                    at(7.5, 7.0),
-                    at(8.5, 7.6),
-                    at(9.5, 9.0),
-                );
-                let tail = Path::new()
-                    .move_to(at(14.5, 15.0))
-                    .curve_to(at(15.5, 16.3), at(16.5, 17.0), at(18.0, 17.0))
-                    .line_to(at(20.0, 17.0));
-                let arrows = join(
-                    line(&[(17.0, 4.0), (20.0, 7.0), (17.0, 10.0)]),
-                    line(&[(17.0, 14.0), (20.0, 17.0), (17.0, 20.0)]),
-                );
-                (join(join(curve_down, curve_up), join(tail, arrows)), Paint::Line)
-            }
-            Icon::Repeat | Icon::RepeatOne => {
-                let top = Path::new()
-                    .move_to(at(4.0, 11.0))
-                    .line_to(at(4.0, 10.0))
-                    .curve_to(at(4.0, 8.3), at(5.3, 7.0), at(7.0, 7.0))
-                    .line_to(at(20.0, 7.0));
-                let bottom = Path::new()
-                    .move_to(at(20.0, 13.0))
-                    .line_to(at(20.0, 14.0))
-                    .curve_to(at(20.0, 15.7), at(18.7, 17.0), at(17.0, 17.0))
-                    .line_to(at(4.0, 17.0));
-                let arrows = join(
-                    line(&[(17.0, 4.0), (20.0, 7.0), (17.0, 10.0)]),
-                    line(&[(7.0, 14.0), (4.0, 17.0), (7.0, 20.0)]),
-                );
-                let loops = join(join(top, bottom), arrows);
-                let path = if self == Icon::RepeatOne {
-                    join(loops, line(&[(10.8, 10.8), (12.5, 9.6), (12.5, 14.4)]))
-                } else {
-                    loops
-                };
-                (path, Paint::Line)
-            }
             Icon::Speaker | Icon::SpeakerMuted => {
                 let body =
                     line(&[(3.5, 9.5), (7.5, 9.5), (12.5, 5.5), (12.5, 18.5), (7.5, 14.5), (3.5, 14.5), (3.5, 9.5)]);
@@ -307,15 +260,12 @@ fn join(mut first: Path, second: Path) -> Path {
 mod tests {
     use super::*;
 
-    const ALL: [Icon; 26] = [
+    const ALL: [Icon; 23] = [
         Icon::Lyrics,
-        Icon::Shuffle,
         Icon::Previous,
         Icon::Play,
         Icon::Pause,
         Icon::Next,
-        Icon::Repeat,
-        Icon::RepeatOne,
         Icon::Speaker,
         Icon::SpeakerMuted,
         Icon::Sun,
@@ -362,12 +312,6 @@ mod tests {
         {
             assert_eq!(paint(icon), Paint::Line);
         }
-    }
-
-    #[test]
-    fn repeat_one_adds_a_mark_to_repeat() {
-        let count = |icon: Icon| icon.path(Point::default(), 24.0).0.points().count();
-        assert!(count(Icon::RepeatOne) > count(Icon::Repeat));
     }
 
     #[test]

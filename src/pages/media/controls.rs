@@ -1,80 +1,51 @@
-use super::{
-    MediaPage,
-    layout::Layout,
-    session::{MediaInfo, RepeatMode},
-};
+use super::{MediaPage, layout::Layout};
 use crate::{
     gfx::{Canvas, Color, Point},
     ui::{Icon, IconButton},
 };
 
-const ACCENT: Color = Color::rgb(0.12, 0.84, 0.38);
-const INACTIVE: Color = Color::gray(0.5);
+/// The color of the lyrics button while lyrics are on.
+const ACCENT: Color = Color::rgb(0.118, 0.843, 0.376);
+const INACTIVE: Color = Color::rgb(0.431, 0.431, 0.478);
 const INACTIVE_HOVERED: Color = Color::gray(0.85);
 
-#[derive(Clone, Copy, PartialEq, Eq)]
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum Control {
-    Lyrics,
-    Shuffle,
     Previous,
     PlayPause,
     Next,
-    Repeat,
+    Lyrics,
 }
 
 impl Control {
-    pub const ALL: [Control; 6] =
-        [Control::Lyrics, Control::Shuffle, Control::Previous, Control::PlayPause, Control::Next, Control::Repeat];
+    pub const ALL: [Control; 4] = [Control::Previous, Control::PlayPause, Control::Next, Control::Lyrics];
 
-    /// Position in the row, in button steps from the center of the controls column.
+    /// Position in the row, counting from the first button.
     pub fn slot(self) -> f32 {
         match self {
-            Control::Lyrics => -2.5,
-            Control::Shuffle => -1.5,
-            Control::Previous => -0.5,
-            Control::PlayPause => 0.5,
-            Control::Next => 1.5,
-            Control::Repeat => 2.5,
+            Control::Previous => 0.0,
+            Control::PlayPause => 1.0,
+            Control::Next => 2.0,
+            Control::Lyrics => 3.0,
         }
     }
 }
 
-/// Shuffle and repeat only show when the player supports them.
-fn is_available(control: Control, info: &MediaInfo) -> bool {
-    match control {
-        Control::Shuffle => info.shuffle_enabled,
-        Control::Repeat => info.repeat_enabled,
-        _ => true,
-    }
-}
-
-pub fn hit_test(layout: &Layout, info: &MediaInfo, point: Point) -> Option<Control> {
-    Control::ALL
-        .into_iter()
-        .filter(|&control| is_available(control, info))
-        .find(|&control| IconButton::is_hit(layout.control_center(control), layout.scale, point))
+pub fn hit_test(layout: &Layout, point: Point) -> Option<Control> {
+    Control::ALL.into_iter().find(|&control| IconButton::is_hit(layout.control_center(control), layout.scale, point))
 }
 
 pub fn draw(page: &MediaPage, canvas: &Canvas, layout: &Layout, opacity: f32) {
-    let info = &page.info;
     for control in Control::ALL {
-        if !is_available(control, info) {
-            continue;
-        }
-        // Toggles are green when on and gray when off; plain buttons are white.
-        let (icon, toggle) = match control {
-            Control::Lyrics => (Icon::Lyrics, Some(page.is_lyric_panel_visible())),
-            Control::Shuffle => (Icon::Shuffle, Some(info.shuffle_active)),
+        let (icon, is_on) = match control {
             Control::Previous => (Icon::Previous, None),
-            Control::PlayPause => (if info.is_playing { Icon::Pause } else { Icon::Play }, None),
+            Control::PlayPause => (if page.info.is_playing { Icon::Pause } else { Icon::Play }, None),
             Control::Next => (Icon::Next, None),
-            Control::Repeat => (
-                if info.repeat_mode == RepeatMode::Track { Icon::RepeatOne } else { Icon::Repeat },
-                Some(info.repeat_mode != RepeatMode::Off),
-            ),
+            Control::Lyrics => (Icon::Lyrics, Some(page.is_lyric_panel_visible())),
         };
         let is_hovered = page.hovered_control == Some(control);
-        let color = match toggle {
+        // The lyrics button is green when lyrics are on and gray when off; the others are white.
+        let color = match is_on {
             Some(true) => ACCENT,
             Some(false) if is_hovered => INACTIVE_HOVERED,
             Some(false) => INACTIVE,
