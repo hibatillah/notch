@@ -1,0 +1,41 @@
+name: CI
+
+# Runs on every push to the default branch. Pushing a tag does not start it; tags start the release workflow.
+on:
+  push:
+    branches: [master, main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust
+        shell: bash
+        run: |
+          rustup toolchain install stable --profile minimal --component rustfmt --component clippy
+          rustup default stable
+
+      - name: Format
+        shell: bash
+        run: cargo fmt --check
+
+      - name: Lint
+        shell: bash
+        run: cargo clippy --all-targets -- -D warnings
+
+      - name: Test
+        shell: bash
+        run: cargo test
+
+      - name: Build
+        shell: bash
+        run: cargo build --release
