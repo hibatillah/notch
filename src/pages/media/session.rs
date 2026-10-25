@@ -23,8 +23,11 @@ use super::{
 };
 use crate::gfx::ImageData;
 
-/// Delay before a lyrics lookup, so the new track's length has arrived and the match is exact.
+/// A lookup starts once the new track's length has arrived, so the match is exact, but never later than this.
 const LYRICS_LOOKUP_DELAY: Duration = Duration::from_millis(600);
+/// The shortest wait before a lookup, so skipping through tracks does not send a request for each one.
+const LYRICS_DEBOUNCE: Duration = Duration::from_millis(150);
+const LYRICS_DURATION_CHECK_INTERVAL: Duration = Duration::from_millis(50);
 
 #[derive(Clone, Default)]
 pub enum LyricsStatus {
@@ -240,15 +243,23 @@ fn spawn_lyrics_lookup(shared: Arc<Shared>, track_key: String, artist: String, t
         } else if lookups_disabled || title.is_empty() {
             None
         } else {
-            thread::sleep(LYRICS_LOOKUP_DELAY);
-            let (still_current, duration_seconds) = shared
-                .info
-                .lock()
-                .map(|info| (info.track_key == track_key, info.duration_ticks / 10_000_000))
-                .unwrap_or((false, 0));
-            if !still_current {
-                return;
-            }
+            thread::sleep(LYRICS_DEBOUNCE);
+            let mut waited = LYRICS_DEBOUNCE;
+            let duration_seconds = loop {
+                let (still_current, duration_seconds) = shared
+                    .info
+                    .lock()
+                    .map(|info| (info.track_key == track_key, info.duration_ticks / 10_000_000))
+                    .unwrap_or((false, 0));
+                if !still_current {
+                    return;
+                }
+                if duration_seconds > 0 || waited >= LYRICS_LOOKUP_DELAY {
+                    break duration_seconds;
+                }
+                thread::sleep(LYRICS_DURATION_CHECK_INTERVAL);
+                waited += LYRICS_DURATION_CHECK_INTERVAL;
+            };
             match lyrics::fetch(&artist, &title, &album, duration_seconds) {
                 Ok(found) => {
                     let found = found.map(Arc::new);

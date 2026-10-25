@@ -27,8 +27,9 @@ use crate::gfx::ImageData;
 
 /// Asked of the shell: its largest icon, which has the most detail to shrink from.
 const REQUESTED_PIXELS: i32 = 256;
-/// Kept for drawing: about twice the largest size it is drawn at, so a smooth shrink to the screen stays exact.
-const STORED_PIXELS: u32 = 40;
+/// Kept for drawing: about twice the largest size it is drawn at (the badge on the artwork), so a smooth shrink to the
+/// screen stays exact.
+const STORED_PIXELS: u32 = 64;
 
 /// Loads the icon of the app that owns a media session, from its Windows app identifier.
 /// Packaged apps resolve through the Apps folder; classic apps (such as `Spotify.exe`) through their running process.

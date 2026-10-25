@@ -17,7 +17,7 @@ use self::{
 };
 use crate::{
     activity::{FLASH_TIMER, Flash, Presence},
-    gfx::{Align, Canvas, Color, FontStyle, Fonts, Rect, SEGOE_UI, Weight},
+    gfx::{Align, Canvas, Color, FontStyle, Fonts, Rect, UI_FONT, Weight},
     page::{Context, Frame, Mode, Page, PageSizes, PointerEvent, Priority, TimerId},
     ui::{self, Icon, PillButton, Ring},
 };
@@ -33,10 +33,10 @@ const RING_GAP: f32 = 6.0;
 const BADGE_TRAILING: f32 = 6.0;
 const ALERT_MILLISECONDS: u32 = 5000;
 
-const TITLE: FontStyle = FontStyle::new(SEGOE_UI, 13.0, Weight::SemiBold, Align::Leading);
-const DETAIL: FontStyle = FontStyle::new(SEGOE_UI, 12.0, Weight::Regular, Align::Leading);
-const TIME: FontStyle = FontStyle::new("Consolas", 34.0, Weight::SemiBold, Align::Trailing);
-const BADGE: FontStyle = FontStyle::new(SEGOE_UI, 12.0, Weight::SemiBold, Align::Leading);
+const TITLE: FontStyle = FontStyle::new(UI_FONT, 13.0, Weight::Medium, Align::Leading);
+const DETAIL: FontStyle = FontStyle::new(UI_FONT, 12.0, Weight::Regular, Align::Leading);
+const TIME: FontStyle = FontStyle::new("Consolas", 40.0, Weight::Medium, Align::Leading);
+const BADGE: FontStyle = FontStyle::new(UI_FONT, 12.0, Weight::Medium, Align::Leading);
 
 /// The timer that keeps the time of the current phase; `FLASH_TIMER` (0) belongs to the alert.
 const TICK_TIMER: TimerId = TimerId(1);
@@ -198,13 +198,14 @@ impl Page for TimerPage {
     fn draw_expanded(&self, canvas: &Canvas, frame: &Frame, opacity: f32) {
         let layout = Layout { scale: frame.scale, bounds: frame.bounds };
         let view = view::view(&self.timer, now_ms());
-        canvas.text(&TITLE, &view.title, layout.title(view.time.is_some()), Color::WHITE.faded(opacity));
+        let has_time = view.time.is_some();
+        let title = layout.title(has_time, view.detail.is_some());
+        canvas.text(&TITLE, &view.title, title, Color::WHITE.faded(opacity));
         if let Some(detail) = &view.detail {
-            canvas.text(&DETAIL, detail, layout.detail(), Color::gray(0.6).faded(opacity));
+            canvas.text(&DETAIL, detail, layout.detail(has_time), Color::gray(0.6).faded(opacity));
         }
         if let Some(time) = &view.time {
-            let color = if self.timer.state == State::Idle { Color::gray(0.55) } else { Color::WHITE };
-            canvas.text(&TIME, time, layout.time(), color.faded(opacity));
+            canvas.text(&TIME, time, layout.time(), Color::WHITE.faded(opacity));
         }
         let accent = self.accent();
         for (index, (spec, area)) in view.buttons.iter().zip(layout.buttons(view.buttons.len())).enumerate() {
@@ -212,6 +213,7 @@ impl Page for TimerPage {
                 label: &spec.label,
                 area,
                 is_primary: spec.is_primary,
+                is_destructive: spec.is_destructive,
                 is_hovered: self.hovered_button == Some(index),
                 accent,
             };
@@ -225,6 +227,26 @@ impl Page for TimerPage {
         } else {
             self.compact.as_ref().map(|_| Presence::Badge { width: self.compact_width })
         }
+    }
+
+    fn header_status_width(&self) -> Option<f32> {
+        self.compact.as_ref().map(|_| RING_DIAMETER)
+    }
+
+    /// The ring sits at the far left of the marks.
+    fn header_status_rank(&self) -> u8 {
+        1
+    }
+
+    fn draw_header_status(&self, canvas: &Canvas, area: Rect, scale: f32, opacity: f32) {
+        let Some(compact) = &self.compact else { return };
+        let center = crate::gfx::Point::new(area.center_x(), area.center_y());
+        Ring { center, diameter: RING_DIAMETER * scale }.draw(
+            canvas,
+            compact.fraction,
+            tone_color(compact.tone),
+            opacity,
+        );
     }
 
     fn draw_presence(&self, canvas: &Canvas, area: Rect, scale: f32, opacity: f32) {

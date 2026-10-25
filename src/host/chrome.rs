@@ -1,4 +1,4 @@
-//! What the open notch has around every page: the padding, and a header with the page dots on the left and the gear on
+//! What the open notch has around every page: the padding, and a header with the page dots on the left and the settings button on
 //! the right. Geometry and drawing only; `notch.rs` decides when to use them. Sizes are in device-independent pixels.
 
 use crate::{
@@ -6,11 +6,16 @@ use crate::{
     ui::Icon,
 };
 
-pub const PADDING_TOP: f32 = 14.0;
+/// Whether the header has the settings button, which opens "Edit pages". It is off: the button, its hover and its click
+/// are kept in the code and switched back on here.
+pub const SETTINGS_BUTTON_SHOWN: bool = false;
+pub const PADDING_TOP: f32 = 10.0;
 pub const PADDING_SIDE: f32 = 16.0;
 pub const PADDING_BOTTOM: f32 = 14.0;
 pub const HEADER_HEIGHT: f32 = 16.0;
-pub const HEADER_GAP: f32 = 12.0;
+pub const HEADER_GAP: f32 = 10.0;
+/// Fixed content height for every open view, matching the media player's plain layout.
+pub const CONTENT_HEIGHT: f32 = 86.0;
 /// What the chrome adds to the width and the height of a page's own size.
 pub const WIDTH_EXTRA: f32 = 2.0 * PADDING_SIDE;
 pub const HEIGHT_EXTRA: f32 = PADDING_TOP + HEADER_HEIGHT + HEADER_GAP + PADDING_BOTTOM;
@@ -20,14 +25,14 @@ const ACTIVE_DOT_WIDTH: f32 = 16.0;
 const DOT_GAP: f32 = 4.0;
 /// How far from a dot a click still counts as on it.
 const DOT_HIT_SLACK: f32 = 5.0;
-const GEAR_BUTTON: f32 = 20.0;
-/// The gear button sits this far past the right padding, so its glyph lines up with the page's right edge.
-const GEAR_OVERHANG: f32 = 3.0;
-const GEAR_SIZE: f32 = 14.0;
+const SETTINGS_BUTTON: f32 = 20.0;
+/// The settings button sits this far past the right padding, so its glyph lines up with the page's right edge.
+const SETTINGS_OVERHANG: f32 = 4.0;
+const SETTINGS_SIZE: f32 = 14.0;
 const DOT_INACTIVE: Color = Color::rgb(0.227, 0.227, 0.267);
 const DOT_ACTIVE: Color = Color::rgb(0.9, 0.9, 0.92);
-const GEAR: Color = Color::rgb(0.43, 0.43, 0.48);
-const GEAR_HOVERED: Color = Color::rgb(0.8, 0.8, 0.84);
+const SETTINGS: Color = Color::rgb(0.43, 0.43, 0.48);
+const SETTINGS_HOVERED: Color = Color::rgb(0.8, 0.8, 0.84);
 
 /// Where a page draws: the open notch minus the padding and the header. `pill` is the whole notch in device pixels.
 pub fn content_rect(pill: Rect, scale: f32) -> Rect {
@@ -96,22 +101,22 @@ pub fn dot_at(dots: &[Rect], point: Point, scale: f32) -> Option<usize> {
     })
 }
 
-/// The gear button's clickable square.
-pub fn gear_button(pill: Rect, scale: f32) -> Rect {
-    let right = pill.right - (PADDING_SIDE - GEAR_OVERHANG) * scale;
+/// The settings button's clickable square.
+pub fn settings_button(pill: Rect, scale: f32) -> Rect {
+    let right = pill.right - (PADDING_SIDE - SETTINGS_OVERHANG) * scale;
     let center_y = header_center_y(pill, scale);
     Rect::new(
-        right - GEAR_BUTTON * scale,
-        center_y - GEAR_BUTTON * scale / 2.0,
+        right - SETTINGS_BUTTON * scale,
+        center_y - SETTINGS_BUTTON * scale / 2.0,
         right,
-        center_y + GEAR_BUTTON * scale / 2.0,
+        center_y + SETTINGS_BUTTON * scale / 2.0,
     )
 }
 
-pub fn draw_gear(canvas: &Canvas, pill: Rect, scale: f32, is_hovered: bool, opacity: f32) {
-    let button = gear_button(pill, scale);
-    let color = if is_hovered { GEAR_HOVERED } else { GEAR };
-    Icon::Gear.draw(canvas, Point::new(button.center_x(), button.center_y()), GEAR_SIZE * scale, color, opacity);
+pub fn draw_settings(canvas: &Canvas, pill: Rect, scale: f32, is_hovered: bool, opacity: f32) {
+    let button = settings_button(pill, scale);
+    let color = if is_hovered { SETTINGS_HOVERED } else { SETTINGS };
+    Icon::Sliders.draw(canvas, Point::new(button.center_x(), button.center_y()), SETTINGS_SIZE * scale, color, opacity);
 }
 
 #[cfg(test)]
@@ -125,7 +130,7 @@ mod tests {
         let content = content_rect(PILL, 1.0);
         assert_eq!(content.left, 116.0);
         assert_eq!(content.right, 424.0);
-        assert_eq!(content.top, 14.0 + 16.0 + 12.0);
+        assert_eq!(content.top, PADDING_TOP + HEADER_HEIGHT + HEADER_GAP);
         assert_eq!(content.bottom, 160.0 - 14.0);
     }
 
@@ -156,7 +161,7 @@ mod tests {
     #[test]
     fn the_dots_are_centered_in_the_header_row() {
         let dots = dot_rects(2, 0.0, PILL, 1.0);
-        assert_eq!(dots[0].center_y(), 14.0 + 8.0);
+        assert_eq!(dots[0].center_y(), PADDING_TOP + HEADER_HEIGHT / 2.0);
     }
 
     #[test]
@@ -168,11 +173,11 @@ mod tests {
     }
 
     #[test]
-    fn the_gear_sits_at_the_right_end_of_the_header() {
-        let gear = gear_button(PILL, 1.0);
-        assert!(gear.right > PILL.right - PADDING_SIDE && gear.right <= PILL.right);
-        assert_eq!(gear.center_y(), 22.0);
-        assert!(gear.contains(Point::new(gear.center_x(), gear.center_y())));
+    fn the_settings_button_sits_at_the_right_end_of_the_header() {
+        let button = settings_button(PILL, 1.0);
+        assert!(button.right > PILL.right - PADDING_SIDE && button.right <= PILL.right);
+        assert_eq!(button.center_y(), PADDING_TOP + HEADER_HEIGHT / 2.0);
+        assert!(button.contains(Point::new(button.center_x(), button.center_y())));
     }
 
     #[test]

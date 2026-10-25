@@ -3,13 +3,16 @@
 
 mod activity_layout;
 mod chrome;
+mod clock;
 mod display;
 mod drop_target;
 mod navigation;
 mod notch;
 mod page_editor;
 mod registry;
+mod screen_mode;
 mod settings;
+mod startup;
 mod tray;
 mod window;
 

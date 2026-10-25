@@ -25,6 +25,11 @@ pub enum Presence {
     Transient { width: f32 },
     /// A small mark kept at the right end of the pill while something lasts, like the microphone being in use.
     Badge { width: f32 },
+    /// Opens the pill into a card, higher than the idle pill and smaller than the open notch, for a moment, like a
+    /// notification. It draws into the whole card, and it comes before any transient. While it shows, pointing at the
+    /// notch does not open it, so an activity can hold its banner for as long as the pointer is there
+    /// (`Activity::on_hover_changed`).
+    Banner { width: f32, height: f32 },
 }
 
 /// Something that happened to the system, delivered to every activity.
@@ -51,10 +56,22 @@ pub trait Activity {
     /// Draws into `area` (device pixels), which is as wide as the width the presence asked for.
     fn draw(&self, canvas: &Canvas, area: Rect, scale: f32, opacity: f32);
 
+    /// The width of a small mark this activity keeps in the open notch's header, beside the time, for as long as
+    /// something lasts (the speakers being muted, Caps Lock being on); `None` when there is nothing to show.
+    fn header_status_width(&self) -> Option<f32> {
+        None
+    }
+
+    /// Draws the mark into `area` (device pixels, as high as the header), faded by `opacity`.
+    fn draw_header_status(&self, _canvas: &Canvas, _area: Rect, _scale: f32, _opacity: f32) {}
+
     /// Called once after the window exists, only when the activity is switched on: start listening here.
     fn on_start(&mut self, _context: &mut Context) {}
 
     fn on_timer(&mut self, _timer: TimerId, _context: &mut Context) {}
+
+    /// Called when the pointer enters or leaves the notch.
+    fn on_hover_changed(&mut self, _is_hovering: bool, _context: &mut Context) {}
 
     /// Called after a background thread used this activity's `Notifier`.
     fn on_notify(&mut self, _context: &mut Context) {}

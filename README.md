@@ -6,11 +6,9 @@ It draws straight to the screen with Direct2D: no UI framework, no web view. Tha
 
 ## What it includes
 
-Pages (what you see when you open the notch):
+Pages (what you see when you open the notch; the time sits in the header of every one):
 
-- Clock
 - Media player with synced lyrics
-- Notifications
 - File shelf
 - Calendar
 - Focus timer
@@ -25,28 +23,38 @@ Activities (what the collapsed pill shows while something happens):
 - Microphone in use
 - Camera in use
 - Copied to the clipboard
+- Caps Lock on and off
+- Windows notifications: the pill opens into a banner with the app's logo for a few seconds, between its idle and open sizes; point at it to keep it on screen
+
+### Maximized and full-screen windows
+
+Over a **maximized** window the notch hides to a thin strip at the very top edge of the screen (like **Hide when idle**), and wakes when the pointer waits there a little. Volume, notifications and the other short messages still show. The lyric line stays if you tick **Show lyrics over maximized windows**. Over a **full-screen** window (a game, a video, F11 in a browser) the notch is not on screen at all, and nothing shows until you leave it. **Hide for full-screen apps** in the tray menu turns both off.
+
+### Status marks
+
+While the notch is open, small marks beside the time show what is going on: the wave while music plays, a ring while a focus timer runs, a crossed speaker while the sound is muted, and an arrow while Caps Lock is on.
 
 ### Extensible
 
-Nothing here is fixed. The gear in the open notch (**Edit pages**) adds, removes and reorders pages, and the tray menu switches activities on and off. To go further, write your own page or activity: each is one folder or file and one line in a registry, with no other code to touch. See [docs/adding-a-page.md](docs/adding-a-page.md) and [docs/adding-an-activity.md](docs/adding-an-activity.md).
+Nothing here is fixed. The settings button in the open notch (**Edit pages**) adds, removes and reorders pages, and the tray menu switches activities on and off. To go further, write your own page or activity: each is one folder or file and one line in a registry, with no other code to touch. See [docs/adding-a-page.md](docs/adding-a-page.md) and [docs/adding-an-activity.md](docs/adding-an-activity.md).
 
 ### Limitations
 
-- Windows only, on the primary display, centered at the top. Multiple monitors, display changes while running and fullscreen apps get no special handling. The display scale is read once at start-up.
+- Windows only, on the primary display, centered at the top. Multiple monitors and display changes while running get no special handling; only the window in front on the primary display is looked at. The display scale is read once at start-up.
 - Microphone and camera show that an app has the device **open**, not that it is recording. An app that keeps the microphone open while you are muted (Google Meet in a browser) keeps the orange dot. The microphone follows the default recording device at start-up. The camera is found through the Windows Frame Server log, so it misses some older DirectShow apps and a camera already on at start-up. This was built on Windows 11 build 26300; other versions are untested.
-- Notifications show a few seconds after Windows shows its own banner.
+- Notifications show a few seconds after Windows shows their own banner, and only as a banner: there is no list of past ones, and the banner has no buttons (the buttons of the notification itself are not available to it). The text of a message can be left out with `notifications.show_text=off` in the settings file.
 - Calendar reads an iCal address, not a Google sign-in. A daylight-saving event can show an hour off.
-- The file shelf takes drops but cannot drag files back out; open one, or right-click it for more.
+- The file shelf shows each file as Explorer does. Double-click a file to open it, drag it out to take it off the shelf into another app, and right-click it or press the cross on its corner to remove it.
 - Brightness follows the laptop panel only.
 - Version 0.1: expect rough edges.
 
 ## How to use it
 
 - **Hover** over the pill to open it; move away to close it.
-- **Pages:** scroll the wheel (or swipe two fingers on a touchpad) or click a dot. Pages loop, and the notch opens on the page you left. The gear opens **Edit pages**: drag to reorder, double-click to remove, click one under "Available" to add.
+- **Pages:** scroll the wheel (or swipe two fingers on a touchpad) or click a dot. Pages loop, and the notch opens on the page you left. The settings button opens **Edit pages**: drag to reorder, double-click to remove, click one under "Available" to add.
 - **Media:** click the buttons; the speech-bubble button turns lyrics on and off.
 - **Calendar:** copy your calendar's iCal address, then right-click the tray icon and choose **Use calendar link from clipboard**. For Google Calendar, use "Secret address in iCal format" and treat it like a password.
-- **Tray menu** (right-click the tray icon or the notch): switch activities on and off, set the calendar link, choose what notifications show, **Hide when idle**, and **Quit**. On Windows 11 the icon may sit under the `^` overflow menu.
+- **Tray menu** (right-click the tray icon; the notch itself has no menu): switch activities on and off, set the calendar link, **Hide when idle**, **Hide for full-screen apps**, **Show lyrics over maximized windows**, **Start with Windows**, and **Quit**. On Windows 11 the icon may sit under the `^` overflow menu.
 
 ## Device requirements
 
@@ -56,7 +64,7 @@ Nothing here is fixed. The gear in the open notch (**Edit pages**) adds, removes
 
 ## Download
 
-Get `notch.exe` from the [latest release](https://github.com/hibatillah/notch/releases/latest), unzip it and run it. There is no installer. Or clone the repository and build it yourself; see [Development](#development).
+Download `notch-<version>-windows-x64-setup.exe` from the [latest release](https://github.com/hibatillah/notch/releases/latest) and run it. To update, download the newer one and run it: it asks to replace the version that is installed. The notch starts with Windows unless you untick that in the installer or in the tray menu (**Start with Windows**). Or clone the repository and build it yourself; see [Development](#development).
 
 ## Contributing
 
@@ -79,7 +87,7 @@ cargo build --release
 target\x86_64-pc-windows-msvc\release\notch.exe
 ```
 
-While developing, run `scripts/reload.sh` from Git Bash. It builds, starts the new build and closes the previous one without a gap (a running `.exe` cannot be overwritten on Windows).
+While developing, run `scripts/watch.sh` from Git Bash to rebuild and relaunch on every save, or `scripts/reload.sh` for a single release build. It builds, starts the new build and closes the previous one without a gap (a running `.exe` cannot be overwritten on Windows).
 
 Before finishing a change:
 
@@ -110,7 +118,7 @@ Measured by `scripts/perf.sh` on the author's machine (Windows 11, 60 Hz display
 
 |                                              | Result                                 |
 | -------------------------------------------- | -------------------------------------- |
-| Clock page, collapsed and idle               | 0 % CPU, about 15 MB of private memory |
+| Collapsed and idle                           | 0 % CPU, about 15 MB of private memory |
 | One open-and-close                           | about 80 ms of CPU                     |
 | Memory growth after 10 open-and-close cycles | under 1 MB                             |
 | Playing music with synced lyrics             | up to about 35 MB of private memory    |
@@ -128,4 +136,4 @@ It connects out for two things only:
 
 ## License
 
-[MIT](LICENSE)
+[MIT](LICENSE). The bundled Geist font is under the SIL Open Font License ([assets/fonts/Geist-LICENSE.txt](assets/fonts/Geist-LICENSE.txt)).

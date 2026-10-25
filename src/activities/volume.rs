@@ -19,7 +19,7 @@ use windows::{
 
 use crate::{
     activity::{Activity, Flash, Presence},
-    gfx::{Canvas, Color, Rect},
+    gfx::{Canvas, Color, Point, Rect},
     log,
     page::{Context, Notifier, TimerId},
     ui::{self, Icon},
@@ -126,6 +126,8 @@ impl VolumeActivity {
         }
         let device = unsafe { listener.enumerator.GetDefaultAudioEndpoint(eRender, eMultimedia)? };
         let endpoint: IAudioEndpointVolume = unsafe { device.Activate(CLSCTX_ALL, None)? };
+        // Changes are reported, but the state at the start is not.
+        self.is_muted = unsafe { endpoint.GetMute() }.is_ok_and(|muted| muted.as_bool());
         let callback: IAudioEndpointVolumeCallback = VolumeCallback { shared: self.shared.clone(), notifier }.into();
         unsafe { endpoint.RegisterControlChangeNotify(&callback)? };
         listener.endpoint = Some((endpoint, callback));
@@ -178,6 +180,15 @@ impl Activity for VolumeActivity {
         } else {
             ui::draw_level(canvas, area, opacity, Icon::Speaker, self.volume, &value_text(self.volume));
         }
+    }
+
+    fn header_status_width(&self) -> Option<f32> {
+        self.is_muted.then_some(Icon::SpeakerMuted.size())
+    }
+
+    fn draw_header_status(&self, canvas: &Canvas, area: Rect, scale: f32, opacity: f32) {
+        let center = Point::new(area.center_x(), area.center_y());
+        Icon::SpeakerMuted.draw(canvas, center, Icon::SpeakerMuted.size() * scale, Color::WHITE, opacity);
     }
 
     fn on_start(&mut self, context: &mut Context) {

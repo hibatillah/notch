@@ -1,6 +1,6 @@
 //! The contract between the notch host and the pages it shows.
 //!
-//! A page is one self-contained feature of the notch, such as the clock or the media player. It tells the host
+//! A page is one self-contained feature of the notch, such as the media player or the shelf. It tells the host
 //! when it wants to be shown (`priority`), how big it wants to be (`sizes`) and how to draw itself collapsed and
 //! expanded. Everything else (input, timers, wake-ups from background threads) is an optional hook.
 //! See `ARCHITECTURE.md` for how to add a page.
@@ -22,7 +22,7 @@ use crate::{
 };
 
 /// Height of the collapsed pill in device-independent pixels; pages center their resting content in it.
-pub const RESTING_HEIGHT: f32 = 28.0;
+pub const RESTING_HEIGHT: f32 = 30.0;
 
 /// Message a `Notifier` posts to wake the host from another thread.
 pub(crate) const WM_PAGE_NOTIFY: u32 = WM_APP + 1;
@@ -37,7 +37,7 @@ pub(crate) const PAGE_TIMER_LIMIT: usize = 1000;
 pub struct Priority(pub u8);
 
 impl Priority {
-    /// For pages that are always available as a fallback, such as the clock.
+    /// For pages that are available whenever the user opens the notch, such as the shelf.
     pub const BACKGROUND: Priority = Priority(0);
     /// For pages that show live content, such as music that is playing.
     pub const NORMAL: Priority = Priority(10);
@@ -52,8 +52,8 @@ pub enum Mode {
     Expanded,
 }
 
-/// Sizes a page wants, in device-independent pixels. The host animates toward them. `expanded` is the size of the
-/// page's own content: the host adds its padding and the header with the page dots around it.
+/// Sizes a page wants, in device-independent pixels. The host follows the requested widths, but fixes open content
+/// to 82 pixels high. `expanded` describes content only; the host adds padding and the header around it.
 #[derive(Clone, Copy, Debug)]
 pub struct PageSizes {
     pub resting_width: f32,
@@ -137,6 +137,10 @@ pub trait Page {
     /// Called with the files dropped on the notch, when `accepts_drops` is true.
     fn on_drop(&mut self, _paths: Vec<std::path::PathBuf>, _context: &mut Context) {}
 
+    /// Called on the page that takes drops when files are dragged over the notch (`true`), and when they leave or are
+    /// dropped (`false`), so it can show that it is ready to receive them.
+    fn on_file_drag_changed(&mut self, _is_over: bool, _context: &mut Context) {}
+
     /// Called when this page starts or stops being the one on screen: the notch is open and showing it. A page that
     /// measures something only while it is looked at starts and stops its work here.
     fn on_shown_changed(&mut self, _is_shown: bool, _context: &mut Context) {}
@@ -156,6 +160,32 @@ pub trait Page {
 
     /// Draws what `presence` asked for into `area` (device pixels), faded by `opacity`.
     fn draw_presence(&self, _canvas: &Canvas, _area: Rect, _scale: f32, _opacity: f32) {}
+
+    /// Draws behind everything in the open notch, header included, while this page is open: a glow or a tint over its
+    /// black. `pill` is the whole notch in device pixels, with its bottom corners rounded by `radius`; `frame` is the
+    /// page's own frame. Pages that have no backdrop leave this alone.
+    fn draw_backdrop(&self, _canvas: &Canvas, _frame: &Frame, _pill: Rect, _radius: f32, _opacity: f32) {}
+
+    /// True while this page's collapsed pill shows text the user is reading as it changes (the lyric line being sung).
+    /// Over a maximized window the notch hides, unless the user asked for such a page to stay.
+    fn shows_live_text(&self) -> bool {
+        false
+    }
+
+    /// The width of a small status mark (an animated wave while music plays, say) that the open notch keeps in its
+    /// header beside the time, whichever page is open; `None` when there is nothing to show. Asked on every paint.
+    fn header_status_width(&self) -> Option<f32> {
+        None
+    }
+
+    /// Where the mark sits among the others: marks are placed from the time toward the left, lowest rank first, so a
+    /// page that wants its mark at the far left answers a higher number. Marks of the same rank keep the page order.
+    fn header_status_rank(&self) -> u8 {
+        0
+    }
+
+    /// Draws the status mark into `area` (device pixels, as high as the header), faded by `opacity`.
+    fn draw_header_status(&self, _canvas: &Canvas, _area: Rect, _scale: f32, _opacity: f32) {}
 
     /// The name shown for the page when the user edits the page list.
     fn name(&self) -> &'static str {
@@ -243,11 +273,6 @@ impl<'a> Context<'a> {
 
     pub fn fonts(&self) -> &Fonts {
         self.fonts
-    }
-
-    /// Shows a popup menu of `items` at the pointer and waits for the choice; the position of the one chosen, if any.
-    pub fn show_menu(&mut self, items: &[&str]) -> Option<usize> {
-        crate::platform::popup_menu(self.window, items)
     }
 
     /// Draw the notch again after this hook returns.

@@ -1,4 +1,4 @@
-//! The shelf's list of files and how each is shown. The files stay where they are; the shelf only remembers their
+//! The shelf's list of files and the words it shows. The files stay where they are; the shelf only remembers their
 //! paths, in a text file with one path per line. Pure apart from reading and writing that file, so it is tested
 //! without a window.
 
@@ -7,83 +7,20 @@ use std::{
     path::{Path, PathBuf},
 };
 
-use crate::gfx::Color;
-
-/// What kind of thing a file is, which decides the color of its tile.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum Category {
-    Pdf,
-    Spreadsheet,
-    Document,
-    Presentation,
-    Archive,
-    Image,
-    Folder,
-    Other,
-}
-
-const EXTENSIONS: [(&str, Category); 24] = [
-    ("pdf", Category::Pdf),
-    ("xlsx", Category::Spreadsheet),
-    ("xls", Category::Spreadsheet),
-    ("csv", Category::Spreadsheet),
-    ("docx", Category::Document),
-    ("doc", Category::Document),
-    ("txt", Category::Document),
-    ("md", Category::Document),
-    ("pptx", Category::Presentation),
-    ("ppt", Category::Presentation),
-    ("zip", Category::Archive),
-    ("rar", Category::Archive),
-    ("7z", Category::Archive),
-    ("png", Category::Image),
-    ("jpg", Category::Image),
-    ("jpeg", Category::Image),
-    ("gif", Category::Image),
-    ("webp", Category::Image),
-    ("bmp", Category::Image),
-    ("svg", Category::Image),
-    ("heic", Category::Image),
-    ("tif", Category::Image),
-    ("tiff", Category::Image),
-    ("avif", Category::Image),
-];
-
-/// The most characters a tile's label shows.
+/// The most characters a placeholder tile's label shows.
 const LABEL_LENGTH: usize = 4;
-
-pub fn category(path: &Path, is_folder: bool) -> Category {
-    if is_folder {
-        return Category::Folder;
-    }
-    let extension = extension(path);
-    EXTENSIONS.iter().find(|(known, _)| *known == extension).map_or(Category::Other, |(_, category)| *category)
-}
 
 /// The extension in lower case, without the dot.
 fn extension(path: &Path) -> String {
     path.extension().map(|extension| extension.to_string_lossy().to_lowercase()).unwrap_or_default()
 }
 
-/// The text on a tile: the extension in capitals, cut to four characters. Empty for a folder.
+/// The text on a tile that has no preview yet: the extension in capitals, cut to four characters. Empty for a folder.
 pub fn tile_label(path: &Path, is_folder: bool) -> String {
     if is_folder {
         return String::new();
     }
     extension(path).to_uppercase().chars().take(LABEL_LENGTH).collect()
-}
-
-pub fn tile_color(category: Category) -> Color {
-    match category {
-        Category::Pdf => Color::rgb(0.788, 0.165, 0.165),
-        Category::Spreadsheet => Color::rgb(0.169, 0.541, 0.243),
-        Category::Document => Color::rgb(0.110, 0.494, 0.839),
-        Category::Presentation => Color::rgb(0.910, 0.349, 0.047),
-        Category::Archive => Color::rgb(0.404, 0.267, 0.851),
-        Category::Image => Color::rgb(0.212, 0.310, 0.780),
-        Category::Folder => Color::rgb(0.38, 0.38, 0.43),
-        Category::Other => Color::rgb(0.286, 0.314, 0.341),
-    }
 }
 
 /// The file name shown under a tile.
@@ -150,10 +87,6 @@ impl Shelf {
     pub fn remove(&mut self, index: usize) -> Option<PathBuf> {
         (index < self.items.len()).then(|| self.items.remove(index))
     }
-
-    pub fn clear(&mut self) {
-        self.items.clear();
-    }
 }
 
 #[cfg(test)]
@@ -171,15 +104,6 @@ mod tests {
         let path = directory.join(name);
         fs::write(&path, "x").unwrap();
         path
-    }
-
-    #[test]
-    fn files_are_sorted_into_categories_by_extension_whatever_the_case() {
-        assert_eq!(category(Path::new("brief.PDF"), false), Category::Pdf);
-        assert_eq!(category(Path::new("budget.xlsx"), false), Category::Spreadsheet);
-        assert_eq!(category(Path::new("photo.JpEg"), false), Category::Image);
-        assert_eq!(category(Path::new("noextension"), false), Category::Other);
-        assert_eq!(category(Path::new("anything.pdf"), true), Category::Folder);
     }
 
     #[test]
@@ -215,15 +139,13 @@ mod tests {
     }
 
     #[test]
-    fn removing_takes_one_file_off_and_clearing_takes_all() {
+    fn removing_takes_one_file_off() {
         let directory = temporary_directory("remove");
         let mut shelf = Shelf::default();
         shelf.add([file(&directory, "a.txt"), file(&directory, "b.txt")]);
         assert_eq!(shelf.remove(0), Some(directory.join("a.txt")));
         assert_eq!(shelf.remove(5), None);
         assert_eq!(shelf.len(), 1);
-        shelf.clear();
-        assert_eq!(shelf.len(), 0);
         let _ = fs::remove_dir_all(&directory);
     }
 

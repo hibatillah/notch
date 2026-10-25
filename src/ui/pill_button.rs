@@ -1,17 +1,21 @@
-use crate::gfx::{Align, Canvas, Color, FontStyle, Rect, SEGOE_UI, Weight};
+use crate::gfx::{Align, Canvas, Color, FontStyle, Rect, UI_FONT, Weight};
 
-const LABEL: FontStyle = FontStyle::new(SEGOE_UI, 12.0, Weight::SemiBold, Align::Center);
+const LABEL: FontStyle = FontStyle::new(UI_FONT, 12.0, Weight::Medium, Align::Center);
 const FILL: Color = Color::gray(0.137);
 const FILL_HOVERED: Color = Color::gray(0.2);
+const DANGER_FILL: Color = Color::rgb(0.55, 0.1, 0.12);
+const DANGER_FILL_HOVERED: Color = Color::rgb(0.67, 0.14, 0.16);
 /// Text on a filled accent button.
 const ACCENT_LABEL: Color = Color::gray(0.05);
 
-/// A rounded button with a text label. A primary button is filled with the accent color.
+/// A rounded button with a text label. A primary button is filled with the accent color, and a button that ends or
+/// removes something is dark red with white text.
 pub struct PillButton<'a> {
     pub label: &'a str,
     /// Where it sits, in device pixels.
     pub area: Rect,
     pub is_primary: bool,
+    pub is_destructive: bool,
     pub is_hovered: bool,
     pub accent: Color,
 }
@@ -19,7 +23,9 @@ pub struct PillButton<'a> {
 impl PillButton<'_> {
     pub fn draw(&self, canvas: &Canvas, opacity: f32) {
         let radius = self.area.height() / 2.0;
-        let (fill, text) = if self.is_primary {
+        let (fill, text) = if self.is_destructive {
+            (if self.is_hovered { DANGER_FILL_HOVERED } else { DANGER_FILL }, Color::WHITE)
+        } else if self.is_primary {
             let lift = if self.is_hovered { 0.12 } else { 0.0 };
             let accent = self.accent;
             (

@@ -11,21 +11,21 @@ use self::{
     sampler::{Sample, Sampler},
 };
 use crate::{
-    gfx::{Align, Canvas, Color, FontStyle, Rect, SEGOE_UI, Size, Weight},
+    gfx::{Align, Canvas, Color, FontStyle, Rect, Size, UI_FONT, Weight},
     page::{Context, Frame, Mode, Page, PageSizes, Priority, TimerId},
     ui::Icon,
 };
 
-const EXPANDED_SIZE: Size = Size::new(508.0, 112.0);
+const EXPANDED_SIZE: Size = Size::new(508.0, 86.0);
 const RESTING_WIDTH: f32 = 150.0;
 const TILE_COUNT: usize = 4;
 const TILE_GAP: f32 = 8.0;
 const TILE_RADIUS: f32 = 12.0;
 const TILE_PADDING_X: f32 = 12.0;
-const TILE_PADDING_Y: f32 = 10.0;
-const GRAPHIC_TOP: f32 = 56.0;
-const GRAPHIC_HEIGHT: f32 = 26.0;
-const SUB_TOP: f32 = 88.0;
+const TILE_PADDING_Y: f32 = 7.0;
+const GRAPHIC_TOP: f32 = 47.0;
+const GRAPHIC_HEIGHT: f32 = 16.0;
+const SUB_TOP: f32 = 66.0;
 const BAR_HEIGHT: f32 = 5.0;
 const HISTORY_LENGTH: usize = 30;
 
@@ -35,9 +35,9 @@ const FIRST_SAMPLE_MILLISECONDS: u32 = 600;
 const SAMPLE_INTERVAL_MILLISECONDS: u32 = 2000;
 
 const MONO: &str = "Consolas";
-const LABEL: FontStyle = FontStyle::new(SEGOE_UI, 11.0, Weight::Regular, Align::Leading);
-const VALUE: FontStyle = FontStyle::new(MONO, 20.0, Weight::SemiBold, Align::Leading);
-const RATE: FontStyle = FontStyle::new(MONO, 14.0, Weight::SemiBold, Align::Leading);
+const LABEL: FontStyle = FontStyle::new(UI_FONT, 11.0, Weight::Regular, Align::Leading);
+const VALUE: FontStyle = FontStyle::new(MONO, 20.0, Weight::Medium, Align::Leading);
+const RATE: FontStyle = FontStyle::new(MONO, 14.0, Weight::Medium, Align::Leading);
 
 const TILE: Color = Color::rgb(0.078, 0.078, 0.094);
 const TRACK: Color = Color::rgb(0.149, 0.149, 0.176);
@@ -176,7 +176,7 @@ impl Page for StatsPage {
         }
         let Some(sample) = &self.latest else { return };
         let label_area = |tile: Rect| inside(tile, scale, TILE_PADDING_X, TILE_PADDING_Y, TILE_PADDING_Y + 14.0);
-        let value_area = |tile: Rect| inside(tile, scale, TILE_PADDING_X, 24.0, 50.0);
+        let value_area = |tile: Rect| inside(tile, scale, TILE_PADDING_X, 19.0, 45.0);
         let sub_area = |tile: Rect| inside(tile, scale, TILE_PADDING_X, SUB_TOP, SUB_TOP + 14.0);
 
         // Processor
@@ -198,8 +198,8 @@ impl Page for StatsPage {
         let rate = |value: Option<f64>| value.map_or_else(|| "\u{2013}".to_owned(), rate_text);
         let download = format!("\u{2193} {}", rate(sample.download_bytes_per_second));
         let upload = format!("\u{2191} {}", rate(sample.upload_bytes_per_second));
-        text(canvas, &RATE, &download, inside(tiles[2], scale, TILE_PADDING_X, 26.0, 46.0), Color::WHITE, opacity);
-        text(canvas, &RATE, &upload, inside(tiles[2], scale, TILE_PADDING_X, 46.0, 66.0), GRAY, opacity);
+        text(canvas, &RATE, &download, inside(tiles[2], scale, TILE_PADDING_X, 21.0, 37.0), Color::WHITE, opacity);
+        text(canvas, &RATE, &upload, inside(tiles[2], scale, TILE_PADDING_X, 37.0, 53.0), GRAY, opacity);
         text(canvas, &LABEL, sample.network_kind.label(), sub_area(tiles[2]), GRAY, opacity);
 
         // Disk
@@ -247,7 +247,7 @@ mod tests {
 
     #[test]
     fn four_tiles_share_the_width_with_gaps_between() {
-        let tiles = tile_rects(Rect::new(0.0, 0.0, 508.0, 112.0), 1.0);
+        let tiles = tile_rects(Rect::new(0.0, 0.0, 508.0, 86.0), 1.0);
         assert!((tiles[0].width() - 121.0).abs() < 0.01);
         assert!((tiles[1].left - tiles[0].right - TILE_GAP).abs() < 0.01);
         assert!((tiles[3].right - 508.0).abs() < 0.01);

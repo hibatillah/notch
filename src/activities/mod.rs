@@ -8,12 +8,20 @@ mod battery;
 mod bluetooth;
 mod brightness;
 mod camera;
+mod caps_lock;
 mod clipboard;
 mod microphone;
+mod notifications;
 mod privacy;
 mod volume;
 
 use crate::activity::Activity;
+
+/// The notifications activity showing an example banner, for rendering the notch off-screen.
+#[cfg(test)]
+pub fn sample_notification(fonts: &crate::gfx::Fonts) -> Box<dyn Activity> {
+    Box::new(notifications::NotificationsActivity::sample(fonts))
+}
 
 pub fn all() -> Vec<Box<dyn Activity>> {
     vec![
@@ -24,5 +32,7 @@ pub fn all() -> Vec<Box<dyn Activity>> {
         Box::new(microphone::MicrophoneActivity::new()),
         Box::new(camera::CameraActivity::new()),
         Box::new(clipboard::ClipboardActivity::new()),
+        Box::new(caps_lock::CapsLockActivity::new()),
+        Box::new(notifications::NotificationsActivity::new()),
     ]
 }

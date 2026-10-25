@@ -31,6 +31,19 @@ impl ImageData {
         Self { version: NEXT_VERSION.fetch_add(1, Ordering::Relaxed), width, height, bgra_premultiplied }
     }
 
+    /// The largest square from the middle of the image, like CSS `object-fit: cover` in a square frame.
+    pub fn centered_square(&self) -> ImageData {
+        let side = self.width.min(self.height);
+        let (left, top) = ((self.width - side) / 2, (self.height - side) / 2);
+        let row_bytes = (side * 4) as usize;
+        let mut pixels = Vec::with_capacity(row_bytes * side as usize);
+        for row in top..top + side {
+            let start = ((row * self.width + left) * 4) as usize;
+            pixels.extend_from_slice(&self.bgra_premultiplied[start..start + row_bytes]);
+        }
+        ImageData::new(side, side, pixels)
+    }
+
     /// A copy shrunk to `target_width` by averaging every source pixel under each new pixel.
     /// Drawing a large image into a small area directly skips pixels and looks jagged; shrinking first keeps it smooth.
     pub fn downscaled(&self, target_width: u32) -> ImageData {
@@ -213,5 +226,41 @@ mod tests {
         });
         assert_eq!(uploads, 2, "clearing needs no upload");
         assert!(slot.brush().is_none());
+    }
+}
+
+#[cfg(test)]
+mod square_tests {
+    use super::*;
+
+    /// A `width` x `height` image whose pixel (x, y) has blue = x and green = y.
+    fn gradient(width: u32, height: u32) -> ImageData {
+        let mut pixels = Vec::new();
+        for y in 0..height {
+            for x in 0..width {
+                pixels.extend_from_slice(&[x as u8, y as u8, 0, 255]);
+            }
+        }
+        ImageData::new(width, height, pixels)
+    }
+
+    #[test]
+    fn a_wide_image_loses_its_left_and_right_edges() {
+        let square = gradient(8, 4).centered_square();
+        assert_eq!((square.width, square.height), (4, 4));
+        assert_eq!(&square.bgra_premultiplied[0..2], &[2, 0]);
+    }
+
+    #[test]
+    fn a_tall_image_loses_its_top_and_bottom_edges() {
+        let square = gradient(4, 8).centered_square();
+        assert_eq!((square.width, square.height), (4, 4));
+        assert_eq!(&square.bgra_premultiplied[0..2], &[0, 2]);
+    }
+
+    #[test]
+    fn a_square_image_is_unchanged() {
+        let square = gradient(4, 4).centered_square();
+        assert_eq!(square.bgra_premultiplied, gradient(4, 4).bgra_premultiplied);
     }
 }

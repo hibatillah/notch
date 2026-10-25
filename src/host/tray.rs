@@ -23,6 +23,9 @@ const ICON_SIZE: i32 = 32;
 const TOOLTIP: &str = "Notch";
 const MENU_COMMAND_QUIT: usize = 1;
 const MENU_COMMAND_HIDE_WHEN_IDLE: usize = 2;
+const MENU_COMMAND_START_WITH_WINDOWS: usize = 3;
+const MENU_COMMAND_HIDE_FOR_APPS: usize = 4;
+const MENU_COMMAND_LYRICS_OVER_MAXIMIZED: usize = 5;
 /// The command of the first activity in the menu; the rest follow in order.
 const MENU_COMMAND_FIRST_ACTIVITY: usize = 100;
 
@@ -42,7 +45,22 @@ pub enum MenuChoice {
     },
     /// Switch hiding the notch when nothing is happening on or off.
     ToggleHideWhenIdle,
+    /// Switch starting the notch when Windows starts on or off.
+    ToggleStartWithWindows,
+    /// Switch hiding the notch for maximized and full-screen windows on or off.
+    ToggleHideForApps,
+    /// Switch keeping the lyric line over maximized windows on or off.
+    ToggleLyricsOverMaximized,
     Quit,
+}
+
+/// Which of the notch's own options are on, to show them checked.
+#[derive(Clone, Copy, Debug, Default)]
+pub struct MenuState {
+    pub hides_when_idle: bool,
+    pub starts_with_windows: bool,
+    pub hides_for_apps: bool,
+    pub lyrics_over_maximized: bool,
 }
 
 /// The choice a menu command stands for; `None` when the menu was dismissed or the command is unknown.
@@ -52,6 +70,12 @@ fn choice_for_command(command: usize, activity_count: usize) -> Option<MenuChoic
     }
     if command == MENU_COMMAND_HIDE_WHEN_IDLE {
         return Some(MenuChoice::ToggleHideWhenIdle);
+    }
+    match command {
+        MENU_COMMAND_START_WITH_WINDOWS => return Some(MenuChoice::ToggleStartWithWindows),
+        MENU_COMMAND_HIDE_FOR_APPS => return Some(MenuChoice::ToggleHideForApps),
+        MENU_COMMAND_LYRICS_OVER_MAXIMIZED => return Some(MenuChoice::ToggleLyricsOverMaximized),
+        _ => {}
     }
     if let Some(offset) = command.checked_sub(PAGE_ITEM_BASE) {
         return Some(MenuChoice::PageItem { page: offset / ITEMS_PER_PAGE, item: offset % ITEMS_PER_PAGE });
@@ -148,12 +172,12 @@ pub fn remove(window: HWND) {
 }
 
 /// Shows the context menu at the pointer: a checkable item for each activity, the items pages add (page index, item
-/// index, label), then "Quit". Returns what was picked.
+/// index, label), then the notch's own options and "Quit". Returns what was picked.
 pub fn show_context_menu(
     window: HWND,
     activities: &[(&'static str, bool)],
     page_items: &[(usize, usize, String)],
-    hides_when_idle: bool,
+    state: MenuState,
 ) -> Option<MenuChoice> {
     unsafe {
         let Ok(menu) = CreatePopupMenu() else { return None };
@@ -171,8 +195,22 @@ pub fn show_context_menu(
         if !page_items.is_empty() {
             let _ = AppendMenuW(menu, MF_SEPARATOR, 0, PCWSTR::null());
         }
-        let hide_flags = if hides_when_idle { MF_STRING | MF_CHECKED } else { MF_STRING };
-        let _ = AppendMenuW(menu, hide_flags, MENU_COMMAND_HIDE_WHEN_IDLE, w!("Hide when idle"));
+        let flags = |is_on: bool| if is_on { MF_STRING | MF_CHECKED } else { MF_STRING };
+        let _ = AppendMenuW(menu, flags(state.hides_when_idle), MENU_COMMAND_HIDE_WHEN_IDLE, w!("Hide when idle"));
+        let _ =
+            AppendMenuW(menu, flags(state.hides_for_apps), MENU_COMMAND_HIDE_FOR_APPS, w!("Hide for full-screen apps"));
+        let _ = AppendMenuW(
+            menu,
+            flags(state.lyrics_over_maximized),
+            MENU_COMMAND_LYRICS_OVER_MAXIMIZED,
+            w!("Show lyrics over maximized windows"),
+        );
+        let _ = AppendMenuW(
+            menu,
+            flags(state.starts_with_windows),
+            MENU_COMMAND_START_WITH_WINDOWS,
+            w!("Start with Windows"),
+        );
         let _ = AppendMenuW(menu, MF_STRING, MENU_COMMAND_QUIT, w!("Quit"));
         let mut cursor = POINT::default();
         let _ = GetCursorPos(&mut cursor);
@@ -198,6 +236,20 @@ mod tests {
     #[test]
     fn hiding_when_idle_has_its_own_command() {
         assert_eq!(choice_for_command(MENU_COMMAND_HIDE_WHEN_IDLE, 3), Some(MenuChoice::ToggleHideWhenIdle));
+    }
+
+    #[test]
+    fn starting_with_windows_has_its_own_command() {
+        assert_eq!(choice_for_command(MENU_COMMAND_START_WITH_WINDOWS, 3), Some(MenuChoice::ToggleStartWithWindows));
+    }
+
+    #[test]
+    fn the_options_about_other_windows_have_their_own_commands() {
+        assert_eq!(choice_for_command(MENU_COMMAND_HIDE_FOR_APPS, 3), Some(MenuChoice::ToggleHideForApps));
+        assert_eq!(
+            choice_for_command(MENU_COMMAND_LYRICS_OVER_MAXIMIZED, 3),
+            Some(MenuChoice::ToggleLyricsOverMaximized)
+        );
     }
 
     #[test]

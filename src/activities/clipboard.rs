@@ -55,7 +55,7 @@ impl Activity for ClipboardActivity {
     }
 
     fn draw(&self, canvas: &Canvas, area: Rect, _scale: f32, opacity: f32) {
-        ui::draw_message(canvas, area, opacity, Icon::Clipboard, Color::WHITE, MESSAGE, None);
+        ui::draw_message(canvas, area, opacity, Icon::Copy, Color::WHITE, MESSAGE, None);
     }
 
     fn on_start(&mut self, context: &mut Context) {

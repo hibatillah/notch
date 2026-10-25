@@ -1,10 +1,14 @@
 # Adding, configuring and removing a page
 
-A page is one self-contained feature of the notch, such as the clock or the media player. This guide builds a
+A page is one self-contained feature of the notch, such as the media player or the shelf. This guide builds a
 small page from scratch, then lists everything a page can do. To only switch pages on or off without recompiling,
 see [configuration.md](configuration.md).
 
 ## Add a page
+
+The shared layout fixes every open view to 82 device-independent pixels of content height, plus 50 for the
+header and padding (132 total). Change `CONTENT_HEIGHT` in `src/host/chrome.rs` to adjust it. The host uses
+`PageSizes::expanded.width` but ignores its height; existing content can overflow and is clipped at the notch boundary.
 
 ### 1. Create the folder
 
@@ -23,12 +27,12 @@ of day and switches between casual and formal wording when you click it while th
 use windows::Win32::System::SystemInformation::GetLocalTime;
 
 use crate::{
-    gfx::{Align, Canvas, Color, FontStyle, Rect, SEGOE_UI, Size, Weight},
+    gfx::{Align, Canvas, Color, FontStyle, Rect, UI_FONT, Size, Weight},
     page::{Context, Frame, Mode, Page, PageSizes, PointerEvent, Priority, RESTING_HEIGHT, TimerId},
 };
 
-const RESTING_STYLE: FontStyle = FontStyle::new(SEGOE_UI, 13.0, Weight::SemiBold, Align::Center);
-const OPEN_STYLE: FontStyle = FontStyle::new(SEGOE_UI, 22.0, Weight::SemiBold, Align::Center);
+const RESTING_STYLE: FontStyle = FontStyle::new(UI_FONT, 13.0, Weight::Medium, Align::Center);
+const OPEN_STYLE: FontStyle = FontStyle::new(UI_FONT, 22.0, Weight::Medium, Align::Center);
 /// Settings keys start with the page id, so pages never collide.
 const SETTING_FORMAL: &str = "greeting.formal";
 /// The greeting changes at most once an hour, so a timer once a minute keeps it right without waking the CPU often.
@@ -62,7 +66,7 @@ impl Page for GreetingPage {
         "greeting"
     }
 
-    /// `NORMAL` beats the clock's `BACKGROUND`, so this page replaces the clock while it is registered.
+    /// `NORMAL` beats the `BACKGROUND` priority the other pages answer open, so this page opens first.
     fn priority(&self, _mode: Mode) -> Option<Priority> {
         Some(Priority::NORMAL)
     }
@@ -106,9 +110,9 @@ impl Page for GreetingPage {
 What each part does:
 
 - `priority` answers "do you want to be shown?" for the collapsed and the open notch. `None` means no. Collapsed, the
-  highest priority wins; `Priority::NORMAL` beats the clock's `BACKGROUND`. Open, every page that answers `Some` can be
+  highest priority wins; `Priority::NORMAL` beats `BACKGROUND`. Open, every page that answers `Some` can be
   reached by scrolling or by the page dots, and the highest priority is only the page shown first.
-- Report the size of your content only; the notch adds 32 px to the width and 56 px to the height for its padding and
+- Report the size of your content only; the notch adds 32 px to the width and 50 px to the height for its padding and
   header. The window is 260 px high, so keep the content at most 200 px high.
 - `sizes` is the size you want, in device-independent pixels. Ask again whenever your content changes size; the host
   asks after every event and animates the change.
@@ -124,13 +128,11 @@ What each part does:
 Open `src/pages/mod.rs`, declare the module and add the page to `all()`:
 
 ```rust
-mod clock;
 mod greeting;
 mod media;
 
 pub fn all() -> Vec<Box<dyn Page>> {
     vec![
-        Box::new(clock::ClockPage::new()),
         Box::new(media::MediaPage::new()),
         Box::new(greeting::GreetingPage::new()),
     ]
@@ -138,15 +140,15 @@ pub fn all() -> Vec<Box<dyn Page>> {
 ```
 
 The order matters only for ties: when two pages have the same priority, the earlier one wins. Here the greeting and
-the media page are both `NORMAL`, so the media page wins while music plays and the greeting replaces the clock the
-rest of the time.
+the media page are both `NORMAL`, so the media page wins while music plays and the greeting shows the rest of the
+time.
 
 ### 4. Run it
 
 `scripts/reload.sh` builds and starts it. To see your page on its own, hide the others:
 
 ```
-set NOTCH_PAGES=clock,greeting
+set NOTCH_PAGES=shelf,greeting
 ```
 
 Nothing else in the project needs to change: the host, the drawing code and the other pages do not know your page
@@ -154,8 +156,8 @@ exists.
 
 ## Remove a page
 
-Delete its folder, its `mod` line and its entry in `all()` in `src/pages/mod.rs`. Nothing else refers to it. At least
-one page must always have a priority in both modes, which is why the clock should stay.
+Delete its folder, its `mod` line and its entry in `all()` in `src/pages/mod.rs`. Nothing else refers to it. When no
+page has a priority, the collapsed pill shows the time and the open notch only its header.
 
 To only turn a page off without deleting it, list the pages you want in `NOTCH_PAGES` or the `pages` setting; see
 [configuration.md](configuration.md).
@@ -177,6 +179,7 @@ To only turn a page off without deleting it, list the pages you want in `NOTCH_P
 | `on_shown_changed(is_shown, context)` | no | when this page starts or stops being on screen (the notch is open and shows it); start and stop measuring here |
 | `name()`, `icon()`, `is_opt_in()` | no | what the "Edit pages" view calls the page and draws beside it, and whether it starts switched off |
 | `accepts_drops()`, `on_drop(paths, context)` | no | for a page that takes files dropped on the notch |
+| `on_file_drag_changed(is_over, context)` | no | on the page that takes drops, when files are dragged over the notch (`true`) or leave or are dropped (`false`); show that it is ready |
 | `menu_items()`, `on_menu_item(index, context)` | no | items the page adds to the tray menu |
 | `on_timer(timer, context)` | no | when one of the page's timers fires |
 | `on_notify(context)` | no | after a background thread used the page's `Notifier` |
@@ -202,7 +205,6 @@ Passed to every hook that can change something.
 | `request_repaint()` | draw the notch again after the hook returns |
 | `request_animation()` | start the frame timer so `animate` runs; use it after starting an animation of your own |
 | `set_timer(TimerId(n), milliseconds)` / `kill_timer(TimerId(n))` | repeating timers; `n` must be below 16; setting an existing timer re-arms it |
-| `show_menu(&["Open", "Remove"])` | show a popup menu at the pointer and wait; the position of the item chosen |
 | `listen_to_power_setting(&GUID)`, `listen_to_clipboard()` | for activities; see [adding-an-activity.md](adding-an-activity.md) |
 | `notifier()` | a handle a background thread calls `notify()` on to wake the page |
 | `upload_image(&ImageData)` | make an image drawable; usually through `ImageSlot::sync` |
@@ -233,7 +235,7 @@ Passed to every hook that can change something.
 | `scaled_about(point, factor, draw)` | run `draw` scaled around a point; text stays sharp |
 
 Text styles are `const FontStyle::new(family, size, weight, align)`, declared in the page. Add `.wrapped()` to wrap
-long text instead of cutting it with an ellipsis. `SEGOE_UI` is the text font. Icons are shapes built from a `Path` and drawn
+long text instead of cutting it with an ellipsis. `UI_FONT` is the text font (Geist, bundled in the executable; see `src/gfx/fonts.rs`). Icons are shapes built from a `Path` and drawn
 into small cached images by `ui::Icon`, not font glyphs. Do not use Direct2D geometry (`ID2D1PathGeometry`): its first use adds about 10 MB of memory. `Spring` eases a value toward a target; call `step(elapsed_seconds)` on it from the page's `animate` and return true while `is_settled()` is false.
 
 ### Reusable widgets: `ui`

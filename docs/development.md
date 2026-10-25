@@ -38,7 +38,7 @@ target\x86_64-pc-windows-msvc\release\notch.exe
 ```
 
 The notch has no window to close. It adds a tray icon (on Windows 11 it may be under the `^` overflow menu).
-Right-click the tray icon, or the notch, and choose **Quit**.
+Right-click the tray icon and choose **Quit**.
 
 ## Development loop
 
@@ -51,6 +51,17 @@ scripts/reload.sh
 
 It builds, copies the build to `run/notch-<time>.exe`, starts that copy, and asks the previous instance to close once
 the new one is showing. The notch never disappears between versions. `run/` is git-ignored.
+
+To see a change as soon as you save it, leave this running in a terminal:
+
+```
+scripts/watch.sh
+```
+
+It does the same with a debug build (`scripts/reload.sh --debug`, about 2 s after a small edit, against about 20 s for
+release) every time a file in `src/` or `Cargo.toml` changes, and checks for saved files every 2 s. A debug build is
+slower and larger, so use the release build and `scripts/perf.sh` for performance numbers. If a build fails, the
+error shows and the previous copy keeps running until the next save.
 
 To see what the notch is doing, write a timestamped log:
 
@@ -73,6 +84,70 @@ scripts/perf.sh          # when you touched the host, animation, timers or drawi
 
 CI runs the first three on every push to the default branch ([releasing.md](releasing.md)); run them yourself first. Where the tests live and what they cover: [testing.md](testing.md).
 `scripts/perf.sh` moves the mouse for about two minutes, so leave the mouse alone while it runs.
+
+## The notch layout
+
+The host owns the shape, the padding and the header. A page draws only the content area inside them, and all sizes
+are in device-independent pixels (multiply by the display scale when drawing). The numbers are constants in
+`src/host/chrome.rs`; the time is drawn by `src/host/clock.rs`.
+
+**Open (pointer over the notch)**, here a page whose content is 300 x 80:
+
+```
+      flare                                              flare
+         \                                                /
+          \______________________________________________/     top edge of the screen
+          |                                              |
+          |  10 px padding top                           |
+          |  [== o o o o o]        18:41            [=]  |     header, 16 px high
+          |   page dots (left)   time (middle)  settings |     the time is centered on the notch
+          |  10 px gap                                   |
+          |  +----------------------------------------+  |
+          |  |                                        |  |
+    16 px |  |  THE PAGE: only this area is its own   |  | 16 px
+          |  |  width  = PageSizes.expanded.width     |  |
+          |  |  height = PageSizes.expanded.height    |  |
+          |  |  drawn in Frame::bounds                |  |
+          |  +----------------------------------------+  |
+          |  14 px padding bottom                        |
+          \______________________________________________/
+
+    pill width  = page width  + 32      (16 + 16)
+    pill height = page height + 50      (10 + 16 + 10 + 14)
+```
+
+- The header belongs to the host, on every page: the page dots (the long one is the open page) on the left, the time
+  centered, and the settings button (it opens "Edit pages") on the right.
+- The window is 260 px high, so a page's content is at most about 200 px high.
+- A page cannot draw into the header or the padding.
+
+**Collapsed**, the pill is 30 px high (plus 3 px of bottom padding) and one of three things fills it:
+
+```
+  nothing happening            music playing               activity or timer
+      _________                ______________________       ___________________
+     /  18:41  \              / (page draws it)  [o] \     /  (activity draws) \
+     \_________/              \______________________/     \___________________/
+     host: the time           the media page, plus an      a transient takes the pill for
+     in a 96 px pill          optional badge at the right  a moment (volume, charging, ...)
+```
+
+- A page answers `priority(Mode::Resting)` to claim the collapsed pill; with no answer the host shows the time.
+- An activity or a page can add a **badge** at the right end (the page draws to the left of it) or a **transient**
+  that replaces the pill's content for a moment (`presence()`; see [adding-an-activity.md](adding-an-activity.md)).
+- The time is one element: it glides from the middle of the collapsed pill to the middle of the header as the notch
+  opens, and stays visible the whole way.
+
+**Where to change what:**
+
+| To change | Edit |
+| --- | --- |
+| padding, header height, the gap, the dots, the settings button | `src/host/chrome.rs` |
+| the time and the collapsed pill's minimum width | `src/host/clock.rs` |
+| which page shows, swiping, hover, the springs | `src/host/notch.rs` |
+| a page's content and size | that page's folder in `src/pages/` |
+| register a page | `src/pages/mod.rs` |
+| register an activity | `src/activities/mod.rs` |
 
 ## Code style
 

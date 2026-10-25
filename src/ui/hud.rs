@@ -2,7 +2,7 @@
 //! brightness), and an icon with a message and an optional value (charger, microphone, copied).
 
 use super::Icon;
-use crate::gfx::{Align, Canvas, Color, FontStyle, Fonts, Rect, SEGOE_UI, Weight};
+use crate::gfx::{Align, Canvas, Color, FontStyle, Fonts, Rect, UI_FONT, Weight};
 
 /// Width of a level message, in device-independent pixels.
 pub const LEVEL_WIDTH: f32 = 176.0;
@@ -14,8 +14,8 @@ const GAP: f32 = 10.0;
 const LEVEL_VALUE_WIDTH: f32 = 24.0;
 const BAR_THICKNESS: f32 = 4.0;
 const TRACK_ALPHA: f32 = 0.22;
-const MESSAGE: FontStyle = FontStyle::new(SEGOE_UI, 13.0, Weight::SemiBold, Align::Leading);
-const VALUE: FontStyle = FontStyle::new(SEGOE_UI, 13.0, Weight::Regular, Align::Trailing);
+const MESSAGE: FontStyle = FontStyle::new(UI_FONT, 13.0, Weight::Medium, Align::Leading);
+const VALUE: FontStyle = FontStyle::new(UI_FONT, 13.0, Weight::Regular, Align::Trailing);
 
 /// Width of a message with an optional value, in device-independent pixels.
 pub fn message_width(fonts: &Fonts, message: &str, value: Option<&str>) -> f32 {

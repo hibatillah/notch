@@ -7,7 +7,7 @@
 //! Our own reads change the folder too, so changes right after a read are ignored.
 
 use std::{
-    collections::HashSet,
+    collections::{HashMap, HashSet},
     sync::{
         Arc, Mutex,
         atomic::{AtomicU8, Ordering},
@@ -17,6 +17,11 @@ use std::{
 };
 
 use windows::{
+    ApplicationModel::AppInfo,
+    Foundation::Size,
+    Graphics::Imaging::{
+        BitmapAlphaMode, BitmapDecoder, BitmapPixelFormat, BitmapTransform, ColorManagementMode, ExifOrientationMode,
+    },
     UI::Notifications::{
         KnownNotificationBindings,
         Management::{UserNotificationListener, UserNotificationListenerAccessStatus},
@@ -34,7 +39,7 @@ use windows::{
 };
 
 use super::items::Item;
-use crate::{log, page::Notifier};
+use crate::{gfx::ImageData, log, page::Notifier};
 
 /// Changes must stop for this long before the list is read, so one toast is one read.
 const QUIET_TIME_MILLISECONDS: u32 = 300;
@@ -76,8 +81,38 @@ impl Shared {
     }
 }
 
+/// Side length in pixels of the decoded logo; it is drawn smaller, so Direct2D shrinks it smoothly.
+const LOGO_PIXELS: u32 = 64;
+
+/// The logo of an app, decoded to premultiplied BGRA.
+fn read_logo(app_info: &AppInfo) -> Result<ImageData> {
+    let stream = app_info
+        .DisplayInfo()?
+        .GetLogo(Size { Width: LOGO_PIXELS as f32, Height: LOGO_PIXELS as f32 })?
+        .OpenReadAsync()?
+        .join()?;
+    let decoder = BitmapDecoder::CreateAsync(&stream)?.join()?;
+    let transform = BitmapTransform::new()?;
+    transform.SetScaledWidth(LOGO_PIXELS)?;
+    transform.SetScaledHeight(LOGO_PIXELS)?;
+    let pixels = decoder
+        .GetPixelDataTransformedAsync(
+            BitmapPixelFormat::Bgra8,
+            BitmapAlphaMode::Premultiplied,
+            &transform,
+            ExifOrientationMode::IgnoreExifOrientation,
+            ColorManagementMode::DoNotColorManage,
+        )?
+        .join()?
+        .DetachPixelData()?;
+    Ok(ImageData::new(LOGO_PIXELS, LOGO_PIXELS, pixels.to_vec()))
+}
+
+/// The logos found so far, by app; an app with no logo is remembered too, so it is asked once.
+type Logos = HashMap<String, Option<Arc<ImageData>>>;
+
 /// The notifications now in the Windows notification center, with their ids.
-fn read_all(listener: &UserNotificationListener) -> Result<Vec<Item>> {
+fn read_all(listener: &UserNotificationListener, logos: &mut Logos) -> Result<Vec<Item>> {
     let list = listener.GetNotificationsAsync(NotificationKinds::Toast)?.join()?;
     let mut items = Vec::new();
     for notification in &list {
@@ -91,13 +126,15 @@ fn read_all(listener: &UserNotificationListener) -> Result<Vec<Item>> {
             }
         }
         let title = if texts.is_empty() { String::new() } else { texts.remove(0) };
+        let app_id = app_info.AppUserModelId()?.to_string();
+        let icon = logos.entry(app_id.clone()).or_insert_with(|| read_logo(&app_info).map(Arc::new).ok()).clone();
         items.push(Item {
             id: notification.Id()?,
             app: app_info.DisplayInfo()?.DisplayName()?.to_string(),
-            app_id: app_info.AppUserModelId()?.to_string(),
+            app_id,
+            icon,
             title,
             body: texts.join("\n"),
-            age: Duration::ZERO,
         });
     }
     Ok(items)
@@ -117,7 +154,8 @@ fn run(shared: &Shared, notifier: Notifier) -> Result<()> {
     }
 
     // What is already there is not new.
-    let mut seen: HashSet<u32> = read_all(&listener)?.into_iter().map(|item| item.id).collect();
+    let mut logos = Logos::new();
+    let mut seen: HashSet<u32> = read_all(&listener, &mut logos)?.into_iter().map(|item| item.id).collect();
     let directory = format!(r"{}\Microsoft\Windows\Notifications", std::env::var("LOCALAPPDATA").unwrap_or_default());
     let changes = unsafe {
         FindFirstChangeNotificationW(
@@ -135,7 +173,7 @@ fn run(shared: &Shared, notifier: Notifier) -> Result<()> {
                 break;
             }
         }
-        let current = match read_all(&listener) {
+        let current = match read_all(&listener, &mut logos) {
             Ok(current) => current,
             Err(error) => {
                 log::debug(&format!("notifications: cannot read the list: {error}"));
@@ -171,13 +209,6 @@ pub fn start(notifier: Notifier) -> Arc<Shared> {
         }
     });
     shared
-}
-
-/// Removes a notification from the Windows notification center.
-pub fn remove(id: u32) {
-    if let Ok(listener) = UserNotificationListener::Current() {
-        let _ = listener.RemoveNotification(id);
-    }
 }
 
 #[cfg(test)]

@@ -61,23 +61,44 @@ fn point_at(rect: Rect, radius: f32, distance: f32) -> (Point, Direction) {
     (Point::new(rect.left + radius, rect.top), Direction::Horizontal)
 }
 
-/// The dashes that make up a dashed outline, as rectangles, evenly spread so the pattern closes without a seam.
-fn dashes(rect: Rect, radius: f32, thickness: f32, dash: f32, gap: f32) -> Vec<Rect> {
+/// One dash of the outline.
+#[derive(Clone, Debug, PartialEq)]
+enum Dash {
+    /// A dash on a straight edge: one rounded bar.
+    Straight(Rect),
+    /// A dash that touches a rounded corner: round dots along it, so it bends with the corner.
+    Curved(Vec<Point>),
+}
+
+/// The dashes that make up a dashed outline, evenly spread so the pattern closes without a seam.
+fn dashes(rect: Rect, radius: f32, thickness: f32, dash: f32, gap: f32) -> Vec<Dash> {
     let radius = radius.min(rect.width() / 2.0).min(rect.height() / 2.0).max(0.0);
     let length =
         2.0 * (rect.width() - 2.0 * radius + rect.height() - 2.0 * radius) + 2.0 * std::f32::consts::PI * radius;
     let period = dash + gap;
     let count = (length / period).round().max(1.0) as usize;
     let step = length / count as f32;
+    let dot_spacing = (thickness * 0.5).max(0.25);
     (0..count)
         .map(|index| {
-            let (center, direction) = point_at(rect, radius, index as f32 * step + (step - dash) / 2.0 + dash / 2.0);
-            let (half_width, half_height) = match direction {
-                Direction::Horizontal => (dash / 2.0, thickness / 2.0),
-                Direction::Vertical => (thickness / 2.0, dash / 2.0),
-                Direction::Corner => (thickness / 2.0, thickness / 2.0),
-            };
-            Rect::around(center, half_width, half_height)
+            let start = index as f32 * step + (step - dash) / 2.0;
+            let (_, first_direction) = point_at(rect, radius, start);
+            let (middle, middle_direction) = point_at(rect, radius, start + dash / 2.0);
+            let (_, last_direction) = point_at(rect, radius, start + dash);
+            let is_straight = first_direction == middle_direction
+                && middle_direction == last_direction
+                && first_direction != Direction::Corner;
+            if is_straight {
+                let (half_width, half_height) = match middle_direction {
+                    Direction::Horizontal => (dash / 2.0, thickness / 2.0),
+                    _ => (thickness / 2.0, dash / 2.0),
+                };
+                return Dash::Straight(Rect::around(middle, half_width, half_height));
+            }
+            let dots = (dash / dot_spacing).ceil().max(1.0) as usize;
+            Dash::Curved(
+                (0..=dots).map(|dot| point_at(rect, radius, start + dash * dot as f32 / dots as f32).0).collect(),
+            )
         })
         .collect()
 }
@@ -95,7 +116,10 @@ pub fn draw_dashed_outline(
     let inset = thickness / 2.0;
     let inner = Rect::new(rect.left + inset, rect.top + inset, rect.right - inset, rect.bottom - inset);
     for piece in dashes(inner, (radius - inset).max(0.0), thickness, dash, gap) {
-        canvas.fill_rounded_rect(piece, thickness / 2.0, color);
+        match piece {
+            Dash::Straight(bar) => canvas.fill_rounded_rect(bar, thickness / 2.0, color),
+            Dash::Curved(dots) => dots.into_iter().for_each(|dot| canvas.fill_circle(dot, thickness / 2.0, color)),
+        }
     }
 }
 
@@ -151,7 +175,32 @@ mod tests {
         let pieces = dashes(RECT, 8.0, 1.5, 6.0, 4.0);
         let length = 2.0 * (84.0 + 44.0) + 2.0 * std::f32::consts::PI * 8.0;
         assert_eq!(pieces.len(), (length / 10.0).round() as usize);
-        assert!(pieces.iter().all(|piece| piece.left >= -3.1 && piece.right <= 103.1));
+        for piece in pieces {
+            match piece {
+                Dash::Straight(bar) => assert!(bar.left >= -3.1 && bar.right <= 103.1),
+                Dash::Curved(dots) => assert!(dots.iter().all(|dot| (-0.1..=100.1).contains(&dot.x))),
+            }
+        }
+    }
+
+    #[test]
+    fn a_dash_on_a_corner_bends_with_it() {
+        let pieces = dashes(RECT, 14.0, 1.5, 12.0, 5.0);
+        let curved: Vec<_> = pieces
+            .iter()
+            .filter_map(|piece| match piece {
+                Dash::Curved(dots) => Some(dots),
+                Dash::Straight(_) => None,
+            })
+            .collect();
+        assert!(curved.len() >= 4, "every corner keeps a dash");
+        assert!(curved.iter().all(|dots| dots.len() > 2));
+    }
+
+    #[test]
+    fn a_dash_on_a_straight_edge_is_one_bar() {
+        let pieces = dashes(RECT, 8.0, 1.5, 6.0, 4.0);
+        assert!(pieces.iter().any(|piece| matches!(piece, Dash::Straight(_))));
     }
 
     #[test]

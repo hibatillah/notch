@@ -13,16 +13,15 @@ src/
   log.rs          optional debug log (set NOTCH_DEBUG to a file path)
   host/           the notch itself: window, animation, hover, tray, settings. Knows no page.
   gfx/            drawing toolkit for pages: Canvas, fonts, colors, images, springs, geometry
-  platform.rs     small Windows actions for pages: open a file or link, copy and paste text, a popup menu
+  platform.rs     small Windows actions for pages: open a file or link, paste text, copy files, drag a file out, the picture Explorer shows for a file
   ui/             reusable widgets: IconButton, PillButton, Ring, icons, the HUD layouts for activities
   activities/     the registry (mod.rs) and one file per activity: volume, brightness, battery, Bluetooth,
-                  microphone, camera, clipboard
+                  microphone, camera, clipboard, Caps Lock, notifications
   pages/
     mod.rs        the registry: the only place pages are listed
-    clock/        fallback page: the time and date
+
     media/        media player: session, controls, lyrics, artwork, app icon
-    notifications/ Windows notifications: the listener, the stack, the cards
-    shelf/        file shelf: the list of files and their tiles
+    shelf/        file shelf: the list of files, their pictures, drag in and out
     calendar/     calendar: dates, the iCal reader, the day's agenda, the download
     timer/        focus timer: the rules, what is said in each state, the layout
     stats/        system stats: the readings and how they are written
@@ -43,7 +42,8 @@ particular page or activity, and pages and activities never use each other.
 | `registry.rs` | decides which registered pages are switched on (`NOTCH_PAGES`, the `pages` setting) |
 | `navigation.rs` | the user's page order and which pages are on, which page opens, wheel steps (pure) |
 | `drop_target.rs` | a second thread with an almost invisible window that takes dragged files (OLE needs a single-threaded apartment) and tells the notch to open |
-| `chrome.rs` | the padding and the header (page dots and gear) around every open page |
+| `chrome.rs` | the padding and the header (page dots, the time and the settings button) around every open page |
+| `clock.rs` | the time: centered in the header of the open notch, and in the collapsed pill while no page or activity has anything to show |
 | `page_editor.rs` | the "Edit pages" view: chip layout, drag and double-click rules, drawing |
 | `activity_layout.rs` | which transient activities show and where each one starts (pure functions) |
 | `settings.rs` | the persistent key-value store pages and activities share |
@@ -52,25 +52,29 @@ particular page or activity, and pages and activities never use each other.
 
 ### Choosing a page
 
+`host/screen_mode.rs` tells whether the window in front is maximized or full screen, from Windows' own reports of the
+window in front changing and of that window's thread moving or resizing it (no polling). The notch then hides to a thin
+strip (maximized) or takes its window off the screen (full screen); `Page::shows_live_text` lets a page, such as the
+lyric line, stay over a maximized window when the user asked for that.
+
 Each page answers `priority(mode)` for `Mode::Resting` (collapsed) and `Mode::Expanded` (open). `None` means
 "nothing to show". The host shows the highest priority in each mode, and the earlier registered page wins ties. A page
-that answers `Priority::URGENT` while open comes before the page the user chose, for as long as it does (the
-notifications page does this while a notification is showing).
+that answers `Priority::URGENT` while open comes before the page the user chose, for as long as it does.
 
 While collapsed the highest priority is always the page shown. While open it is only the starting point: with two or
 more pages that have something to show, the user moves between them (see Navigation below), and the page they moved
 to stays open until they move again.
 
 The two modes are independent. The media page, for example, is shown collapsed only while music plays, but stays up
-when open while paused so playback can be resumed. The clock answers `Some(BACKGROUND)` in both modes, so
-something is always shown. The host asks again after every event, so a page changes what it shows by changing its
+when open while paused so playback can be resumed. When no page answers for a mode, the host fills the gap:
+the collapsed pill shows the time, and the open notch shows its header alone. The host asks again after every event, so a page changes what it shows by changing its
 own state.
 
 ### The open notch
 
-Every open page sits inside the same frame: 14 px of padding, a 16 px header (the page dots on the left, the gear on
-the right), a 12 px gap, then the page's own content, 16 px of padding at the sides and 14 below. A page reports the
-size of its content only (`PageSizes::expanded`) and draws in `Frame::bounds`, which is the content area. The gear
+Every open page sits inside the same frame: 10 px of padding, a 16 px header (the page dots on the left, the time in the middle, the settings button on
+the right), a 10 px gap, then the page's own content, 16 px of padding at the sides and 14 below. A page reports the
+size of its content only (`PageSizes::expanded`) and draws in `Frame::bounds`, which is the content area. The settings button
 opens the "Edit pages" view in place of the page: drag a chip to reorder, double-click to remove, click an available
 one to add; the order and what is off are saved as `navigation.order` and `navigation.disabled`. A page can be opt-in
 (`Page::is_opt_in`), which starts it switched off.
@@ -94,7 +98,9 @@ applies them.
 
 A page reports `sizes()`: its collapsed width and its open size, in device-independent pixels. The host animates
 the pill toward them with springs, so a page that changes its mind (the media page widens for lyrics) gets a smooth
-transition for free. The collapsed height is fixed at `RESTING_HEIGHT`.
+transition for free. The host uses the requested widths but ignores the open height: `chrome::CONTENT_HEIGHT`
+fixes every open view to 82 pixels of content, or 132 including header and padding. Content that exceeds the notch
+boundary is clipped. The collapsed height is fixed at `RESTING_HEIGHT`.
 
 ### Painting
 
@@ -130,7 +136,7 @@ which posts a message; the page then reads the new state in `on_notify`.
 
 While anything moves the host runs a frame timer at the display's refresh rate; when the host's springs have
 settled and no page reports `animate` as still moving, the timer stops. A collapsed notch with nothing happening
-has no timers running except a page's own (the clock wakes once a minute), which is why it uses no CPU.
+has no timers running except the host's own clock (once a minute) and a page's own, which is why it uses no CPU.
 
 ## Pages
 

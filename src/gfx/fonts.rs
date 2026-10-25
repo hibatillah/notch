@@ -3,21 +3,29 @@ use std::{cell::RefCell, collections::HashMap};
 use windows::{
     Win32::Graphics::DirectWrite::{
         DWRITE_FACTORY_TYPE_SHARED, DWRITE_FONT_STRETCH_NORMAL, DWRITE_FONT_STYLE_NORMAL, DWRITE_FONT_WEIGHT,
-        DWRITE_FONT_WEIGHT_NORMAL, DWRITE_FONT_WEIGHT_SEMI_BOLD, DWRITE_PARAGRAPH_ALIGNMENT_CENTER,
-        DWRITE_TEXT_ALIGNMENT, DWRITE_TEXT_ALIGNMENT_CENTER, DWRITE_TEXT_ALIGNMENT_LEADING,
-        DWRITE_TEXT_ALIGNMENT_TRAILING, DWRITE_TEXT_METRICS, DWRITE_TRIMMING, DWRITE_TRIMMING_GRANULARITY_CHARACTER,
-        DWRITE_WORD_WRAPPING_NO_WRAP, DWRITE_WORD_WRAPPING_WRAP, DWriteCreateFactory, IDWriteFactory,
-        IDWriteTextFormat,
+        DWRITE_FONT_WEIGHT_MEDIUM, DWRITE_FONT_WEIGHT_NORMAL, DWRITE_PARAGRAPH_ALIGNMENT_CENTER, DWRITE_TEXT_ALIGNMENT,
+        DWRITE_TEXT_ALIGNMENT_CENTER, DWRITE_TEXT_ALIGNMENT_LEADING, DWRITE_TEXT_ALIGNMENT_TRAILING,
+        DWRITE_TEXT_METRICS, DWRITE_TRIMMING, DWRITE_TRIMMING_GRANULARITY_CHARACTER, DWRITE_WORD_WRAPPING_NO_WRAP,
+        DWRITE_WORD_WRAPPING_WRAP, DWriteCreateFactory, IDWriteFactory, IDWriteFactory5, IDWriteFontCollection,
+        IDWriteFontCollection1, IDWriteInMemoryFontFileLoader, IDWriteTextFormat,
     },
-    core::{HSTRING, Result, w},
+    core::{HSTRING, Interface, Result, w},
 };
 
-pub const SEGOE_UI: &str = "Segoe UI";
+/// The font the whole interface is set in. It ships inside the executable (SIL Open Font License, see
+/// `assets/fonts/Geist-LICENSE.txt`), so it looks the same on every machine.
+pub const UI_FONT: &str = "Geist";
+/// Used when the bundled font cannot be loaded (Windows older than 10 version 1803).
+const FALLBACK_FONT: &str = "Segoe UI";
+
+/// Geist, cut down to Latin, Greek and Cyrillic letters and common punctuation.
+const BUNDLED_FONT_FILES: [&[u8]; 2] =
+    [include_bytes!("../../assets/fonts/Geist-Regular.ttf"), include_bytes!("../../assets/fonts/Geist-Medium.ttf")];
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum Weight {
     Regular,
-    SemiBold,
+    Medium,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
@@ -58,6 +66,8 @@ type StyleKey = (&'static str, u32, Weight, Align, bool);
 /// Builds text formats on demand and measures text. Single-threaded, like the rest of the drawing code.
 pub struct Fonts {
     factory: IDWriteFactory,
+    /// The bundled fonts; `None` when they could not be loaded, which falls back to the system font.
+    bundled: Option<IDWriteFontCollection1>,
     scale: f32,
     cache: RefCell<HashMap<StyleKey, IDWriteTextFormat>>,
 }
@@ -65,7 +75,8 @@ pub struct Fonts {
 impl Fonts {
     pub fn new(scale: f32) -> Result<Self> {
         let factory: IDWriteFactory = unsafe { DWriteCreateFactory(DWRITE_FACTORY_TYPE_SHARED)? };
-        Ok(Self { factory, scale, cache: RefCell::new(HashMap::new()) })
+        let bundled = load_bundled_fonts(&factory).ok();
+        Ok(Self { factory, bundled, scale, cache: RefCell::new(HashMap::new()) })
     }
 
     pub(super) fn format(&self, style: &FontStyle) -> Option<IDWriteTextFormat> {
@@ -95,17 +106,22 @@ impl Fonts {
     fn build(&self, style: &FontStyle) -> Result<IDWriteTextFormat> {
         let weight: DWRITE_FONT_WEIGHT = match style.weight {
             Weight::Regular => DWRITE_FONT_WEIGHT_NORMAL,
-            Weight::SemiBold => DWRITE_FONT_WEIGHT_SEMI_BOLD,
+            Weight::Medium => DWRITE_FONT_WEIGHT_MEDIUM,
         };
         let alignment: DWRITE_TEXT_ALIGNMENT = match style.align {
             Align::Leading => DWRITE_TEXT_ALIGNMENT_LEADING,
             Align::Center => DWRITE_TEXT_ALIGNMENT_CENTER,
             Align::Trailing => DWRITE_TEXT_ALIGNMENT_TRAILING,
         };
+        let (family, collection) = match (&self.bundled, style.family) {
+            (Some(bundled), UI_FONT) => (UI_FONT, Some(bundled.cast::<IDWriteFontCollection>()?)),
+            (None, UI_FONT) => (FALLBACK_FONT, None),
+            (_, family) => (family, None),
+        };
         unsafe {
             let format = self.factory.CreateTextFormat(
-                &HSTRING::from(style.family),
-                None,
+                &HSTRING::from(family),
+                collection.as_ref(),
                 weight,
                 DWRITE_FONT_STYLE_NORMAL,
                 DWRITE_FONT_STRETCH_NORMAL,
@@ -125,5 +141,47 @@ impl Fonts {
             format.SetTrimming(&trimming, &ellipsis)?;
             Ok(format)
         }
+    }
+}
+
+/// Loads the fonts compiled into the executable as a font collection of their own.
+fn load_bundled_fonts(factory: &IDWriteFactory) -> Result<IDWriteFontCollection1> {
+    let factory: IDWriteFactory5 = factory.cast()?;
+    unsafe {
+        let loader: IDWriteInMemoryFontFileLoader = factory.CreateInMemoryFontFileLoader()?;
+        factory.RegisterFontFileLoader(&loader)?;
+        let builder = factory.CreateFontSetBuilder()?;
+        for data in BUNDLED_FONT_FILES {
+            let file = loader.CreateInMemoryFontFileReference(
+                &factory,
+                data.as_ptr().cast(),
+                data.len() as u32,
+                None::<&windows::core::IUnknown>,
+            )?;
+            builder.AddFontFile(&file)?;
+        }
+        factory.CreateFontCollectionFromFontSet(&builder.CreateFontSet()?)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn the_bundled_font_loads_and_is_what_text_is_measured_in() {
+        let fonts = Fonts::new(1.0).unwrap();
+        assert!(fonts.bundled.is_some(), "Geist should load from the executable");
+        let inter = FontStyle::new(UI_FONT, 14.0, Weight::Regular, Align::Leading);
+        let system = FontStyle::new(FALLBACK_FONT, 14.0, Weight::Regular, Align::Leading);
+        assert_ne!(fonts.measure(&inter, "Notification"), fonts.measure(&system, "Notification"));
+    }
+
+    #[test]
+    fn medium_text_is_wider_than_regular_text() {
+        let fonts = Fonts::new(1.0).unwrap();
+        let regular = FontStyle::new(UI_FONT, 14.0, Weight::Regular, Align::Leading);
+        let medium = FontStyle::new(UI_FONT, 14.0, Weight::Medium, Align::Leading);
+        assert!(fonts.measure(&medium, "Notification") > fonts.measure(&regular, "Notification"));
     }
 }

@@ -31,6 +31,17 @@ impl Control {
     }
 }
 
+/// The lyrics button is green while lyrics are on, white when they are off but the song has some, and gray when the
+/// song has none.
+fn lyrics_color(is_on: bool, has_lyrics: bool, is_hovered: bool) -> Color {
+    match (is_on, has_lyrics) {
+        (true, _) => ACCENT,
+        (false, true) => Color::WHITE,
+        (false, false) if is_hovered => INACTIVE_HOVERED,
+        (false, false) => INACTIVE,
+    }
+}
+
 pub fn hit_test(layout: &Layout, point: Point) -> Option<Control> {
     Control::ALL.into_iter().find(|&control| IconButton::is_hit(layout.control_center(control), layout.scale, point))
 }
@@ -44,13 +55,34 @@ pub fn draw(page: &MediaPage, canvas: &Canvas, layout: &Layout, opacity: f32) {
             Control::Lyrics => (Icon::Lyrics, Some(page.is_lyric_panel_visible())),
         };
         let is_hovered = page.hovered_control == Some(control);
-        // The lyrics button is green when lyrics are on and gray when off; the others are white.
+        // With nothing playing there is nothing to control, so every button is gray.
         let color = match is_on {
-            Some(true) => ACCENT,
-            Some(false) if is_hovered => INACTIVE_HOVERED,
-            Some(false) => INACTIVE,
+            _ if !page.info.available => INACTIVE,
+            Some(is_on) => lyrics_color(is_on, page.has_lyrics(), is_hovered),
             None => Color::WHITE,
         };
         IconButton { icon, center: layout.control_center(control), color, is_hovered }.draw(canvas, opacity);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn the_lyrics_button_is_green_when_on() {
+        assert_eq!(lyrics_color(true, true, false), ACCENT);
+    }
+
+    #[test]
+    fn the_lyrics_button_is_white_when_off_but_lyrics_exist() {
+        assert_eq!(lyrics_color(false, true, false), Color::WHITE);
+        assert_eq!(lyrics_color(false, true, true), Color::WHITE);
+    }
+
+    #[test]
+    fn the_lyrics_button_is_gray_when_the_song_has_no_lyrics() {
+        assert_eq!(lyrics_color(false, false, false), INACTIVE);
+        assert_eq!(lyrics_color(false, false, true), INACTIVE_HOVERED);
     }
 }

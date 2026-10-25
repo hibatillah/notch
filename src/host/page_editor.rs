@@ -1,10 +1,10 @@
-//! The "Edit pages" view, opened with the gear: the pages that are in the notch as chips to drag into a new order or
+//! The "Edit pages" view, opened with the settings button: the pages that are in the notch as chips to drag into a new order or
 //! double-click to remove, and the pages that are available to click and add. Layout and the drag rules are pure
 //! functions and a small state machine, so they are tested without a window; `notch.rs` draws and applies them.
 //! Sizes are in device-independent pixels.
 
 use crate::{
-    gfx::{Align, Canvas, Color, FontStyle, Point, Rect, SEGOE_UI, Weight},
+    gfx::{Align, Canvas, Color, FontStyle, Point, Rect, UI_FONT, Weight},
     ui::Icon,
 };
 
@@ -25,10 +25,10 @@ const DOUBLE_CLICK_MILLISECONDS: u64 = 450;
 /// A press that moves less than this is a click, not a drag.
 const DRAG_THRESHOLD: f32 = 4.0;
 
-pub const TITLE: FontStyle = FontStyle::new(SEGOE_UI, 12.0, Weight::SemiBold, Align::Leading);
-const LABEL: FontStyle = FontStyle::new(SEGOE_UI, 10.0, Weight::SemiBold, Align::Leading);
-pub const CHIP: FontStyle = FontStyle::new(SEGOE_UI, 12.0, Weight::Regular, Align::Leading);
-const DONE: FontStyle = FontStyle::new(SEGOE_UI, 11.0, Weight::SemiBold, Align::Center);
+pub const TITLE: FontStyle = FontStyle::new(UI_FONT, 12.0, Weight::Medium, Align::Leading);
+const LABEL: FontStyle = FontStyle::new(UI_FONT, 10.0, Weight::Medium, Align::Leading);
+pub const CHIP: FontStyle = FontStyle::new(UI_FONT, 12.0, Weight::Regular, Align::Leading);
+const DONE: FontStyle = FontStyle::new(UI_FONT, 11.0, Weight::Medium, Align::Center);
 
 const CHIP_FILL: Color = Color::rgb(0.125, 0.125, 0.153);
 const CHIP_FILL_DRAGGED: Color = Color::rgb(0.184, 0.227, 0.282);

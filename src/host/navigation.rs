@@ -132,6 +132,14 @@ pub enum Scroll {
     Drag(f32),
 }
 
+/// The most pages one swipe or one spin of the wheel can move past the page that is on screen.
+pub const MAX_PAGES_PER_SWIPE: f32 = 2.0;
+
+/// `target` held to at most `MAX_PAGES_PER_SWIPE` pages from `origin`, the page on screen when the swipe began.
+pub fn limit_travel(origin: f32, target: f32) -> f32 {
+    target.clamp(origin - MAX_PAGES_PER_SWIPE, origin + MAX_PAGES_PER_SWIPE)
+}
+
 /// Sorts a scroll amount (positive toward the next page) into whole pages or a drag.
 pub fn classify_scroll(amount: i32) -> Scroll {
     if amount.abs() >= WHEEL_STEP {
@@ -234,6 +242,14 @@ mod tests {
         assert_eq!(classify_scroll(120), Scroll::Pages(1));
         assert_eq!(classify_scroll(-120), Scroll::Pages(-1));
         assert_eq!(classify_scroll(360), Scroll::Pages(3));
+    }
+
+    #[test]
+    fn a_swipe_goes_at_most_two_pages_from_where_it_began() {
+        assert_eq!(limit_travel(3.0, 4.0), 4.0);
+        assert_eq!(limit_travel(3.0, 9.0), 5.0);
+        assert_eq!(limit_travel(3.0, -9.0), 1.0);
+        assert_eq!(limit_travel(3.0, 4.6), 4.6);
     }
 
     #[test]

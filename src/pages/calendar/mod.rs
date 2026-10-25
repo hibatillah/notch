@@ -32,7 +32,7 @@ use self::{
 };
 use crate::{
     activity::{FLASH_TIMER, Flash, Presence},
-    gfx::{Align, Canvas, Color, FontStyle, Fonts, Point, Rect, SEGOE_UI, Size, Weight},
+    gfx::{Align, Canvas, Color, FontStyle, Fonts, Point, Rect, Size, UI_FONT, Weight},
     page::{Context, Frame, Mode, Notifier, Page, PageSizes, PointerEvent, Priority, TimerId},
     platform,
     ui::{self, Icon},
@@ -63,19 +63,19 @@ const REFRESH_SETTING: &str = "calendar.refresh_minutes";
 const MINUTE_TIMER: TimerId = TimerId(1);
 const FETCH_TIMER: TimerId = TimerId(2);
 
-const MONTH: FontStyle = FontStyle::new(SEGOE_UI, 26.0, Weight::SemiBold, Align::Leading);
-const WEEKDAY: FontStyle = FontStyle::new(SEGOE_UI, 12.0, Weight::Regular, Align::Leading);
-const DAY_LETTER: FontStyle = FontStyle::new(SEGOE_UI, 9.0, Weight::SemiBold, Align::Center);
+const MONTH: FontStyle = FontStyle::new(UI_FONT, 26.0, Weight::Medium, Align::Leading);
+const WEEKDAY: FontStyle = FontStyle::new(UI_FONT, 12.0, Weight::Regular, Align::Leading);
+const DAY_LETTER: FontStyle = FontStyle::new(UI_FONT, 9.0, Weight::Medium, Align::Center);
 const DAY_NUMBER: FontStyle = FontStyle::new("Consolas", 13.0, Weight::Regular, Align::Center);
-const SUMMARY: FontStyle = FontStyle::new(SEGOE_UI, 11.0, Weight::Regular, Align::Leading);
+const SUMMARY: FontStyle = FontStyle::new(UI_FONT, 11.0, Weight::Regular, Align::Leading);
 const EVENT_TIME: FontStyle = FontStyle::new("Consolas", 12.0, Weight::Regular, Align::Leading);
-const EVENT_TITLE: FontStyle = FontStyle::new(SEGOE_UI, 13.0, Weight::SemiBold, Align::Leading);
-const EVENT_DETAIL: FontStyle = FontStyle::new(SEGOE_UI, 11.0, Weight::Regular, Align::Leading);
-const EVENT_TRAILING: FontStyle = FontStyle::new(SEGOE_UI, 11.0, Weight::Regular, Align::Trailing);
-const JOIN: FontStyle = FontStyle::new(SEGOE_UI, 11.0, Weight::SemiBold, Align::Center);
-const EMPTY: FontStyle = FontStyle::new(SEGOE_UI, 12.0, Weight::Regular, Align::Center).wrapped();
-const BADGE: FontStyle = FontStyle::new(SEGOE_UI, 12.0, Weight::SemiBold, Align::Leading);
-const BADGE_TIME: FontStyle = FontStyle::new("Consolas", 12.0, Weight::SemiBold, Align::Leading);
+const EVENT_TITLE: FontStyle = FontStyle::new(UI_FONT, 13.0, Weight::Medium, Align::Leading);
+const EVENT_DETAIL: FontStyle = FontStyle::new(UI_FONT, 11.0, Weight::Regular, Align::Leading);
+const EVENT_TRAILING: FontStyle = FontStyle::new(UI_FONT, 11.0, Weight::Regular, Align::Trailing);
+const JOIN: FontStyle = FontStyle::new(UI_FONT, 11.0, Weight::Medium, Align::Center);
+const EMPTY: FontStyle = FontStyle::new(UI_FONT, 12.0, Weight::Regular, Align::Center).wrapped();
+const BADGE: FontStyle = FontStyle::new(UI_FONT, 12.0, Weight::Medium, Align::Leading);
+const BADGE_TIME: FontStyle = FontStyle::new("Consolas", 12.0, Weight::Medium, Align::Leading);
 
 const GRAY: Color = Color::rgb(0.604, 0.604, 0.651);
 const DIM: Color = Color::rgb(0.431, 0.431, 0.478);
@@ -610,7 +610,7 @@ impl Page for CalendarPage {
     }
 }
 
-const EMPTY_HINT: FontStyle = FontStyle::new(SEGOE_UI, 11.0, Weight::Regular, Align::Center).wrapped();
+const EMPTY_HINT: FontStyle = FontStyle::new(UI_FONT, 11.0, Weight::Regular, Align::Center).wrapped();
 
 #[cfg(test)]
 mod tests {

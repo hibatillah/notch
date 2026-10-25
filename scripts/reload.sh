@@ -1,16 +1,26 @@
 #!/usr/bin/env bash
 # Builds the notch and swaps the running copy for the new build without killing it from outside.
+#
+#   scripts/reload.sh           release build
+#   scripts/reload.sh --debug   debug build, about ten times quicker to build (used by scripts/watch.sh)
 # The new copy shows its window first, then asks the previous copy to close itself.
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
-cargo build --release
+build_arguments=(--release)
+profile_directory="release"
+if [ "${1:-}" = "--debug" ]; then
+    build_arguments=()
+    profile_directory="debug"
+fi
+
+cargo build "${build_arguments[@]}"
 
 run_directory="run"
 mkdir -p "$run_directory"
 
 # A running .exe is locked on Windows, so each launch uses its own copy of the build output.
-built_executable="target/x86_64-pc-windows-msvc/release/notch.exe"
+built_executable="target/x86_64-pc-windows-msvc/$profile_directory/notch.exe"
 launched_executable="$run_directory/notch-$(date +%H%M%S-%N | cut -c1-10).exe"
 cp "$built_executable" "$launched_executable"
 

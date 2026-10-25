@@ -12,7 +12,8 @@ cargo test                                # unit tests, no window needed
 cargo fmt --check
 cargo clippy --all-targets -- -D warnings
 cargo license                             # dependency licenses
-scripts/reload.sh                         # build, start the new build, close the old one (Git Bash)
+scripts/reload.sh [--debug]                # build, start the new build, close the old one (Git Bash)
+scripts/watch.sh                          # debug build and relaunch on every saved source file (Git Bash)
 scripts/perf.sh [--no-build]              # memory and CPU checks (scripts/perf.rs); moves the mouse for about two minutes
 ```
 
@@ -40,6 +41,6 @@ The rules are in `.claude/rules/`; the ones without a `paths` filter always appl
 
 ## Debugging
 
-`NOTCH_DEBUG=<file>` writes a timestamped log (Unix milliseconds). `NOTCH_PAGES=clock,media` picks pages,
+`NOTCH_DEBUG=<file>` writes a timestamped log (Unix milliseconds). `NOTCH_PAGES=shelf,media` picks pages,
 `NOTCH_LYRICS=off` stops lyric lookups, `NOTCH_TOP=<px>` moves the pill down. Settings are in
 `%APPDATA%\notch\settings.txt`; `activity.<id>=off` switches an activity off (the tray menu does it too).

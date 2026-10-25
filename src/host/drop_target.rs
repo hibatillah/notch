@@ -49,9 +49,11 @@ pub const WM_POINTER_MOVED: u32 = WM_APP + 13;
 const MESSAGE_HOVERING: u32 = WM_APP + 20;
 /// Sent to the drop target's window when the collapsed pill's area (in `RESTING_AREA`) changed.
 const MESSAGE_RESTING_AREA: u32 = WM_APP + 21;
+/// Sent to the drop target's window: `wparam` is 1 while a full-screen app is in front and the target must not show.
+const MESSAGE_SUPPRESSED: u32 = WM_APP + 22;
 
 /// How big the drop target is while a file is dragged, in device-independent pixels; it covers the open notch.
-const DRAG_WIDTH: f32 = 520.0;
+const DRAG_WIDTH: f32 = 720.0;
 const DRAG_HEIGHT: f32 = 230.0;
 
 static TARGET_WINDOW: AtomicIsize = AtomicIsize::new(0);
@@ -78,6 +80,7 @@ thread_local! {
     static PLACEMENT: Cell<Option<Placement>> = const { Cell::new(None) };
     static IS_DRAGGING: Cell<bool> = const { Cell::new(false) };
     static IS_NOTCH_HOVERED: Cell<bool> = const { Cell::new(false) };
+    static IS_SUPPRESSED: Cell<bool> = const { Cell::new(false) };
 }
 
 /// Starts the drop target for the notch window at `center_x` (screen pixels) and `top`.
@@ -96,6 +99,11 @@ pub fn start(notch_window: HWND, scale: f32, center_x: i32, top: i32) {
 /// Tells the drop target whether the notch is hovered or open, in which case it must not cover anything.
 pub fn set_hovering(is_hovering: bool) {
     post(MESSAGE_HOVERING, WPARAM(usize::from(is_hovering)));
+}
+
+/// Tells the drop target that a full-screen app is in front, so it must stay out of the way.
+pub fn set_suppressed(is_suppressed: bool) {
+    post(MESSAGE_SUPPRESSED, WPARAM(usize::from(is_suppressed)));
 }
 
 /// Tells the drop target where the collapsed pill is on screen.
@@ -179,7 +187,9 @@ fn run(placement: Placement) -> Result<()> {
 /// is collapsed, and nowhere while the notch is hovered.
 fn arrange(window: HWND) {
     let Some(placement) = PLACEMENT.get() else { return };
-    let area = if IS_DRAGGING.get() {
+    let area = if IS_SUPPRESSED.get() {
+        None
+    } else if IS_DRAGGING.get() {
         let width = (DRAG_WIDTH * placement.scale) as i32;
         Some(RECT {
             left: placement.center_x - width / 2,
@@ -236,6 +246,11 @@ extern "system" fn window_procedure(window: HWND, message: u32, wparam: WPARAM, 
     match message {
         MESSAGE_HOVERING => {
             IS_NOTCH_HOVERED.set(wparam.0 != 0);
+            arrange(window);
+            LRESULT(0)
+        }
+        MESSAGE_SUPPRESSED => {
+            IS_SUPPRESSED.set(wparam.0 != 0);
             arrange(window);
             LRESULT(0)
         }
@@ -303,7 +318,8 @@ impl IDropTarget_Impl for FileDropTarget_Impl {
         _point: &POINTL,
         effect: *mut DROPEFFECT,
     ) -> Result<()> {
-        let accepts = carries_files(data.as_ref());
+        // A file dragged out of the shelf is not a new file to add, even when it passes over the notch.
+        let accepts = carries_files(data.as_ref()) && !crate::platform::is_dragging_out();
         log::debug(&format!("drop target: drag entered, files: {accepts}"));
         unsafe { *effect = if accepts { DROPEFFECT_COPY } else { DROPEFFECT_NONE } };
         if accepts {

@@ -72,6 +72,11 @@ impl<'a> Canvas<'a> {
         self.images.get_or_insert(hasher.finish(), || image::upload(self.target, &build()).ok())
     }
 
+    /// Uploads an image to the renderer, for a page that keeps its own brushes and frees them when it is done with them.
+    pub fn upload(&self, image: &ImageData) -> Option<ImageBrush> {
+        image::upload(self.target, image).ok()
+    }
+
     /// Fills the two concave fillets that join a shape's vertical sides to the top edge of the screen, like the
     /// outward-curving corners of a MacBook notch. `flare` is each fillet's radius; `bounds` is the shape they join.
     ///

@@ -25,9 +25,9 @@ pub enum Icon {
     BatteryLow,
     Microphone,
     Camera,
-    Clipboard,
+    Copy,
     Bell,
-    Gear,
+    Sliders,
     Clock,
     Music,
     Folder,
@@ -35,6 +35,8 @@ pub enum Icon {
     Stopwatch,
     Chart,
     Bluetooth,
+    Close,
+    CapsLock,
 }
 
 /// How a path is painted: solid shapes are filled, line icons are stroked with round ends.
@@ -175,18 +177,24 @@ impl Icon {
                     .curve_to(at(12.8, 21.0), at(13.4, 20.5), at(13.8, 19.5));
                 (join(join(dome, clapper), line(&[(12.0, 3.5), (12.0, 5.5)])), Paint::Line)
             }
-            Icon::Gear => {
-                let mut gear = circle(at(12.0, 12.0), 3.0 * unit);
-                gear.append(circle(at(12.0, 12.0), 6.5 * unit));
-                for step in 0..8 {
-                    let angle = step as f32 * std::f32::consts::FRAC_PI_4;
-                    let (sine, cosine) = angle.sin_cos();
-                    gear.append(line(&[
-                        (12.0 + 6.5 * cosine, 12.0 + 6.5 * sine),
-                        (12.0 + 9.5 * cosine, 12.0 + 9.5 * sine),
-                    ]));
+            // Lucide "sliders-horizontal" (ISC license, https://lucide.dev).
+            Icon::Sliders => {
+                let bars = [
+                    [(3.0, 5.0), (10.0, 5.0)],
+                    [(14.0, 5.0), (21.0, 5.0)],
+                    [(3.0, 12.0), (8.0, 12.0)],
+                    [(12.0, 12.0), (21.0, 12.0)],
+                    [(3.0, 19.0), (12.0, 19.0)],
+                    [(16.0, 19.0), (21.0, 19.0)],
+                    [(14.0, 3.0), (14.0, 7.0)],
+                    [(8.0, 10.0), (8.0, 14.0)],
+                    [(16.0, 17.0), (16.0, 21.0)],
+                ];
+                let mut sliders = Path::new();
+                for bar in bars {
+                    sliders.append(line(&bar));
                 }
-                (gear, Paint::Line)
+                (sliders, Paint::Line)
             }
             Icon::Clock => {
                 let face = circle(at(12.0, 12.0), 9.0 * unit);
@@ -219,11 +227,26 @@ impl Icon {
                 let bars = join(line(&[(6.0, 20.0), (6.0, 12.0)]), line(&[(12.0, 20.0), (12.0, 5.0)]));
                 (join(bars, line(&[(18.0, 20.0), (18.0, 9.0)])), Paint::Line)
             }
-            Icon::Clipboard => {
-                let board = solid(&[(5.0, 5.0), (19.0, 5.0), (19.0, 21.0), (5.0, 21.0)], 2.0);
-                let clip = line(&[(9.0, 3.0), (15.0, 3.0)]);
-                let check = line(&[(8.5, 13.5), (11.0, 16.0), (15.5, 10.5)]);
-                (join(join(board, clip), check), Paint::Line)
+            // Lucide "copy" (ISC license, https://lucide.dev): a sheet with another behind it.
+            Icon::Copy => {
+                let front = solid(&[(8.0, 8.0), (22.0, 8.0), (22.0, 22.0), (8.0, 22.0)], 2.0);
+                let back = Path::new()
+                    .move_to(at(4.0, 16.0))
+                    .curve_to(at(2.9, 16.0), at(2.0, 15.1), at(2.0, 14.0))
+                    .line_to(at(2.0, 4.0))
+                    .curve_to(at(2.0, 2.9), at(2.9, 2.0), at(4.0, 2.0))
+                    .line_to(at(14.0, 2.0))
+                    .curve_to(at(15.1, 2.0), at(16.0, 2.9), at(16.0, 4.0));
+                (join(front, back), Paint::Line)
+            }
+            // Lucide "x" (ISC license, https://lucide.dev).
+            Icon::Close => (join(line(&[(6.0, 6.0), (18.0, 18.0)]), line(&[(18.0, 6.0), (6.0, 18.0)])), Paint::Line),
+            Icon::CapsLock => {
+                let arrow = solid(
+                    &[(12.0, 3.0), (20.5, 12.0), (15.5, 12.0), (15.5, 16.5), (8.5, 16.5), (8.5, 12.0), (3.5, 12.0)],
+                    1.5,
+                );
+                (join(arrow, line(&[(8.5, 20.5), (15.5, 20.5)])), Paint::Line)
             }
             Icon::Lyrics => {
                 let bubble = solid(
@@ -260,7 +283,7 @@ fn join(mut first: Path, second: Path) -> Path {
 mod tests {
     use super::*;
 
-    const ALL: [Icon; 23] = [
+    const ALL: [Icon; 25] = [
         Icon::Lyrics,
         Icon::Previous,
         Icon::Play,
@@ -274,9 +297,9 @@ mod tests {
         Icon::BatteryLow,
         Icon::Microphone,
         Icon::Camera,
-        Icon::Clipboard,
+        Icon::Copy,
         Icon::Bell,
-        Icon::Gear,
+        Icon::Sliders,
         Icon::Clock,
         Icon::Music,
         Icon::Folder,
@@ -284,6 +307,8 @@ mod tests {
         Icon::Stopwatch,
         Icon::Chart,
         Icon::Bluetooth,
+        Icon::Close,
+        Icon::CapsLock,
     ];
 
     #[test]

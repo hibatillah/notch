@@ -37,12 +37,11 @@ spread over many files:
 | widgets | `src/ui/icon_button.rs`, `icons.rs`, `progress_bar.rs`, `hud.rs` |
 | timer page | `src/pages/timer/session.rs` (rules, saving), `view.rs`, `layout.rs` |
 | stats page | `src/pages/stats/format.rs` (numbers), `sampler.rs` (the readings), `mod.rs` (layout) |
-| shelf page | `src/pages/shelf/items.rs` (the list, kinds, saving), `mod.rs` (places) |
+| shelf page | `src/pages/shelf/items.rs` (the list, wording, saving), `mod.rs` (places, hit targets, name lines) |
 | calendar page | `src/pages/calendar/dates.rs`, `ics.rs` (reading and repeating), `agenda.rs` (what a day says), `fetch.rs` |
-| notifications page | `src/pages/notifications/items.rs` (the stack and its wording), `mod.rs` (cards) |
+| notifications activity | `src/activities/notifications/items.rs` (the wording), `mod.rs` (banner height, lines) |
 | editing pages | `src/host/page_editor.rs`, `chrome.rs`, `navigation.rs` (the page list) |
 | activities | `src/activities/battery.rs` (charge rules), `volume.rs`, `camera.rs`, `privacy.rs` |
-| clock page | `src/pages/clock/mod.rs` |
 | media page | `src/pages/media/mod.rs`, `layout.rs`, `resting.rs`, `session.rs`, `lyric_follower.rs`, `lyrics/mod.rs`, `lyrics/client.rs` |
 
 To run one file's tests, or a single test, filter by name:
@@ -70,7 +69,7 @@ scripts/perf.sh --no-build    # reuse the existing release build
 scripts/perf.sh --with-media  # also print numbers with every page on; play music first
 ```
 
-The script starts a copy of the notch with only the clock page (`NOTCH_PAGES=clock`), so the result does not depend
+The script starts a copy of the notch with only the shelf page (`NOTCH_PAGES=shelf`), so the result does not depend
 on what you are listening to. It moves the mouse to open and close the notch, so leave the mouse alone while it
 runs. It also asks a running notch to close; start yours again with `scripts/reload.sh`.
 
@@ -120,14 +119,14 @@ For a change that affects drawing or input, run `scripts/reload.sh` and check:
 - the lyric button hides and shows lyrics, and the choice is remembered after restarting
 - the tray icon's Quit closes the notch and removes the icon
 
-For a change to the notch's frame, the editor or hiding: open the notch and check the dots and the gear, open the gear
+For a change to the notch's frame, the editor or hiding: open the notch and check the dots and the settings button, open the settings button
 and add, drag, double-click and remove a page, tick "Hide when idle" in the tray menu and check that the notch
 disappears, shows its small pill when you rest the pointer on the top of the screen, and opens if you stay. The
 mouse-driven checks need an unlocked screen.
 
 For a change to the timer, seed a short session by hand (stop the notch, put `timer.state=running focus 30000 <end>` in
 the settings file, where `<end>` is the Unix time in milliseconds 30 seconds from now, and start it) and check: the ring
-and the time show beside the clock, the alert and sound arrive at the end, the open page then offers the break, and
+and the time show in the collapsed pill, the alert and sound arrive at the end, the open page then offers the break, and
 pause, +5 min and stop work.
 
 For a change to navigation, play something so the media page appears, then check: scrolling the wheel (and swiping a
@@ -136,9 +135,12 @@ touchpad swipe drags the pages along and settles on the nearest one, clicking a 
 
 For a change to activities, also check (each one is a real event, so run them on a laptop):
 
+- maximize a browser: the notch shrinks to a strip, wakes at the very top edge after a short wait, and still shows the volume; press F11 (or play a video full screen): it disappears entirely until you leave full screen. `cargo test a_real_maximized -- --ignored` opens real windows to check the detection
 - change the volume and press mute: a bar with the value, or "Muted", for about a second and a half
 - change the brightness with the slider and with the brightness keys: a bar with the value
 - copy something: "Copied"; copy a password from a password manager: nothing
+- press Caps Lock: "Caps Lock on" and an arrow beside the time while the notch is open; press it again: "Caps Lock off"
+- mute the speakers: "Muted", and a crossed speaker beside the time while the notch is open
 - start recording in any app: "Microphone on", then an orange dot until it stops, then "Microphone off"
 - open the camera in a browser or a video-call app: "Camera on", then a green dot, then "Camera off"
 - plug and unplug the charger, and let the battery fall through 20 % and 10 %: the matching message

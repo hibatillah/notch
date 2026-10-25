@@ -20,19 +20,21 @@ pub struct ButtonSpec {
     pub action: Action,
     pub label: String,
     pub is_primary: bool,
+    /// Ends the session, so it is drawn in red.
+    pub is_destructive: bool,
 }
 
 /// The open page's content.
 pub struct View {
     pub title: String,
     pub detail: Option<String>,
-    /// The big time on the right, when there is one.
+    /// The big time on the left, when there is one.
     pub time: Option<String>,
     pub buttons: Vec<ButtonSpec>,
 }
 
 fn button(action: Action, label: &str, is_primary: bool) -> ButtonSpec {
-    ButtonSpec { action, label: label.to_owned(), is_primary }
+    ButtonSpec { action, label: label.to_owned(), is_primary, is_destructive: action == Action::Stop }
 }
 
 fn phase_name(phase: Phase) -> &'static str {
@@ -188,6 +190,7 @@ mod tests {
         assert_eq!(view.time.as_deref(), Some("25:00"));
         assert_eq!(actions(&view), vec![Action::Shorter, Action::Longer, Action::Start]);
         assert!(view.buttons[2].is_primary);
+        assert!(!view.buttons[2].is_destructive);
     }
 
     #[test]
@@ -196,6 +199,13 @@ mod tests {
         assert_eq!(view.title, "Focus · 1 of 4");
         assert_eq!(view.time.as_deref(), Some("23:47"));
         assert_eq!(actions(&view), vec![Action::Pause, Action::Extend, Action::Stop]);
+    }
+
+    #[test]
+    fn only_the_stop_button_is_red() {
+        let view = view(&running(), NOW + 1_000);
+        let red: Vec<Action> = view.buttons.iter().filter(|spec| spec.is_destructive).map(|spec| spec.action).collect();
+        assert_eq!(red, vec![Action::Stop]);
     }
 
     #[test]

@@ -12,6 +12,7 @@ An activity answers `presence()` after every event, and the host does the layout
 | --- | --- | --- |
 | `Transient { width }` | takes over the pill for a moment, then goes | volume bar, "Copied", "Charging 56%" |
 | `Badge { width }` | a small mark at the right end of the pill for as long as something lasts | the orange microphone dot |
+| `Banner { width, height }` | opens the pill into a card, taller than the idle pill and smaller than the open notch, and draws into all of it; it has the pill to itself, so transients wait. Pointing at the notch does not open it while a banner shows, so the activity can hold it with `on_hover_changed` | a notification |
 | `None` | nothing | |
 
 - Up to two transients show at once, side by side with a thin divider; the newest two win.
@@ -39,8 +40,10 @@ listens to one Windows power setting and flashes a level bar when it changes.
 | `label()` | the name in the tray menu |
 | `presence()` | what to show right now |
 | `draw()` | draw into the area the host gives |
+| `header_status_width()`, `draw_header_status()` | optional: a small mark kept in the open notch's header beside the time while something lasts (muted speakers, Caps Lock on); `None` for no mark |
 | `on_start()` | begin listening; called once, and only if the activity is switched on |
 | `on_timer()`, `on_notify()` | a timer fired; a background thread used the `Notifier` |
+| `on_hover_changed()` | the pointer entered or left the notch |
 | `on_system_message()` | a power setting or the clipboard changed (see below) |
 
 Use `Flash` for a transient that shows and then goes: `flash.show(context, milliseconds)` shows it, again while
@@ -69,7 +72,7 @@ order of badges.
 
 ## Switch it on or off
 
-Right-click the notch or its tray icon: every activity is a checkable item. The choice is stored as
+Right-click the tray icon: every activity is a checkable item. The choice is stored as
 `activity.<id>=off` or `on` in `%APPDATA%\notch\settings.txt`. An activity that is off at start is never started;
 switching one off while the notch runs hides it but keeps what it already listens to until the notch quits.
 
@@ -88,3 +91,6 @@ Delete its file, its `mod` line and its entry in `all()`.
 | `microphone` | "Microphone on/off", then an orange dot | audio sessions of the default recording device; shows that an app has the microphone open, so an app that keeps it open while you are muted (Google Meet in a browser) keeps the dot |
 | `camera` | "Camera on/off", then a green dot | stream start and stop events in the `Microsoft-Windows-MF-FrameServer/Camera_FrameServer` event log; misses apps that bypass the Frame Server and a camera already streaming when the notch starts |
 | `clipboard` | "Copied" | clipboard change message; never reads the clipboard, skips copies that ask not to be monitored |
+| `notifications` | a banner with the app's logo, who it is from and up to two lines; while the pointer is on the notch it stays, and it has no buttons | `UserNotificationListener`, read on a thread of its own when the notification folder changes; arrives a few seconds after Windows' own banner |
+| `caps_lock` | "Caps Lock on/off", and an arrow in the header while it is on | a low-level keyboard hook on a thread of its own that only wakes the activity when the Caps Lock key goes down; the lock state is then read from Windows, and no other key is looked at |
+| `volume` also | a crossed speaker in the header while muted | the mute state read when listening starts, then the volume callback |

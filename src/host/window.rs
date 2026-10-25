@@ -25,8 +25,9 @@ use super::{
     display, drop_target,
     notch::{Notch, NotchParts, WINDOW_HEIGHT, WINDOW_WIDTH},
     registry,
+    screen_mode::{self, ScreenMode},
     settings::Settings,
-    tray,
+    startup, tray,
 };
 use crate::{
     activity::{Activity, SystemMessage, WM_ACTIVITY_NOTIFY},
@@ -58,10 +59,24 @@ fn with_notch<R>(action: impl FnOnce(&mut Notch) -> R) -> Option<R> {
 fn show_menu(window: HWND) {
     let activities = with_notch(|notch| notch.activity_menu()).unwrap_or_default();
     let page_items = with_notch(|notch| notch.page_menu()).unwrap_or_default();
-    let hides_when_idle = with_notch(|notch| notch.hides_when_idle()).unwrap_or_default();
-    match tray::show_context_menu(window, &activities, &page_items, hides_when_idle) {
+    let state = with_notch(|notch| tray::MenuState {
+        hides_when_idle: notch.hides_when_idle(),
+        starts_with_windows: false,
+        hides_for_apps: notch.hides_for_apps(),
+        lyrics_over_maximized: notch.keeps_lyrics_over_windows(),
+    })
+    .unwrap_or_default();
+    let state = tray::MenuState { starts_with_windows: startup::is_enabled(), ..state };
+    match tray::show_context_menu(window, &activities, &page_items, state) {
         Some(tray::MenuChoice::ToggleHideWhenIdle) => {
             with_notch(|notch| notch.toggle_hide_when_idle());
+        }
+        Some(tray::MenuChoice::ToggleStartWithWindows) => startup::set_enabled(!state.starts_with_windows),
+        Some(tray::MenuChoice::ToggleHideForApps) => {
+            with_notch(|notch| notch.toggle_hide_for_apps());
+        }
+        Some(tray::MenuChoice::ToggleLyricsOverMaximized) => {
+            with_notch(|notch| notch.toggle_lyrics_over_maximized());
         }
         Some(tray::MenuChoice::PageItem { page, item }) => {
             with_notch(|notch| notch.page_menu_item_chosen(page, item));
@@ -136,10 +151,9 @@ extern "system" fn window_procedure(window: HWND, message: u32, wparam: WPARAM, 
             with_notch(|notch| notch.capture_lost());
             LRESULT(0)
         }
+        // The notch has no menu of its own; that is the tray icon's.
         WM_RBUTTONUP => {
-            if with_notch(|notch| notch.right_clicked(x, y)) != Some(true) {
-                show_menu(window);
-            }
+            with_notch(|notch| notch.right_clicked(x, y));
             LRESULT(0)
         }
         drop_target::WM_POINTER_MOVED => {
@@ -205,6 +219,11 @@ extern "system" fn window_procedure(window: HWND, message: u32, wparam: WPARAM, 
     }
 }
 
+/// The window in front now covers the screen differently: the notch steps out of its way.
+fn on_screen_mode(mode: ScreenMode) {
+    with_notch(|notch| notch.set_screen_mode(mode));
+}
+
 /// Creates the notch window, starts the pages and runs the message loop until the notch quits.
 pub fn run(pages: Vec<Box<dyn Page>>, activities: Vec<Box<dyn Activity>>) -> Result<()> {
     unsafe {
@@ -268,6 +287,7 @@ pub fn run(pages: Vec<Box<dyn Page>>, activities: Vec<Box<dyn Activity>>) -> Res
         with_notch(|notch| notch.start());
 
         let _ = ShowWindow(window, SW_SHOWNOACTIVATE);
+        screen_mode::start(on_screen_mode);
         if let Err(error) = tray::add(window) {
             log::debug(&format!("tray icon unavailable: {error}"));
         }

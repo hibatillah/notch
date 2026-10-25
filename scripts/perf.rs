@@ -174,9 +174,9 @@ fn main() -> ExitCode {
     let center_x = unsafe { GetSystemMetrics(SM_CXSCREEN) } / 2;
     let mut report = Report { failures: Vec::new() };
 
-    println!("Notch performance check: clock page only, {IDLE_SECONDS} s idle, {CYCLES} open/close cycles");
+    println!("Notch performance check: shelf page only, {IDLE_SECONDS} s idle, {CYCLES} open/close cycles");
     {
-        let notch = RunningNotch::start(&executable, &log, Some("clock"));
+        let notch = RunningNotch::start(&executable, &log, Some("shelf"));
         let started = notch.measure();
         println!(
             "  after start: {:.1} MB private working set, {} handles",
