@@ -91,7 +91,7 @@ The last check is the important one. A common mistake is leaving a timer or anim
 notch use CPU forever; it shows up there as several percent of a core.
 
 A healthy build is far under every limit (typically 0 % idle CPU, 19 MB, 80 ms per cycle). The limits are set in
-constants at the top of `examples/perf.rs`; they exist to catch regressions, so fix the cause rather than raising
+constants at the top of `scripts/perf.rs`; they exist to catch regressions, so fix the cause rather than raising
 one.
 
 `--with-media` prints memory and CPU with every page on and your music playing. It has no limits, because the result
@@ -101,7 +101,7 @@ depends on the track and on how often its lyrics change.
 
 - `scripts/perf.sh` is only a runner: it parses the options, builds, copies the executable to `run/` and starts the
   measuring program.
-- `examples/perf.rs` does the measuring. It is a Rust program (run with `cargo run --release --example perf`) that
+- `scripts/perf.rs` does the measuring. It is a Rust program (run with `cargo run --release --example perf`) that
   starts the notch, moves the pointer with `SetCursorPos`, and reads CPU time, handles and private memory from the
   process. A shell script cannot move the mouse or read those numbers, and an example is not part of the shipped
   `notch.exe`. The limits are constants at the top of the file.
@@ -131,8 +131,8 @@ and the time show beside the clock, the alert and sound arrive at the end, the o
 pause, +5 min and stop work.
 
 For a change to navigation, play something so the media page appears, then check: scrolling the wheel (and swiping a
-touchpad, and scrolling sideways) moves one page at a time and stops at the first and last page, clicking a dot opens
-that page, and the notch opens on the page you left.
+touchpad, and scrolling sideways) moves one page per notch (several quick notches go several pages) and loops from the last page to the first, a
+touchpad swipe drags the pages along and settles on the nearest one, clicking a dot opens that page, and the notch opens on the page you left.
 
 For a change to activities, also check (each one is a real event, so run them on a laptop):
 

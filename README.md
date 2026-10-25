@@ -1,19 +1,12 @@
 # Notch
 
-A small "dynamic island" for the top of your Windows screen, written in Rust. It sits at the top edge as a slim
-black pill that shows what is happening (a volume change, the microphone turning on, the music playing), and opens
-when you hover over it to show a page: a clock, the media player, a focus timer, a file shelf, a calendar, your
-notifications or system stats. It draws directly with Direct2D, with no UI framework and no web view, so it stays
-small and uses no CPU while idle.
+A tiny notch for the top of your Windows screen, written in Rust. It sits at the top edge as a slim black pill, and opens when you hover over it. While music plays, it shows the track and scrolls the synced lyrics inline, line by line. It idles at about 15 MB of RAM and reaches about 35 MB with active content such as music and lyrics.
+
+It draws straight to the screen with Direct2D: no UI framework, no web view. That keeps it small, fast, and at 0 % CPU while idle. Every page and every pill message is its own module, so you can switch them off, remove them, or write your own.
 
 ## What it includes
 
-Everything below is a separate module, so the list is **extensible**: switch any of it off, remove it, or add your own
-page or activity. In the notch, the gear opens **Edit pages** to add, remove and reorder pages; the tray menu switches
-activities on and off. To write a new one, see [docs/adding-a-page.md](docs/adding-a-page.md) and
-[docs/adding-an-activity.md](docs/adding-an-activity.md).
-
-**Pages** (what you see when you open the notch):
+Pages (what you see when you open the notch):
 
 - Clock
 - Media player with synced lyrics
@@ -23,7 +16,7 @@ activities on and off. To write a new one, see [docs/adding-a-page.md](docs/addi
 - Focus timer
 - System stats (off until you add it)
 
-**Activities** (what the collapsed pill shows while something happens):
+Activities (what the collapsed pill shows while something happens):
 
 - Volume
 - Brightness
@@ -33,62 +26,41 @@ activities on and off. To write a new one, see [docs/adding-a-page.md](docs/addi
 - Camera in use
 - Copied to the clipboard
 
-Limits of the microphone and camera activities:
+### Extensible
 
-- They show that an app has the device **open**, not that it is recording or sending. An app that keeps the device
-  open while you are muted (Google Meet in a browser keeps the microphone open) keeps the orange dot.
-- The microphone follows the default recording device at the time the notch starts.
-- The camera is found through the Windows Frame Server log, so it misses apps that reach the camera another way (some
-  older DirectShow programs) and a camera that is already on when the notch starts. This relies on how Windows 11
-  build 26300 behaves; other Windows versions are untested.
+Nothing here is fixed. The gear in the open notch (**Edit pages**) adds, removes and reorders pages, and the tray menu switches activities on and off. To go further, write your own page or activity: each is one folder or file and one line in a registry, with no other code to touch. See [docs/adding-a-page.md](docs/adding-a-page.md) and [docs/adding-an-activity.md](docs/adding-an-activity.md).
 
-Other limits:
+### Limitations
 
-- **Notifications** appear in the notch a few seconds after Windows shows its own banner (reading the list takes a
-  few seconds when many notifications are waiting), and the notch adds to the Windows notification center without
-  replacing it.
-- **Calendar** reads an iCal address (for Google Calendar, "Secret address in iCal format" in the calendar's
-  settings), not a Google sign-in. Treat that address like a password. An event in a time zone with daylight saving
-  can show an hour off while it is in effect.
-- **File shelf** takes files dropped on the notch, but a file cannot be dragged out of it; open it, or right-click for
-  Show in folder or Copy path.
-- **Brightness** follows the laptop panel only.
+- Windows only, on the primary display, centered at the top. Multiple monitors, display changes while running and fullscreen apps get no special handling. The display scale is read once at start-up.
+- Microphone and camera show that an app has the device **open**, not that it is recording. An app that keeps the microphone open while you are muted (Google Meet in a browser) keeps the orange dot. The microphone follows the default recording device at start-up. The camera is found through the Windows Frame Server log, so it misses some older DirectShow apps and a camera already on at start-up. This was built on Windows 11 build 26300; other versions are untested.
+- Notifications show a few seconds after Windows shows its own banner.
+- Calendar reads an iCal address, not a Google sign-in. A daylight-saving event can show an hour off.
+- The file shelf takes drops but cannot drag files back out; open one, or right-click it for more.
+- Brightness follows the laptop panel only.
+- Version 0.1: expect rough edges.
+
+## How to use it
+
+- **Hover** over the pill to open it; move away to close it.
+- **Pages:** scroll the wheel (or swipe two fingers on a touchpad) or click a dot. Pages loop, and the notch opens on the page you left. The gear opens **Edit pages**: drag to reorder, double-click to remove, click one under "Available" to add.
+- **Media:** click the buttons; the speech-bubble button turns lyrics on and off.
+- **Calendar:** copy your calendar's iCal address, then right-click the tray icon and choose **Use calendar link from clipboard**. For Google Calendar, use "Secret address in iCal format" and treat it like a password.
+- **Tray menu** (right-click the tray icon or the notch): switch activities on and off, set the calendar link, choose what notifications show, **Hide when idle**, and **Quit**. On Windows 11 the icon may sit under the `^` overflow menu.
 
 ## Device requirements
 
-- Windows 10 or 11, 64-bit (developed and tested on Windows 11; Windows 10 is untested)
-- For the media page: a player that shows up in the Windows media controls
-- Internet access only for lyrics and for a calendar address (see [Privacy](#privacy))
-
-It is a single `notch.exe` with no installer. Typical use on the author's machine: 0 % CPU when idle and about
-19 MB of memory with the clock page, about 33 MB while playing music with lyrics (see [Resource use](#resource-use)).
+- Windows 10 or 11, 64-bit (tested on Windows 11)
+- For the media page: a player that appears in the Windows media controls
+- Internet only for lyrics and a calendar link (see [Privacy](#privacy))
 
 ## Download
 
-Download the zip from the repository's Releases page, unzip it and run the executable. Releases are built by GitHub
-Actions when a version tag is pushed ([docs/releasing.md](docs/releasing.md)). To build it yourself, see
-[Development](#development).
+Get `notch.exe` from the [latest release](https://github.com/hibatillah/notch/releases/latest), unzip it and run it. There is no installer. Or clone the repository and build it yourself; see [Development](#development).
 
 ## Contributing
 
-This project does not take contributions: pull requests and issues may be ignored. To change or extend it, clone or
-fork the repository and customize your copy. [docs/adding-a-page.md](docs/adding-a-page.md) shows how to add your
-own page, and [docs/architecture.md](docs/architecture.md) explains how the code is organized.
-
-## Using it
-
-- **Hover** over the pill at the top of the screen to open it; move away to close it.
-- **Pages:** scroll the mouse wheel (or swipe two fingers on a touchpad) or click a dot to move between pages. The
-  notch opens on the page you left. Click the gear to add, remove and reorder pages: drag a page to move it,
-  double-click to remove it, click one under "Available" to add it.
-- **Media page:** click the buttons; the speech-bubble button turns the lyrics on and off, and your choice is
-  remembered.
-- **Calendar:** copy your calendar's iCal address, then right-click the tray icon and choose **Use calendar link from
-  clipboard**.
-- **Tray menu** (right-click the tray icon or the notch): switch activities on and off, set the calendar link, choose
-  what notifications show, **Hide when idle** (the notch is invisible until you point at the top of the screen, then
-  shows a small pill and opens if you stay), and **Quit**. On Windows 11 the tray icon may be under the `^` overflow
-  menu.
+This project does not take contributions: pull requests and issues may be ignored. Clone or fork it and change your copy. [docs/architecture.md](docs/architecture.md) explains how the code is organized.
 
 ## Development
 
@@ -107,8 +79,7 @@ cargo build --release
 target\x86_64-pc-windows-msvc\release\notch.exe
 ```
 
-While developing, run `scripts/reload.sh` from Git Bash. It builds, starts the new build and closes the previous one
-without a gap (a running `.exe` cannot be overwritten on Windows).
+While developing, run `scripts/reload.sh` from Git Bash. It builds, starts the new build and closes the previous one without a gap (a running `.exe` cannot be overwritten on Windows).
 
 Before finishing a change:
 
@@ -119,8 +90,7 @@ cargo test
 scripts/perf.sh
 ```
 
-Tests sit at the bottom of the source file they test. `scripts/perf.sh` measures the memory and CPU of a running
-notch.
+Tests sit at the bottom of the source file they test. `scripts/perf.sh` measures the memory and CPU of a running notch.
 
 | Doc                                            | What it covers                                                                      |
 | ---------------------------------------------- | ----------------------------------------------------------------------------------- |
@@ -140,34 +110,22 @@ Measured by `scripts/perf.sh` on the author's machine (Windows 11, 60 Hz display
 
 |                                              | Result                                 |
 | -------------------------------------------- | -------------------------------------- |
-| Clock page, collapsed and idle               | 0 % CPU, about 19 MB of private memory |
+| Clock page, collapsed and idle               | 0 % CPU, about 15 MB of private memory |
 | One open-and-close                           | about 80 ms of CPU                     |
 | Memory growth after 10 open-and-close cycles | under 1 MB                             |
-| Playing music with synced lyrics             | about 33 MB of private memory          |
+| Playing music with synced lyrics             | up to about 35 MB of private memory    |
 
 Run `scripts/perf.sh` to measure your own machine. See [docs/testing.md](docs/testing.md).
 
 ## Privacy
 
-Nothing is sent anywhere except lyric lookups and the download of the calendar address you give it. When a new track
-starts, the media page asks [LRCLIB](https://lrclib.net) for synced lyrics, which sends the track's artist, title,
-album and length to that service. If you set a calendar address, the calendar page downloads that file from it
-every 15 minutes. There are no accounts, no analytics and no other network use. Notifications, the clipboard and the
-files on the shelf are only read on your computer; the notch never reads what you copy. Settings stay on your computer
-in `%APPDATA%\notch\settings.txt`, which also holds the calendar address; treat it like a password.
+Notch is a local program. You download it and it runs on your computer, with no account and no analytics. It reads what is playing, your notifications, the clipboard state and your shelf files only on your machine, and never reads what you copy. Settings stay in `%APPDATA%\notch\settings.txt`.
 
-To turn lookups off, set the environment variable `NOTCH_LYRICS=off`. The lyrics button in the notch only hides
-lyrics; it does not stop the lookup.
+It connects out for two things only:
 
-## Limitations
-
-- Windows only.
-- Shown on the primary display, centered at the top. Multiple monitors, display changes while running, and
-  fullscreen apps are not handled specially.
-- The display scale is read once at start-up.
-- Version 0.1: expect rough edges.
+- **Lyrics:** when a track starts, it asks [LRCLIB](https://lrclib.net) for synced lyrics, sending the artist, title, album and length. The player itself (Spotify, a browser) is only read through Windows, never contacted. Set `NOTCH_LYRICS=off` to stop lookups; the lyrics button only hides them.
+- **Calendar:** if you set a calendar link (for example Google Calendar's iCal address), it downloads that file every 15 minutes. The link sits in the settings file, so treat that file like a password.
 
 ## License
 
-[MIT](LICENSE). Every dependency is `MIT OR Apache-2.0` licensed; see
-[docs/development.md](docs/development.md#dependencies-and-licenses).
+[MIT](LICENSE)

@@ -4,6 +4,7 @@
 mod activity_layout;
 mod chrome;
 mod display;
+mod drop_target;
 mod navigation;
 mod notch;
 mod page_editor;

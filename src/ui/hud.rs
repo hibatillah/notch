@@ -10,8 +10,8 @@ pub const LEVEL_WIDTH: f32 = 176.0;
 const PADDING: f32 = 14.0;
 const ICON_SIZE: f32 = 18.0;
 const GAP: f32 = 10.0;
-/// Room for the longest value shown next to a level bar, "Muted".
-const LEVEL_VALUE_WIDTH: f32 = 40.0;
+/// Room for the longest value shown next to a level bar, "100"; the bar runs right up to it.
+const LEVEL_VALUE_WIDTH: f32 = 24.0;
 const BAR_THICKNESS: f32 = 4.0;
 const TRACK_ALPHA: f32 = 0.22;
 const MESSAGE: FontStyle = FontStyle::new(SEGOE_UI, 13.0, Weight::SemiBold, Align::Leading);

@@ -13,7 +13,7 @@ cargo fmt --check
 cargo clippy --all-targets -- -D warnings
 cargo license                             # dependency licenses
 scripts/reload.sh                         # build, start the new build, close the old one (Git Bash)
-scripts/perf.sh [--no-build]              # memory and CPU checks (examples/perf.rs); moves the mouse for about two minutes
+scripts/perf.sh [--no-build]              # memory and CPU checks (scripts/perf.rs); moves the mouse for about two minutes
 ```
 
 ## Rules

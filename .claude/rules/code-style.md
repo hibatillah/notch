@@ -1,7 +1,7 @@
 ---
 paths:
   - "src/**/*.rs"
-  - "examples/**/*.rs"
+  - "scripts/**/*.rs"
 ---
 
 # Code style

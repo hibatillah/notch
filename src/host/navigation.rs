@@ -3,13 +3,10 @@
 
 use crate::page::Priority;
 
-/// One mouse wheel notch. Finer wheels and touchpads send smaller amounts that add up to this.
+/// One mouse wheel notch. A notched wheel sends multiples of it; a touchpad sends much smaller amounts.
 const WHEEL_STEP: i32 = 120;
-/// After a step by a notched wheel, further notches wait this long.
-const WHEEL_COOLDOWN_MILLISECONDS: u64 = 250;
-/// After a step by a touchpad or smooth wheel, input is ignored until it has been quiet this long, so one swipe and
-/// its coasting move one page.
-const GESTURE_GAP_MILLISECONDS: u64 = 200;
+/// How much touchpad scrolling moves the pages by one page.
+const SMOOTH_UNITS_PER_PAGE: f32 = 300.0;
 
 /// The order the user put the pages in and which of them are switched on, by page index.
 pub struct PageList {
@@ -126,53 +123,21 @@ fn highest(priorities: &[Option<Priority>], lowest: Priority) -> Option<usize> {
     best.map(|(index, _)| index)
 }
 
-/// The page `step` places after `current` among the navigable ones (negative goes back); `None` at either end.
-pub fn neighbour(navigable: &[usize], current: usize, step: i32) -> Option<usize> {
-    let position = navigable.iter().position(|&index| index == current)? as i32;
-    let target = usize::try_from(position + step).ok()?;
-    navigable.get(target).copied()
+/// What one scroll event asks for.
+#[derive(Debug, PartialEq)]
+pub enum Scroll {
+    /// Whole pages, from a notched wheel: each notch is one page, and many notches go many pages.
+    Pages(i32),
+    /// A fraction of a page, from a touchpad: the pages follow the fingers.
+    Drag(f32),
 }
 
-/// Turns wheel and touchpad scrolling into page steps. Amounts are positive toward the next page.
-#[derive(Default)]
-pub struct Wheel {
-    total: i32,
-    last_input_at: Option<u64>,
-    last_step_at: Option<u64>,
-    is_locked: bool,
-}
-
-impl Wheel {
-    /// Takes one scroll event at `now` (milliseconds) and returns the page step it causes: -1, 0 or 1.
-    pub fn add(&mut self, amount: i32, now: u64) -> i32 {
-        let is_smooth = amount.abs() < WHEEL_STEP;
-        let quiet_for = self.last_input_at.map(|last| now.saturating_sub(last));
-        self.last_input_at = Some(now);
-
-        if self.is_locked {
-            let has_gesture_ended = quiet_for.is_none_or(|gap| gap >= GESTURE_GAP_MILLISECONDS);
-            let has_cooled_down =
-                self.last_step_at.is_none_or(|at| now.saturating_sub(at) >= WHEEL_COOLDOWN_MILLISECONDS);
-            if has_gesture_ended || (!is_smooth && has_cooled_down) {
-                self.is_locked = false;
-                self.total = 0;
-            } else {
-                return 0;
-            }
-        }
-        // A change of direction starts over, and so does a pause between gestures.
-        if self.total.signum() * amount.signum() < 0 || quiet_for.is_some_and(|gap| gap >= GESTURE_GAP_MILLISECONDS) {
-            self.total = 0;
-        }
-        self.total += amount;
-        if self.total.abs() < WHEEL_STEP {
-            return 0;
-        }
-        let step = self.total.signum();
-        self.total = 0;
-        self.is_locked = true;
-        self.last_step_at = Some(now);
-        step
+/// Sorts a scroll amount (positive toward the next page) into whole pages or a drag.
+pub fn classify_scroll(amount: i32) -> Scroll {
+    if amount.abs() >= WHEEL_STEP {
+        Scroll::Pages(amount / WHEEL_STEP)
+    } else {
+        Scroll::Drag(amount as f32 / SMOOTH_UNITS_PER_PAGE)
     }
 }
 
@@ -265,66 +230,15 @@ mod tests {
     }
 
     #[test]
-    fn stepping_moves_along_the_navigable_pages_and_stops_at_the_ends() {
-        let pages = [0, 2, 3];
-        assert_eq!(neighbour(&pages, 0, 1), Some(2));
-        assert_eq!(neighbour(&pages, 2, 1), Some(3));
-        assert_eq!(neighbour(&pages, 3, 1), None);
-        assert_eq!(neighbour(&pages, 0, -1), None);
-        assert_eq!(neighbour(&pages, 3, -1), Some(2));
+    fn a_wheel_notch_is_one_page_and_several_notches_are_several_pages() {
+        assert_eq!(classify_scroll(120), Scroll::Pages(1));
+        assert_eq!(classify_scroll(-120), Scroll::Pages(-1));
+        assert_eq!(classify_scroll(360), Scroll::Pages(3));
     }
 
     #[test]
-    fn stepping_from_a_page_that_is_not_navigable_goes_nowhere() {
-        assert_eq!(neighbour(&[0, 2], 1, 1), None);
-    }
-
-    #[test]
-    fn one_wheel_notch_is_one_step() {
-        let mut wheel = Wheel::default();
-        assert_eq!(wheel.add(120, 0), 1);
-        let mut wheel = Wheel::default();
-        assert_eq!(wheel.add(-120, 0), -1);
-    }
-
-    #[test]
-    fn small_amounts_add_up_to_a_step() {
-        let mut wheel = Wheel::default();
-        assert_eq!(wheel.add(30, 0), 0);
-        assert_eq!(wheel.add(30, 16), 0);
-        assert_eq!(wheel.add(30, 32), 0);
-        assert_eq!(wheel.add(30, 48), 1);
-    }
-
-    #[test]
-    fn a_coasting_swipe_moves_one_page() {
-        let mut wheel = Wheel::default();
-        let steps: i32 = (0..40).map(|tick| wheel.add(40, tick * 16)).sum();
-        assert_eq!(steps, 1);
-    }
-
-    #[test]
-    fn a_new_swipe_after_a_pause_moves_again() {
-        let mut wheel = Wheel::default();
-        assert_eq!(wheel.add(120, 0), 1);
-        assert_eq!(wheel.add(60, 20), 0);
-        assert_eq!(wheel.add(60, 500), 0);
-        assert_eq!(wheel.add(60, 516), 1);
-    }
-
-    #[test]
-    fn notches_in_quick_succession_wait_for_the_cooldown() {
-        let mut wheel = Wheel::default();
-        assert_eq!(wheel.add(120, 0), 1);
-        assert_eq!(wheel.add(120, 100), 0);
-        assert_eq!(wheel.add(120, 300), 1);
-    }
-
-    #[test]
-    fn reversing_direction_starts_over() {
-        let mut wheel = Wheel::default();
-        assert_eq!(wheel.add(80, 0), 0);
-        assert_eq!(wheel.add(-80, 16), 0);
-        assert_eq!(wheel.add(-80, 32), -1);
+    fn a_touchpad_scroll_is_a_fraction_of_a_page() {
+        assert_eq!(classify_scroll(30), Scroll::Drag(0.1));
+        assert_eq!(classify_scroll(-60), Scroll::Drag(-0.2));
     }
 }

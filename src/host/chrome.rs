@@ -50,13 +50,22 @@ fn header_center_y(pill: Rect, scale: f32) -> f32 {
     pill.top + (PADDING_TOP + HEADER_HEIGHT / 2.0) * scale
 }
 
-/// The dots for `count` pages, left to right; the one at `active` is the long one.
-pub fn dot_rects(count: usize, active: usize, pill: Rect, scale: f32) -> Vec<Rect> {
+/// How long dot `position` of `count` is when the pages are at `track` (a page number that can fall between two): 1 on
+/// the page, fading to 0 a page away, so two dots both stretch in the middle of a swipe. The row of pages is a loop, so
+/// the last dot is next to the first.
+fn stretch(position: usize, count: usize, track: f32) -> f32 {
+    let count = count as f32;
+    let distance = (position as f32 - track).rem_euclid(count);
+    (1.0 - distance.min(count - distance)).clamp(0.0, 1.0)
+}
+
+/// The dots for `count` pages, left to right; the ones near `track` are long.
+pub fn dot_rects(count: usize, track: f32, pill: Rect, scale: f32) -> Vec<Rect> {
     let center_y = header_center_y(pill, scale);
     let mut left = pill.left + PADDING_SIDE * scale;
     (0..count)
         .map(|position| {
-            let width = if position == active { ACTIVE_DOT_WIDTH } else { DOT_SIZE } * scale;
+            let width = (DOT_SIZE + (ACTIVE_DOT_WIDTH - DOT_SIZE) * stretch(position, count, track)) * scale;
             let rect =
                 Rect::new(left, center_y - DOT_SIZE * scale / 2.0, left + width, center_y + DOT_SIZE * scale / 2.0);
             left += width + DOT_GAP * scale;
@@ -65,9 +74,14 @@ pub fn dot_rects(count: usize, active: usize, pill: Rect, scale: f32) -> Vec<Rec
         .collect()
 }
 
-pub fn draw_dots(canvas: &Canvas, dots: &[Rect], active: usize, opacity: f32) {
+pub fn draw_dots(canvas: &Canvas, dots: &[Rect], track: f32, opacity: f32) {
     for (position, rect) in dots.iter().enumerate() {
-        let color = if position == active { DOT_ACTIVE } else { DOT_INACTIVE };
+        let amount = stretch(position, dots.len(), track);
+        let color = Color::rgb(
+            DOT_INACTIVE.r + (DOT_ACTIVE.r - DOT_INACTIVE.r) * amount,
+            DOT_INACTIVE.g + (DOT_ACTIVE.g - DOT_INACTIVE.g) * amount,
+            DOT_INACTIVE.b + (DOT_ACTIVE.b - DOT_INACTIVE.b) * amount,
+        );
         canvas.fill_rounded_rect(*rect, rect.height() / 2.0, color.faded(opacity));
     }
 }
@@ -131,7 +145,7 @@ mod tests {
 
     #[test]
     fn the_active_dot_is_long_and_the_dots_are_spaced_evenly() {
-        let dots = dot_rects(3, 1, PILL, 1.0);
+        let dots = dot_rects(3, 1.0, PILL, 1.0);
         assert_eq!(dots[0].width(), 6.0);
         assert_eq!(dots[1].width(), 16.0);
         assert_eq!(dots[1].left - dots[0].right, 4.0);
@@ -141,13 +155,13 @@ mod tests {
 
     #[test]
     fn the_dots_are_centered_in_the_header_row() {
-        let dots = dot_rects(2, 0, PILL, 1.0);
+        let dots = dot_rects(2, 0.0, PILL, 1.0);
         assert_eq!(dots[0].center_y(), 14.0 + 8.0);
     }
 
     #[test]
     fn a_press_near_a_dot_picks_it_and_one_elsewhere_picks_none() {
-        let dots = dot_rects(3, 0, PILL, 1.0);
+        let dots = dot_rects(3, 0.0, PILL, 1.0);
         assert_eq!(dot_at(&dots, Point::new(dots[2].center_x() + 6.0, dots[2].center_y()), 1.0), Some(2));
         assert_eq!(dot_at(&dots, Point::new(300.0, 22.0), 1.0), None);
         assert_eq!(dot_at(&dots, Point::new(dots[0].center_x(), 60.0), 1.0), None);
@@ -163,8 +177,16 @@ mod tests {
 
     #[test]
     fn everything_scales_with_the_display() {
-        let single = dot_rects(2, 0, PILL, 1.0);
-        let double = dot_rects(2, 0, Rect::new(100.0, 0.0, 440.0, 160.0), 2.0);
+        let single = dot_rects(2, 0.0, PILL, 1.0);
+        let double = dot_rects(2, 0.0, Rect::new(100.0, 0.0, 440.0, 160.0), 2.0);
         assert!((double[0].width() - 2.0 * single[0].width()).abs() < 0.01);
+    }
+
+    #[test]
+    fn the_dots_loop_so_the_last_one_stretches_with_the_first() {
+        // Between the last of three pages and the first (position 2.5), both of those dots are half long.
+        let dots = dot_rects(3, 2.5, PILL, 1.0);
+        assert_eq!(dots[0].width(), dots[2].width());
+        assert!(dots[0].width() > dots[1].width());
     }
 }

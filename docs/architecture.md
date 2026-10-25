@@ -42,6 +42,7 @@ particular page or activity, and pages and activities never use each other.
 | `notch.rs` | the `Notch`: animates the pill, tracks hover, selects pages, routes input, paints |
 | `registry.rs` | decides which registered pages are switched on (`NOTCH_PAGES`, the `pages` setting) |
 | `navigation.rs` | the user's page order and which pages are on, which page opens, wheel steps (pure) |
+| `drop_target.rs` | a second thread with an almost invisible window that takes dragged files (OLE needs a single-threaded apartment) and tells the notch to open |
 | `chrome.rs` | the padding and the header (page dots and gear) around every open page |
 | `page_editor.rs` | the "Edit pages" view: chip layout, drag and double-click rules, drawing |
 | `activity_layout.rs` | which transient activities show and where each one starts (pure functions) |
@@ -83,8 +84,9 @@ opens 450 ms after that if the pointer stays.
 With two or more pages that answer `Some` for `Mode::Expanded`, the open notch shows one dot per page in a strip at
 its bottom (`navigation::STRIP_HEIGHT`, 16 px) and the page draws in the space above it. The user moves between pages
 by scrolling the mouse wheel (up or left goes back, down or right goes forward), swiping two fingers on a touchpad
-(sent as scrolling), or clicking a dot. One gesture moves one page and stops at the first and last page; the content
-slides sideways while the pill resizes to the new page. The page left open is remembered as `navigation.page` in the
+(sent as scrolling), or clicking a dot. Each wheel notch moves one page, so several notches move several; a touchpad swipe drags the row of pages along with the
+fingers and settles on the nearest page. The pages form a loop (past the last comes the first), and mid-swipe the two
+pages next to the middle show together while both dots stretch. The pill resizes to the page it ends on. The page left open is remembered as `navigation.page` in the
 settings, so the notch opens on it next time. `host/navigation.rs` holds the rules as pure functions; `notch.rs`
 applies them.
 

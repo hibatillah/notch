@@ -19,7 +19,7 @@ use windows::{
 
 use crate::{
     activity::{Activity, Flash, Presence},
-    gfx::{Canvas, Rect},
+    gfx::{Canvas, Color, Rect},
     log,
     page::{Context, Notifier, TimerId},
     ui::{self, Icon},
@@ -100,6 +100,8 @@ pub struct VolumeActivity {
     notifier: Option<Notifier>,
     volume: f32,
     is_muted: bool,
+    /// Width of the "Muted" message, measured when the speakers are muted.
+    muted_width: f32,
     flash: Flash,
 }
 
@@ -111,6 +113,7 @@ impl VolumeActivity {
             notifier: None,
             volume: 0.0,
             is_muted: false,
+            muted_width: 0.0,
             flash: Flash::default(),
         }
     }
@@ -150,9 +153,9 @@ impl Drop for VolumeActivity {
     }
 }
 
-/// "42" for a volume of 0.42, or "Muted".
-fn value_text(volume: f32, is_muted: bool) -> String {
-    if is_muted { "Muted".to_owned() } else { format!("{}", (volume * 100.0).round() as u32) }
+/// "42" for a volume of 0.42.
+fn value_text(volume: f32) -> String {
+    format!("{}", (volume * 100.0).round() as u32)
 }
 
 impl Activity for VolumeActivity {
@@ -165,13 +168,16 @@ impl Activity for VolumeActivity {
     }
 
     fn presence(&self) -> Option<Presence> {
-        self.flash.is_visible().then_some(Presence::Transient { width: ui::LEVEL_WIDTH })
+        let width = if self.is_muted { self.muted_width } else { ui::LEVEL_WIDTH };
+        self.flash.is_visible().then_some(Presence::Transient { width })
     }
 
     fn draw(&self, canvas: &Canvas, area: Rect, _scale: f32, opacity: f32) {
-        let icon = if self.is_muted { Icon::SpeakerMuted } else { Icon::Speaker };
-        let fraction = if self.is_muted { 0.0 } else { self.volume };
-        ui::draw_level(canvas, area, opacity, icon, fraction, &value_text(self.volume, self.is_muted));
+        if self.is_muted {
+            ui::draw_message(canvas, area, opacity, Icon::SpeakerMuted, Color::WHITE, "Muted", None);
+        } else {
+            ui::draw_level(canvas, area, opacity, Icon::Speaker, self.volume, &value_text(self.volume));
+        }
     }
 
     fn on_start(&mut self, context: &mut Context) {
@@ -195,6 +201,7 @@ impl Activity for VolumeActivity {
         if let Some((volume, is_muted)) = level {
             self.volume = volume;
             self.is_muted = is_muted;
+            self.muted_width = ui::message_width(context.fonts(), "Muted", None);
             self.flash.show(context, SHOW_MILLISECONDS);
         }
     }
@@ -206,13 +213,8 @@ mod tests {
 
     #[test]
     fn the_volume_is_shown_as_a_percentage() {
-        assert_eq!(value_text(0.42, false), "42");
-        assert_eq!(value_text(1.0, false), "100");
-        assert_eq!(value_text(0.0, false), "0");
-    }
-
-    #[test]
-    fn a_muted_speaker_shows_muted_whatever_the_volume() {
-        assert_eq!(value_text(0.8, true), "Muted");
+        assert_eq!(value_text(0.42), "42");
+        assert_eq!(value_text(1.0), "100");
+        assert_eq!(value_text(0.0), "0");
     }
 }

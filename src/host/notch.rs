@@ -54,8 +54,13 @@ const HIDDEN_ALPHA: f32 = 0.006;
 const HIDE_WHEN_IDLE_SETTING: &str = "notch.hide_when_idle";
 /// The expansion past which content starts to appear; below it only the collapsed content shows.
 const EXPANDED_CONTENT_START: f32 = 0.55;
-/// How far page content slides while switching pages, in device-independent pixels.
-const PAGE_SLIDE_TRAVEL: f32 = 40.0;
+/// A swipe ends, and the pages settle on the nearest one, when no scroll arrives for this long.
+const SWIPE_END_TIMER_ID: usize = 5;
+const SWIPE_END_DELAY_MILLISECONDS: u32 = 140;
+/// How far a page is faded for each page-width it is from the middle of the notch.
+const PAGE_FADE_PER_PAGE: f32 = 0.8;
+/// The distance between neighbouring pages in the row, as a share of the content width.
+const PAGE_PITCH: f32 = 0.8;
 /// The setting that remembers the page that was open last.
 const LAST_PAGE_SETTING: &str = "navigation.page";
 const PAGE_ORDER_SETTING: &str = "navigation.order";
@@ -106,11 +111,11 @@ pub struct Notch {
     /// The pages that can be opened right now, in order; the dots show them.
     navigable: Vec<usize>,
     is_gear_hovered: bool,
-    wheel: navigation::Wheel,
     /// While switching pages: the page being left, the direction (1 toward the next page) and the progress.
-    previous_index: Option<usize>,
-    slide_direction: f32,
-    slide: Spring,
+    /// Where the row of pages is, as a position among the navigable pages; between two numbers mid-swipe.
+    track: Spring,
+    /// While fingers swipe on a touchpad: where they have taken the pages, which is not yet a whole page.
+    swipe_position: Option<f32>,
     /// Requests collected from page hooks, applied by `flush`.
     pending: Requests,
     expansion: Spring,
@@ -132,6 +137,8 @@ pub struct Notch {
     is_hovering: bool,
     is_animating: bool,
     pointer_captured: bool,
+    /// True while a file is dragged over the notch.
+    is_dragging_files: bool,
     last_tick: i64,
     ticks_per_second: i64,
     frame_interval_milliseconds: u32,
@@ -193,10 +200,8 @@ impl Notch {
             editor: None,
             navigable: Vec::new(),
             is_gear_hovered: false,
-            wheel: navigation::Wheel::default(),
-            previous_index: None,
-            slide_direction: 1.0,
-            slide: Spring::new(1.0, 260.0, 26.0),
+            track: Spring::new(0.0, 260.0, 26.0),
+            swipe_position: None,
             pending: Requests::default(),
             expansion: Spring::new(0.0, 260.0, 22.0),
             resting_width: Spring::new(0.0, 220.0, 26.0),
@@ -211,6 +216,7 @@ impl Notch {
             is_hovering: false,
             is_animating: false,
             pointer_captured: false,
+            is_dragging_files: false,
             last_tick: 0,
             ticks_per_second,
             frame_interval_milliseconds: display::frame_interval_milliseconds(),
@@ -291,15 +297,47 @@ impl Notch {
         self.flush();
     }
 
+    /// The first enabled page that takes dropped files.
+    fn drop_page(&self) -> Option<usize> {
+        (0..self.pages.len()).find(|&index| self.page_list.is_enabled(index) && self.pages[index].accepts_drops())
+    }
+
+    /// Shows the page that takes dropped files, if the notch is open.
+    fn show_drop_page(&mut self, index: usize) {
+        if self.is_hovering && self.editor.is_none() {
+            self.go_to_page(index);
+        }
+    }
+
+    /// A file drag reached the notch: open it at the page that takes the files, without the usual hover delay.
+    pub fn drag_entered(&mut self) {
+        let Some(index) = self.drop_page() else { return };
+        self.is_dragging_files = true;
+        self.set_hovering(true);
+        self.is_revealed = true;
+        self.expansion.target = 1.0;
+        self.show_drop_page(index);
+        self.start_animation();
+        self.flush();
+    }
+
+    /// The file drag left without dropping: close the notch unless the pointer is on it.
+    pub fn drag_left(&mut self) {
+        self.is_dragging_files = false;
+        if !self.pointer_is_over_window() {
+            self.set_hovering(false);
+        }
+        self.flush();
+    }
+
     /// Files were dropped on the notch: the first page that takes drops gets them, and is shown if the notch is open.
     pub fn files_dropped(&mut self, paths: Vec<std::path::PathBuf>) {
-        let taker =
-            (0..self.pages.len()).find(|&index| self.page_list.is_enabled(index) && self.pages[index].accepts_drops());
-        let Some(index) = taker else { return };
+        self.is_dragging_files = false;
+        let Some(index) = self.drop_page() else { return };
         self.with_page(index, |page, context| page.on_drop(paths, context));
-        if self.is_hovering && self.editor.is_none() {
-            let direction = if index > self.expanded_index { 1 } else { -1 };
-            self.go_to_page(index, direction);
+        self.show_drop_page(index);
+        if !self.pointer_is_over_window() {
+            self.set_hovering(false);
         }
         self.flush();
     }
@@ -326,10 +364,40 @@ impl Notch {
         }
         // Scrolling down, or to the right, goes to the next page.
         let toward_next = if is_horizontal { amount } else { -amount };
-        let step = self.wheel.add(toward_next, unsafe { GetTickCount64() });
-        if step != 0 {
-            self.navigate(step);
-            self.flush();
+        match navigation::classify_scroll(toward_next) {
+            navigation::Scroll::Pages(steps) => {
+                self.end_swipe();
+                self.navigate(steps);
+            }
+            navigation::Scroll::Drag(pages) => self.drag_pages(pages),
+        }
+        self.flush();
+    }
+
+    /// Moves the row of pages by a fraction of a page and settles on the nearest page once the fingers stop.
+    fn drag_pages(&mut self, pages: f32) {
+        if self.navigable.len() < 2 {
+            return;
+        }
+        self.wrap_track();
+        let position = self.swipe_position.unwrap_or(self.track.target) + pages;
+        self.swipe_position = Some(position);
+        self.track.target = position;
+        self.select_page(self.page_at(position));
+        unsafe {
+            SetTimer(Some(self.window), SWIPE_END_TIMER_ID, SWIPE_END_DELAY_MILLISECONDS, None);
+        }
+        self.start_animation();
+    }
+
+    /// Stops following the fingers: the row settles on the nearest whole page.
+    fn end_swipe(&mut self) {
+        unsafe {
+            let _ = KillTimer(Some(self.window), SWIPE_END_TIMER_ID);
+        }
+        if self.swipe_position.take().is_some() {
+            self.track.target = self.track.target.round();
+            self.start_animation();
         }
     }
 
@@ -358,7 +426,7 @@ impl Notch {
     /// Handles `WM_MOUSELEAVE`; returns false when the leave was not real and tracking must be re-armed.
     pub fn pointer_left_window(&mut self) -> bool {
         // While dragging, the pointer may leave the pill; the drag keeps the notch open.
-        if self.pointer_captured {
+        if self.pointer_captured || self.is_dragging_files {
             return true;
         }
         // A resize under a stationary pointer can report a leave that did not happen; only believe a real one.
@@ -381,6 +449,10 @@ impl Notch {
     pub fn timer_fired(&mut self, timer_key: usize) {
         match timer_key {
             ANIMATION_TIMER_ID => self.advance_animation(),
+            SWIPE_END_TIMER_ID => {
+                self.end_swipe();
+                self.flush();
+            }
             REVEAL_TIMER_ID => {
                 unsafe {
                     let _ = KillTimer(Some(self.window), REVEAL_TIMER_ID);
@@ -402,7 +474,7 @@ impl Notch {
                 }
             }
             HOVER_WATCH_TIMER_ID => {
-                if !self.pointer_captured && !self.pointer_is_over_window() {
+                if !self.pointer_captured && !self.is_dragging_files && !self.pointer_is_over_window() {
                     let (cursor, bounds) = self.pointer_and_window_bounds();
                     log::debug(&format!(
                         "hover watch: pointer left the window; cursor=({},{}) window=({},{})-({},{}) expansion={:.2}",
@@ -523,25 +595,44 @@ impl Notch {
         hook(self.pages[index].as_mut(), &mut context)
     }
 
-    /// Moves `step` pages along (negative goes back), sliding the content.
+    /// Moves `step` pages along (negative goes back); past the last page the row comes round to the first.
     fn navigate(&mut self, step: i32) {
-        if let Some(target) = navigation::neighbour(&self.navigable, self.expanded_index, step) {
-            self.go_to_page(target, step.signum());
+        if self.navigable.len() < 2 {
+            return;
+        }
+        self.wrap_track();
+        let target = self.track.target.round() + step as f32;
+        self.track.target = target;
+        self.select_page(self.page_at(target));
+        self.start_animation();
+    }
+
+    /// The page at `position` in the loop of navigable pages.
+    fn page_at(&self, position: f32) -> usize {
+        self.navigable[(position.round() as i64).rem_euclid(self.navigable.len() as i64) as usize]
+    }
+
+    /// Brings a row that has come to rest back into 0..count, so it does not keep growing as the pages go round.
+    fn wrap_track(&mut self) {
+        let count = self.navigable.len() as f32;
+        if self.swipe_position.is_none() && self.track.is_settled() && count > 0.0 {
+            self.track.jump_to(self.track.target.rem_euclid(count));
         }
     }
 
-    fn go_to_page(&mut self, target: usize, direction: i32) {
-        if target == self.expanded_index {
-            return;
+    /// Makes `target` the open page; the row of pages slides to it the next time the layout is refreshed.
+    fn go_to_page(&mut self, target: usize) {
+        if target != self.expanded_index {
+            self.select_page(target);
+            self.start_animation();
         }
-        self.previous_index = Some(self.expanded_index);
-        self.slide_direction = direction as f32;
-        self.slide.jump_to(0.0);
-        self.slide.target = 1.0;
+    }
+
+    /// Remembers `target` as the open page.
+    fn select_page(&mut self, target: usize) {
         self.selected_page = Some(target);
         let id = self.pages[target].id();
         self.settings.set_string(LAST_PAGE_SETTING, id);
-        self.start_animation();
     }
 
     /// Presses in the header: a page dot opens that page. Returns true when the press was in the header.
@@ -550,18 +641,14 @@ impl Notch {
         if !frame.is_open() {
             return false;
         }
-        if let Some(active) = self.navigable.iter().position(|&index| index == self.expanded_index) {
-            let dots = chrome::dot_rects(self.navigable.len(), active, frame.bounds, self.scale);
-            if let Some(position) = chrome::dot_at(&dots, point, self.scale) {
-                let target = self.navigable[position];
-                let direction = if target > self.expanded_index { 1 } else { -1 };
-                self.go_to_page(target, direction);
-                return true;
-            }
+        let dots = chrome::dot_rects(self.navigable.len(), self.track.position, frame.bounds, self.scale);
+        if let Some(position) = chrome::dot_at(&dots, point, self.scale) {
+            self.end_swipe();
+            self.go_to_page(self.navigable[position]);
+            return true;
         }
         if chrome::gear_button(frame.bounds, self.scale).contains(point) {
             self.editor = Some(PageEditor::default());
-            self.previous_index = None;
             return true;
         }
         false
@@ -740,19 +827,8 @@ impl Notch {
         let selection_changed =
             resting_index != self.resting_index || expanded_index != self.expanded_index || activities_changed;
         self.resting_index = resting_index;
-        // A page that takes over while the notch is open (a new notification) slides in like one the user chose.
-        if expanded_index != self.expanded_index
-            && self.is_hovering
-            && self.editor.is_none()
-            && self.previous_index.is_none()
-        {
-            self.previous_index = Some(self.expanded_index);
-            self.slide_direction = if expanded_index > self.expanded_index { 1.0 } else { -1.0 };
-            self.slide.jump_to(0.0);
-            self.slide.target = 1.0;
-            self.start_animation();
-        }
         self.expanded_index = expanded_index;
+        self.follow_open_page();
 
         let PageSizes { resting_width, .. } = self.pages[resting_index].sizes();
         let PageSizes { mut expanded, .. } = self.pages[expanded_index].sizes();
@@ -789,6 +865,30 @@ impl Notch {
             self.start_animation();
         }
         selection_changed
+    }
+
+    /// Points the row of pages at the open page: the row slides there while the notch is open (also when a page takes
+    /// over, such as a new notification) and jumps there otherwise. A swipe in progress steers the row itself.
+    fn follow_open_page(&mut self) {
+        if self.swipe_position.is_some() {
+            return;
+        }
+        let Some(position) = self.navigable.iter().position(|&index| index == self.expanded_index) else { return };
+        let count = self.navigable.len() as f32;
+        // How far the row has to go to reach the open page, the short way round.
+        let mut gap = (position as f32 - self.track.target).rem_euclid(count);
+        if gap > count / 2.0 {
+            gap -= count;
+        }
+        if gap.abs() < 0.01 {
+            return;
+        }
+        if self.is_hovering && self.editor.is_none() {
+            self.track.target += gap;
+            self.start_animation();
+        } else {
+            self.track.jump_to(position as f32);
+        }
     }
 
     /// Collects what the running activities and the pages want to show in the collapsed pill; returns true if the
@@ -836,7 +936,7 @@ impl Notch {
             &mut self.expanded_height,
             &mut self.activity_blend,
             &mut self.badge_width,
-            &mut self.slide,
+            &mut self.track,
         ]
     }
 
@@ -879,6 +979,7 @@ impl Notch {
             self.is_gear_hovered = false;
         }
         log::debug(&format!("hovering={is_hovering}"));
+        super::drop_target::set_hovering(is_hovering);
         // A hidden notch first shows its small pill, and opens only if the pointer stays.
         let waits_to_reveal = is_hovering && self.is_hidden();
         if waits_to_reveal {
@@ -975,7 +1076,6 @@ impl Notch {
         }
 
         if is_settled && !pages_busy {
-            self.previous_index = None;
             self.expansion.snap_to_target();
             for spring in self.layout_springs() {
                 spring.snap_to_target();
@@ -1039,6 +1139,15 @@ impl Notch {
         let expanded_opacity =
             ((frame.expansion - EXPANDED_CONTENT_START) / (1.0 - EXPANDED_CONTENT_START)).clamp(0.0, 1.0);
 
+        // The drop target covers the collapsed pill, wherever it is now.
+        if !self.is_hovering && frame.expansion <= 0.001 {
+            super::drop_target::set_resting_area(RECT {
+                left: self.screen_position.x + region.left,
+                top: self.screen_position.y + region.top,
+                right: self.screen_position.x + region.right,
+                bottom: self.screen_position.y + region.bottom,
+            });
+        }
         let result = self.surface.render_and_present(
             self.window,
             self.screen_position,
@@ -1085,37 +1194,35 @@ impl Notch {
         }
     }
 
-    /// Draws the open page, or the two pages passing each other while switching, and the dots below them.
+    /// Draws the open pages as a loop that slides sideways: mid-swipe the two pages next to the middle show together,
+    /// and past the last page comes the first.
     fn draw_open_pages(&self, canvas: &Canvas, frame: &Frame, opacity: f32) {
         let page_frame = self.page_frame(frame);
-        let shifted = |offset: f32| {
+        let count = self.navigable.len();
+        let track = if count > 0 { self.track.position.rem_euclid(count as f32) } else { 0.0 };
+        if count < 2 || (track - track.round()).abs() < 0.001 {
+            self.pages[self.expanded_index].draw_expanded(canvas, &page_frame, opacity);
+            return;
+        }
+        let pitch = page_frame.bounds.width() * PAGE_PITCH;
+        let before = track.floor();
+        for step in 0..2 {
+            let position = before + step as f32;
+            let offset = (position - track) * pitch;
             let mut shifted = page_frame;
             shifted.bounds.left += offset;
             shifted.bounds.right += offset;
-            shifted
-        };
-        match self.previous_index {
-            Some(previous) => {
-                let progress = self.slide.position.clamp(0.0, 1.0);
-                let travel = PAGE_SLIDE_TRAVEL * self.scale * self.slide_direction;
-                self.pages[previous].draw_expanded(canvas, &shifted(-progress * travel), opacity * (1.0 - progress));
-                self.pages[self.expanded_index].draw_expanded(
-                    canvas,
-                    &shifted((1.0 - progress) * travel),
-                    opacity * progress,
-                );
-            }
-            None => self.pages[self.expanded_index].draw_expanded(canvas, &page_frame, opacity),
+            let fade = (1.0 - (position - track).abs() * PAGE_FADE_PER_PAGE).clamp(0.0, 1.0);
+            let page = self.navigable[position as usize % count];
+            self.pages[page].draw_expanded(canvas, &shifted, opacity * fade);
         }
     }
 
     /// Draws the page dots and the gear along the top of the open notch.
     fn draw_header(&self, canvas: &Canvas, frame: &Frame, opacity: f32) {
-        if let Some(active) = self.navigable.iter().position(|&index| index == self.expanded_index)
-            && self.navigable.len() >= 2
-        {
-            let dots = chrome::dot_rects(self.navigable.len(), active, frame.bounds, self.scale);
-            chrome::draw_dots(canvas, &dots, active, opacity);
+        if self.navigable.len() >= 2 {
+            let dots = chrome::dot_rects(self.navigable.len(), self.track.position, frame.bounds, self.scale);
+            chrome::draw_dots(canvas, &dots, self.track.position, opacity);
         }
         chrome::draw_gear(canvas, frame.bounds, self.scale, self.is_gear_hovered, opacity);
     }

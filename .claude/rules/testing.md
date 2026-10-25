@@ -2,7 +2,6 @@
 paths:
   - "src/**/*.rs"
   - "scripts/**"
-  - "examples/**"
 ---
 
 # Testing
@@ -16,4 +15,4 @@ paths:
   `%APPDATA%\notch\settings.txt` stays untouched.
 - Create `Fonts::new(1.0)` in a test that measures text; DirectWrite works without a window.
 - Add or update unit tests for every piece of logic you add or change.
-- The memory and CPU check is `examples/perf.rs`, started by `scripts/perf.sh`.
+- The memory and CPU check is `scripts/perf.rs`, started by `scripts/perf.sh`.

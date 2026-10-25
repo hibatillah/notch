@@ -5,7 +5,7 @@
 #   scripts/perf.sh --no-build      reuse the existing release build
 #   scripts/perf.sh --with-media    also print numbers with every page on (play music first); no pass/fail
 #
-# The measuring is examples/perf.rs, which holds the limits. This file only builds and starts it.
+# The measuring is scripts/perf.rs, which holds the limits. This file only builds and starts it.
 # Hands off the mouse while it runs: it moves the pointer to open and close the notch.
 # The test starts its own notch, which asks a running notch to close; start yours again with scripts/reload.sh.
 set -euo pipefail

@@ -15,7 +15,6 @@ use windows::{
         UI::{
             HiDpi::{DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2, SetProcessDpiAwarenessContext},
             Input::KeyboardAndMouse::{TME_LEAVE, TRACKMOUSEEVENT, TrackMouseEvent},
-            Shell::{DragFinish, DragQueryFileW, HDROP},
             WindowsAndMessaging::*,
         },
     },
@@ -23,7 +22,7 @@ use windows::{
 };
 
 use super::{
-    display,
+    display, drop_target,
     notch::{Notch, NotchParts, WINDOW_HEIGHT, WINDOW_WIDTH},
     registry,
     settings::Settings,
@@ -85,20 +84,6 @@ fn power_setting_message(lparam: LPARAM) -> Option<SystemMessage> {
     Some(SystemMessage::PowerSettingChanged { setting: setting.PowerSetting, value })
 }
 
-/// The files of a `WM_DROPFILES` message; the drop is finished here.
-fn dropped_paths(drop: HDROP) -> Vec<std::path::PathBuf> {
-    let count = unsafe { DragQueryFileW(drop, u32::MAX, None) };
-    let mut paths = Vec::new();
-    for index in 0..count {
-        let length = unsafe { DragQueryFileW(drop, index, None) } as usize;
-        let mut buffer = vec![0u16; length + 1];
-        let written = unsafe { DragQueryFileW(drop, index, Some(&mut buffer)) } as usize;
-        paths.push(std::path::PathBuf::from(String::from_utf16_lossy(&buffer[..written])));
-    }
-    unsafe { DragFinish(drop) };
-    paths
-}
-
 fn low_word_signed(value: isize) -> i32 {
     i32::from((value & 0xFFFF) as u16 as i16)
 }
@@ -157,8 +142,20 @@ extern "system" fn window_procedure(window: HWND, message: u32, wparam: WPARAM, 
             }
             LRESULT(0)
         }
-        WM_DROPFILES => {
-            let paths = dropped_paths(HDROP(wparam.0 as *mut _));
+        drop_target::WM_POINTER_MOVED => {
+            with_notch(|notch| notch.pointer_moved(x, y));
+            LRESULT(0)
+        }
+        drop_target::WM_DRAG_ENTERED => {
+            with_notch(|notch| notch.drag_entered());
+            LRESULT(0)
+        }
+        drop_target::WM_DRAG_LEFT => {
+            with_notch(|notch| notch.drag_left());
+            LRESULT(0)
+        }
+        drop_target::WM_DRAG_DROPPED => {
+            let paths = drop_target::take_dropped_paths();
             with_notch(|notch| notch.files_dropped(paths));
             LRESULT(0)
         }
@@ -235,7 +232,7 @@ pub fn run(pages: Vec<Box<dyn Page>>, activities: Vec<Box<dyn Activity>>) -> Res
         // A previous instance is asked to close only after this one is visible, so a rebuild swaps without a gap.
         let previous_window = FindWindowW(w!("NotchWindow"), None).ok();
         let window = CreateWindowExW(
-            WS_EX_LAYERED | WS_EX_TOPMOST | WS_EX_TOOLWINDOW | WS_EX_NOACTIVATE | WS_EX_ACCEPTFILES,
+            WS_EX_LAYERED | WS_EX_TOPMOST | WS_EX_TOOLWINDOW | WS_EX_NOACTIVATE,
             w!("NotchWindow"),
             w!("Notch"),
             WS_POPUP,
@@ -248,6 +245,8 @@ pub fn run(pages: Vec<Box<dyn Page>>, activities: Vec<Box<dyn Activity>>) -> Res
             Some(instance.into()),
             None,
         )?;
+
+        drop_target::start(window, scale, screen_position.x + width / 2, screen_position.y);
 
         let mut ticks_per_second = 0;
         QueryPerformanceFrequency(&mut ticks_per_second)?;

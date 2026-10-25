@@ -128,7 +128,6 @@ fn settle(notch: &mut Notch) {
             spring.snap_to_target();
         }
         notch.expansion.snap_to_target();
-        notch.previous_index = None;
     }
 }
 
@@ -170,6 +169,10 @@ fn snapshots_of_every_open_page() {
         open(&mut notch, id);
         save(&notch, &format!("open-{id}"), 260.0);
     }
+    // Half way between two pages, as in the middle of a swipe.
+    open(&mut notch, "media");
+    notch.track.position = 0.45;
+    save(&notch, "open-swipe", 260.0);
     // The media player without lyrics is narrower and taller.
     let mut plain = rig(SampleOptions { media: Some((false, false)), ..options });
     open(&mut plain, "media");
@@ -245,8 +248,9 @@ fn snapshots_of_the_short_lived_messages() {
     pill(&notch, "hud-volume", level_width, |canvas, area| {
         ui::draw_level(canvas, area, 1.0, Icon::Speaker, 0.42, "42")
     });
-    pill(&notch, "hud-muted", level_width, |canvas, area| {
-        ui::draw_level(canvas, area, 1.0, Icon::SpeakerMuted, 0.0, "Muted")
+    let muted_width = ui::message_width(fonts, "Muted", None);
+    pill(&notch, "hud-muted", muted_width, |canvas, area| {
+        ui::draw_message(canvas, area, 1.0, Icon::SpeakerMuted, Color::WHITE, "Muted", None)
     });
     pill(&notch, "hud-brightness", level_width, |canvas, area| ui::draw_level(canvas, area, 1.0, Icon::Sun, 0.7, "70"));
     let messages: [(&str, Icon, Color, &str, Option<&str>); 8] = [
