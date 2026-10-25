@@ -152,9 +152,9 @@ impl TimerPage {
             }
             State::Finished { .. } => match self.timer.next_phase() {
                 Some(Phase::Focus) => FOCUS_ORANGE,
-                _ => BREAK_GREEN,
+                Some(Phase::ShortBreak | Phase::LongBreak) | None => BREAK_GREEN,
             },
-            _ => BREAK_GREEN,
+            State::Running { .. } | State::Paused { .. } => BREAK_GREEN,
         }
     }
 }

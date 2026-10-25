@@ -95,7 +95,7 @@ pub struct Occurrence {
     pub url: String,
 }
 
-// ---- reading -----------------------------------------------------------------------------------------------
+// Reading
 
 /// Joins the lines that continue the one before them.
 fn unfold(text: &str) -> Vec<String> {
@@ -399,7 +399,7 @@ pub fn parse(text: &str) -> Vec<Event> {
     drafts.iter().filter_map(|draft| build_event(draft, &zones)).collect()
 }
 
-// ---- repeating ---------------------------------------------------------------------------------------------
+// Repeating
 
 /// The start (wall seconds) of every repeat of `event` from `from` to `to`, the first one included.
 fn repeat_starts(event: &Event, from: i64, to: i64) -> Vec<i64> {

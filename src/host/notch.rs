@@ -258,7 +258,7 @@ impl Notch {
         self.paint();
     }
 
-    // ---- input from the window ------------------------------------------------------------------------------
+    // Input from the window
 
     pub fn pointer_moved(&mut self, window_x: i32, window_y: i32) {
         let point = self.to_surface_space(window_x, window_y);
@@ -573,7 +573,7 @@ impl Notch {
         self.with_activity(index, |activity, context| activity.on_start(context));
     }
 
-    // ---- page plumbing --------------------------------------------------------------------------------------
+    // Page plumbing
 
     /// Runs an activity hook with a `Context`; whatever the activity requests is applied by the next `flush`.
     fn with_activity<R>(&mut self, index: usize, hook: impl FnOnce(&mut dyn Activity, &mut Context) -> R) -> R {
@@ -654,7 +654,7 @@ impl Notch {
         false
     }
 
-    // ---- editing the page list -------------------------------------------------------------------------------
+    // Editing the page list
 
     /// The pages as the editor lists them: the ones that are on in the user's order, then the ones that are off.
     fn editor_entries(&self) -> Vec<Entry> {
@@ -945,7 +945,7 @@ impl Notch {
         highest_priority(self.pages.iter().map(|page| page.priority(mode)))
     }
 
-    // ---- hover ----------------------------------------------------------------------------------------------
+    // Hover
 
     /// True while the notch is only the thin strip: it hides when idle, nothing is going on, and nobody is pointing at it.
     fn is_hidden(&self) -> bool {
@@ -1033,7 +1033,7 @@ impl Notch {
         Point::new((window_x + origin_x) as f32, (window_y + origin_y) as f32)
     }
 
-    // ---- animation ------------------------------------------------------------------------------------------
+    // Animation
 
     fn start_animation(&mut self) {
         if self.is_animating {
@@ -1085,7 +1085,7 @@ impl Notch {
         self.paint();
     }
 
-    // ---- painting -------------------------------------------------------------------------------------------
+    // Painting
 
     fn frame(&self) -> Frame {
         let amount = self.expansion.position.clamp(-0.05, 1.1);

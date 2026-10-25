@@ -239,7 +239,7 @@ impl Timer {
         }
     }
 
-    // ---- settings -------------------------------------------------------------------------------------------
+    // Settings
 
     /// Restores the timer saved by `save`; a phase that ran out while the notch was closed comes back finished.
     pub fn load(settings: &Settings, now: u64) -> Self {
@@ -299,7 +299,7 @@ fn parse_state(text: &str) -> Option<State> {
     }
 }
 
-// ---- what to show ------------------------------------------------------------------------------------------
+// What to show
 
 /// The time left as the compact view shows it: whole minutes ("24m") above ten minutes, then "m:ss".
 pub fn compact_text(remaining: u64) -> String {

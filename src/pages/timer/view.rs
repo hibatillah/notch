@@ -47,7 +47,7 @@ fn phase_name(phase: Phase) -> &'static str {
 fn running_title(timer: &Timer, phase: Phase) -> String {
     match phase {
         Phase::Focus => format!("Focus · {} of {SESSIONS_PER_ROUND}", timer.session_number()),
-        _ => phase_name(phase).to_owned(),
+        Phase::ShortBreak | Phase::LongBreak => phase_name(phase).to_owned(),
     }
 }
 
@@ -55,7 +55,7 @@ fn start_button_label(next: Option<Phase>) -> &'static str {
     match next {
         Some(Phase::ShortBreak) => "Start break",
         Some(Phase::LongBreak) => "Start long break",
-        _ => "Start focus",
+        Some(Phase::Focus) | None => "Start focus",
     }
 }
 
@@ -108,7 +108,7 @@ pub fn view(timer: &Timer, now: u64) -> View {
             View {
                 title: match phase {
                     Phase::Focus => "Focus session done".to_owned(),
-                    _ => format!("{} over", phase_name(phase)),
+                    Phase::ShortBreak | Phase::LongBreak => format!("{} over", phase_name(phase)),
                 },
                 detail: Some(detail),
                 time: None,
@@ -160,7 +160,7 @@ pub fn alert(timer: &Timer) -> Option<(String, String)> {
     let State::Finished { phase } = timer.state else { return None };
     Some(match phase {
         Phase::Focus => ("Focus session done".to_owned(), format!("{} min", timer.lengths.focus)),
-        _ => (format!("{} over", phase_name(phase)), "back to focus".to_owned()),
+        Phase::ShortBreak | Phase::LongBreak => (format!("{} over", phase_name(phase)), "back to focus".to_owned()),
     })
 }
 
