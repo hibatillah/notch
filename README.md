@@ -8,33 +8,30 @@ small and uses no CPU while idle.
 
 ## What it includes
 
-Pages are what you see when you open the notch. They are separate modules, so you can add your own or remove these.
-Swipe or scroll between them; the dots at the top show where you are, and the gear opens **Edit pages**.
+Everything below is a separate module, so the list is **extensible**: switch any of it off, remove it, or add your own
+page or activity. In the notch, the gear opens **Edit pages** to add, remove and reorder pages; the tray menu switches
+activities on and off. To write a new one, see [docs/adding-a-page.md](docs/adding-a-page.md) and
+[docs/adding-an-activity.md](docs/adding-an-activity.md).
 
-| Page              | What it does                                                                                               |
-| ----------------- | ---------------------------------------------------------------------------------------------------------- |
-| **Clock**         | the time and date                                                                                          |
-| **Media**         | the artwork, title, album and artist, previous / play or pause / next, and three lines of synced lyrics   |
-| **Notifications** | Windows notifications: each new one shows in the pill for four seconds, then a stack with Open and Dismiss |
-| **File shelf**    | drop files on the notch to keep them for later; click one to open it, right-click for more                |
-| **Calendar**      | a week strip and today's events from a calendar address, with a Join button for video meetings           |
-| **Focus timer**   | focus sessions and breaks, with a ring and the minutes left in the pill                                   |
-| **System stats**  | processor, memory, network and disk (off until you add it in Edit pages)                                   |
+**Pages** (what you see when you open the notch):
 
-Activities show up in the collapsed pill while something happens, and each can be switched off from the tray menu:
+- Clock
+- Media player with synced lyrics
+- Notifications
+- File shelf
+- Calendar
+- Focus timer
+- System stats (off until you add it)
 
-| Activity              | Shows                                                                      |
-| --------------------- | -------------------------------------------------------------------------- |
-| **Volume**            | a bar with the value, or "Muted"                                           |
-| **Brightness**        | a bar with the value (laptop screens)                                      |
-| **Charger / battery** | "Charging", "On battery", and "Low battery" at 20 % and 10 %               |
-| **Bluetooth**         | a paired device connecting or disconnecting, with its battery when known   |
-| **Microphone**        | "Microphone on", then an orange dot while an app has it open               |
-| **Camera**            | "Camera on", then a green dot while an app has it open                     |
-| **Copied**            | "Copied" when something is copied (never reads what you copied)            |
+**Activities** (what the collapsed pill shows while something happens):
 
-Pages can add to the collapsed pill too: the media page shows the art with still bars (or the lyric line being sung),
-the timer shows its ring, the shelf says when a file is added, and the calendar reminds you 15 minutes before an event.
+- Volume
+- Brightness
+- Charger and battery
+- Bluetooth devices
+- Microphone in use
+- Camera in use
+- Copied to the clipboard
 
 Limits of the microphone and camera activities:
 
