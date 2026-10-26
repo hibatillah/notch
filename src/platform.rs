@@ -145,15 +145,16 @@ pub fn file_preview(path: &Path, pixels: i32) -> Option<ImageData> {
 /// Makes BGRA pixels from the shell premultiplied: some come with no alpha at all (a photo), and some with colors that
 /// are not yet multiplied by it.
 fn premultiplied(bytes: &mut [u8]) {
-    if bytes.chunks_exact(4).all(|pixel| pixel[3] == 0) {
-        bytes.chunks_exact_mut(4).for_each(|pixel| pixel[3] = 255);
+    let (pixels, _) = bytes.as_chunks_mut::<4>();
+    if pixels.iter().all(|pixel| pixel[3] == 0) {
+        pixels.iter_mut().for_each(|pixel| pixel[3] = 255);
         return;
     }
-    let is_premultiplied = bytes.chunks_exact(4).all(|pixel| pixel[..3].iter().all(|&channel| channel <= pixel[3]));
+    let is_premultiplied = pixels.iter().all(|pixel| pixel[..3].iter().all(|&channel| channel <= pixel[3]));
     if is_premultiplied {
         return;
     }
-    for pixel in bytes.chunks_exact_mut(4) {
+    for pixel in pixels {
         let alpha = u32::from(pixel[3]);
         for channel in &mut pixel[..3] {
             *channel = ((u32::from(*channel) * alpha + 127) / 255) as u8;
