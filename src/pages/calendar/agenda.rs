@@ -7,7 +7,7 @@ use super::{
 };
 
 /// Events listed at once.
-pub const MAX_ROWS: usize = 3;
+pub const MAX_ROWS: usize = 2;
 /// The compact reminder appears this long before an event starts...
 const REMINDER_LEAD_MINUTES: i64 = 15;
 /// ...and stays this long after it started.
@@ -84,8 +84,6 @@ pub struct Row {
 
 pub struct Agenda {
     pub rows: Vec<Row>,
-    /// "3 events · next in 12 min".
-    pub summary: String,
 }
 
 /// "12 min", "2 h", "1 h 30 min".
@@ -122,8 +120,18 @@ fn visible_range(total: usize, next: Option<usize>) -> std::ops::Range<usize> {
     start..start + MAX_ROWS
 }
 
+/// The events of today, with the next one marked and the ones that are over dimmed.
 pub fn build(occurrences: &[Occurrence], now: i64) -> Agenda {
-    let next = next_index(occurrences, now);
+    rows_for(occurrences, now, true)
+}
+
+/// The events of another day, all alike: none is next and none is over.
+pub fn list(occurrences: &[Occurrence]) -> Agenda {
+    rows_for(occurrences, 0, false)
+}
+
+fn rows_for(occurrences: &[Occurrence], now: i64, is_today: bool) -> Agenda {
+    let next = if is_today { next_index(occurrences, now) } else { None };
     let total = occurrences.len();
     let rows = visible_range(total, next)
         .map(|index| {
@@ -131,7 +139,7 @@ pub fn build(occurrences: &[Occurrence], now: i64) -> Agenda {
             let state = match next {
                 Some(next) if index == next => State::Next,
                 Some(next) if index > next => State::Later,
-                _ if occurrence.is_all_day => State::Later,
+                _ if occurrence.is_all_day || !is_today => State::Later,
                 _ => State::Done,
             };
             let meeting = find_meeting(occurrence);
@@ -163,20 +171,7 @@ pub fn build(occurrences: &[Occurrence], now: i64) -> Agenda {
             Row { occurrence: occurrence.clone(), state, time, detail, trailing, meeting }
         })
         .collect();
-    Agenda { rows, summary: summary_text(occurrences, next, now) }
-}
-
-fn summary_text(occurrences: &[Occurrence], next: Option<usize>, now: i64) -> String {
-    let count = occurrences.len();
-    if count == 0 {
-        return "No events".to_owned();
-    }
-    let events = format!("{count} event{}", if count == 1 { "" } else { "s" });
-    match next.map(|index| &occurrences[index]) {
-        Some(occurrence) if occurrence.start <= now => format!("{events} \u{00b7} one is on now"),
-        Some(occurrence) => format!("{events} \u{00b7} next in {}", relative_text(occurrence.start - now)),
-        None => events,
-    }
+    Agenda { rows }
 }
 
 /// The reminder shown in the collapsed pill around a meeting.
@@ -259,11 +254,14 @@ mod tests {
         let day = [event(9, 30, "Standup"), event(13, 60, "Review"), event(16, 60, "Reading")];
         let agenda = build(&day, DAY_START + 13 * HOUR - 12 * MINUTE);
         let states: Vec<State> = agenda.rows.iter().map(|row| row.state).collect();
-        assert_eq!(states, vec![State::Done, State::Next, State::Later]);
+        // Two rows fit, so the one before the next event and the next event are listed.
+        assert_eq!(states, vec![State::Done, State::Next]);
         assert_eq!(agenda.rows[1].detail.as_deref(), Some("in 12 min"));
         assert_eq!(agenda.rows[0].trailing, "Done");
-        assert_eq!(agenda.rows[2].trailing, "1 h");
-        assert_eq!(agenda.summary, "3 events \u{00b7} next in 12 min");
+        let morning = build(&day, DAY_START + 8 * HOUR);
+        let states: Vec<State> = morning.rows.iter().map(|row| row.state).collect();
+        assert_eq!(states, vec![State::Next, State::Later]);
+        assert_eq!(morning.rows[1].trailing, "1 h");
     }
 
     #[test]
@@ -285,21 +283,27 @@ mod tests {
         let agenda = build(&day, DAY_START + 13 * HOUR + 10 * MINUTE);
         assert_eq!(agenda.rows[0].state, State::Next);
         assert_eq!(agenda.rows[0].detail.as_deref(), Some("now"));
-        assert_eq!(agenda.summary, "1 event \u{00b7} one is on now");
     }
 
     #[test]
     fn after_the_last_event_everything_is_done() {
         let agenda = build(&[event(9, 30, "Standup")], DAY_START + 20 * HOUR);
         assert_eq!(agenda.rows[0].state, State::Done);
-        assert_eq!(agenda.summary, "1 event");
     }
 
     #[test]
-    fn an_empty_day_says_so() {
+    fn another_day_lists_its_events_with_none_next_and_none_over() {
+        let agenda = list(&[event(9, 30, "Standup"), event(13, 60, "Review")]);
+        let states: Vec<State> = agenda.rows.iter().map(|row| row.state).collect();
+        assert_eq!(states, vec![State::Later, State::Later]);
+        assert_eq!(agenda.rows[1].trailing, "1 h");
+        assert!(agenda.rows.iter().all(|row| row.detail.is_none()));
+    }
+
+    #[test]
+    fn an_empty_day_has_no_rows() {
         let agenda = build(&[], DAY_START);
         assert!(agenda.rows.is_empty());
-        assert_eq!(agenda.summary, "No events");
     }
 
     #[test]
@@ -318,10 +322,10 @@ mod tests {
         let day: Vec<Occurrence> = (8..14).map(|hour| event(hour, 30, &format!("Event {hour}"))).collect();
         let agenda = build(&day, DAY_START + 10 * HOUR + 40 * MINUTE);
         let names: Vec<&str> = agenda.rows.iter().map(|row| row.occurrence.summary.as_str()).collect();
-        assert_eq!(names, vec!["Event 10", "Event 11", "Event 12"]);
+        assert_eq!(names, vec!["Event 10", "Event 11"]);
         assert_eq!(agenda.rows.len(), MAX_ROWS);
         let late = build(&day, DAY_START + 23 * HOUR);
-        assert_eq!(late.rows[0].occurrence.summary, "Event 11");
+        assert_eq!(late.rows[0].occurrence.summary, "Event 12");
     }
 
     #[test]

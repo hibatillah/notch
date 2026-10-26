@@ -4,6 +4,7 @@ use windows::{
         Graphics::Gdi::{
             BI_RGB, BITMAPINFO, BITMAPINFOHEADER, CreateBitmap, CreateDIBSection, DIB_RGB_COLORS, DeleteObject,
         },
+        System::LibraryLoader::{GetProcAddress, LoadLibraryW},
         UI::{
             Shell::{NIF_ICON, NIF_MESSAGE, NIF_TIP, NIM_ADD, NIM_DELETE, NOTIFYICONDATAW, Shell_NotifyIconW},
             WindowsAndMessaging::{
@@ -13,7 +14,7 @@ use windows::{
             },
         },
     },
-    core::{HSTRING, PCWSTR, Result, w},
+    core::{HSTRING, PCSTR, PCWSTR, Result, w},
 };
 
 /// Message the shell sends to the window for pointer events on the tray icon.
@@ -171,6 +172,32 @@ pub fn remove(window: HWND) {
     }
 }
 
+/// Entry points of `uxtheme.dll` that have no names, only numbers. Windows has no documented way to give a menu the
+/// dark theme; the dark menus of Explorer and of apps such as Notepad use these.
+const SET_PREFERRED_APP_MODE: usize = 135;
+const FLUSH_MENU_THEMES: usize = 136;
+/// The app mode that follows the choice of light or dark in the Windows settings.
+const APP_MODE_ALLOW_DARK: i32 = 1;
+
+/// Makes the menus of this process follow the light or dark choice in the Windows settings. If Windows does not have
+/// these entry points (an older version, or a later one that dropped them), the menu keeps the light theme.
+fn follow_system_theme() {
+    type Entry = unsafe extern "system" fn() -> isize;
+    unsafe {
+        let Ok(module) = LoadLibraryW(w!("uxtheme.dll")) else { return };
+        if let Some(entry) = GetProcAddress(module, PCSTR(SET_PREFERRED_APP_MODE as *const u8)) {
+            // SAFETY: this entry point takes the app mode and returns the previous one.
+            let set_mode = std::mem::transmute::<Entry, extern "system" fn(i32) -> i32>(entry);
+            set_mode(APP_MODE_ALLOW_DARK);
+        }
+        if let Some(entry) = GetProcAddress(module, PCSTR(FLUSH_MENU_THEMES as *const u8)) {
+            // SAFETY: this entry point takes nothing and returns nothing.
+            let flush = std::mem::transmute::<Entry, extern "system" fn()>(entry);
+            flush();
+        }
+    }
+}
+
 /// Shows the context menu at the pointer: a checkable item for each activity, the items pages add (page index, item
 /// index, label), then the notch's own options and "Quit". Returns what was picked.
 pub fn show_context_menu(
@@ -179,6 +206,8 @@ pub fn show_context_menu(
     page_items: &[(usize, usize, String)],
     state: MenuState,
 ) -> Option<MenuChoice> {
+    // Each time, so a change of theme while the notch runs shows in the next menu.
+    follow_system_theme();
     unsafe {
         let Ok(menu) = CreatePopupMenu() else { return None };
         for (index, &(label, is_on)) in activities.iter().enumerate() {
@@ -263,5 +292,14 @@ mod tests {
         assert_eq!(choice_for_command(0, 3), None);
         assert_eq!(choice_for_command(MENU_COMMAND_FIRST_ACTIVITY + 3, 3), None);
         assert_eq!(choice_for_command(50, 3), None);
+    }
+
+    #[test]
+    #[ignore = "depends on the Windows version; run on purpose"]
+    fn this_windows_has_the_entry_points_that_make_menus_follow_the_theme() {
+        let module = unsafe { LoadLibraryW(w!("uxtheme.dll")) }.expect("uxtheme.dll");
+        for ordinal in [SET_PREFERRED_APP_MODE, FLUSH_MENU_THEMES] {
+            assert!(unsafe { GetProcAddress(module, PCSTR(ordinal as *const u8)) }.is_some(), "ordinal {ordinal}");
+        }
     }
 }

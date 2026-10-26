@@ -26,7 +26,7 @@ To change which pages are *compiled in*, edit `src/pages/mod.rs`; see [adding-a-
 
 ## Which activities are on
 
-Activities (volume, brightness, charger and battery, microphone, camera, copied) are all on by default. Right-click the tray icon
+Activities (volume, brightness, charger and battery, Bluetooth, microphone, camera, copied, Caps Lock, notifications) are all on by default. Right-click the tray icon
 and tick or untick them: the choice is remembered. It is stored as `activity.<id>` in the
 settings file; an activity that is off at start is never started, so it costs nothing.
 
@@ -42,7 +42,7 @@ change something; you can also edit it by hand while the notch is not running.
 | `timer.focus_minutes` | 5 to 120 | length of a focus session; the timer page changes it in steps of 5 |
 | `timer.short_break_minutes`, `timer.long_break_minutes` | minutes | break lengths (default 5 and 15); set by hand |
 | `timer.state`, `timer.completed` | written by the notch | the running timer and the focus sessions finished in this round, so a restart keeps them |
-| `navigation.order`, `navigation.disabled` | page ids, comma-separated | the order of the pages and the ones switched off; the "Edit pages" view writes them |
+| `navigation.order`, `navigation.disabled` | page ids, comma-separated | the order of the pages and the ones switched off; the "Edit pages" view writes them, and by hand they work while that view is off |
 | `notifications.show_text` | `on`, `off` | show what a notification says in its banner (off is private mode); set by hand. Switch the banner itself off with `activity.notifications` |
 | `calendar.ics_url` | a web address | the calendar address; the tray menu sets it from the clipboard. It is a secret: anyone with it can read the calendar |
 | `calendar.refresh_minutes` | minutes | how often the calendar is downloaded again (default 15); set by hand |
@@ -76,9 +76,10 @@ Things a developer tunes by editing source:
 | how big a page is | the page's `sizes()` |
 | corner radius, spring stiffness, window size | `src/host/notch.rs` |
 | text styles | `const FontStyle`s in each page |
-| the limits of the performance test | `scripts/perf.sh` |
+| the limits of the performance test | `scripts/perf.rs` |
 
 ## Start with Windows
 
-This is not built in. To start the notch at sign-in, put a shortcut to `notch.exe` in the folder opened by
-pressing Win+R and running `shell:startup`.
+The installer starts the notch at sign-in unless that is unticked in its options. The tray menu's **Start with
+Windows** item shows whether it does, and switches it: it adds or removes a `Notch` value under
+`HKCU\Software\Microsoft\Windows\CurrentVersion\Run` that points at the copy of `notch.exe` that is running.

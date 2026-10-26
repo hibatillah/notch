@@ -17,3 +17,5 @@ paths:
 - The pill is black and flush with the top edge. Concave "flare" fillets join its sides to the top of the screen, like
   a MacBook notch, and the window region includes their width.
 - Enable `windows` crate features one API at a time in `Cargo.toml`.
+- An undocumented Windows entry point (the dark tray menu in `host/tray.rs`) is looked up by `GetProcAddress` at run
+  time and skipped when missing, so a Windows version without it keeps working.

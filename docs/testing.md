@@ -16,11 +16,27 @@ They run in a fraction of a second and need no window. They cover the logic that
 - settings: parsing, defaults and saving
 - page selection: priority rules, ties, switching pages off, timer keys
 - the media page's rules: when it shows, how wide it asks to be
-- layout of the open view, and the progress bar and button hit areas
+- layout of the open view and the hit areas of the buttons, the shelf's files and the calendar's days
 - the lyric follower, which tracks the current line and arms timers
 
-What they do not cover is the drawing itself and the Windows integration (the window, the tray, the media session).
-Check those by running the notch: see the manual checklist below.
+What they do not cover is the Windows integration (the window, the tray, the media session). Check that by running the
+notch: see the manual checklist below.
+
+### Pictures of the pages
+
+```
+cargo test snapshots -- --ignored
+```
+
+These tests are ignored by default. They draw every page off-screen with example content and write the pictures to
+`target/snapshots` (BMP files; `host/notch/snapshots.rs` holds them): each open page, the collapsed pill in its
+states, the short messages, the notification banner and the shelf with files dragged over it. Look at the pictures
+after a change to drawing or layout. Two more ignored tests need a real screen and open windows for a moment:
+
+```
+cargo test a_real_maximized -- --ignored      # a maximized and a full-screen window are told apart
+cargo test this_windows_has -- --ignored      # the Windows entry points behind the dark tray menu exist
+```
 
 ### Where the tests live
 
@@ -32,16 +48,17 @@ spread over many files:
 | --- | --- |
 | page contract | `src/page.rs` |
 | activity contract | `src/activity.rs` (change detection) |
-| host | `src/host/notch.rs` (page choice, badge room), `navigation.rs` (page steps, wheel, dots), `activity_layout.rs`, `registry.rs`, `settings.rs`, `tray.rs` (menu commands) |
+| host | `src/host/notch.rs` (page choice, badge room), `navigation.rs` (page steps, wheel, swipe limit, dots), `activity_layout.rs`, `registry.rs`, `settings.rs`, `tray.rs` (menu commands), `screen_mode.rs` (maximized or full screen), `startup.rs`, `notch/snapshots.rs` (the hiding rules) |
 | drawing toolkit | `src/gfx/color.rs`, `geometry.rs`, `spring.rs`, `image.rs`, `path.rs`, `raster.rs`, `canvas.rs` (flare shape) |
-| widgets | `src/ui/icon_button.rs`, `icons.rs`, `progress_bar.rs`, `hud.rs` |
+| widgets | `src/ui/icon_button.rs`, `icons.rs`, `outline.rs`, `ring.rs`, `hud.rs` |
 | timer page | `src/pages/timer/session.rs` (rules, saving), `view.rs`, `layout.rs` |
 | stats page | `src/pages/stats/format.rs` (numbers), `sampler.rs` (the readings), `mod.rs` (layout) |
-| shelf page | `src/pages/shelf/items.rs` (the list, wording, saving), `mod.rs` (places, hit targets, name lines) |
+| shelf page | `src/pages/shelf/items.rs` (the list, wording, saving), `mod.rs` (places, hit targets, name lines, double click, arrival) |
+| platform | `src/platform.rs` (clipboard text, pixel conversion of Explorer pictures) |
 | calendar page | `src/pages/calendar/dates.rs`, `ics.rs` (reading and repeating), `agenda.rs` (what a day says), `fetch.rs` |
 | notifications activity | `src/activities/notifications/items.rs` (the wording), `mod.rs` (banner height, lines) |
 | editing pages | `src/host/page_editor.rs`, `chrome.rs`, `navigation.rs` (the page list) |
-| activities | `src/activities/battery.rs` (charge rules), `volume.rs`, `camera.rs`, `privacy.rs` |
+| activities | `src/activities/battery.rs` (charge rules), `volume.rs`, `camera.rs`, `privacy.rs`, `caps_lock.rs` |
 | media page | `src/pages/media/mod.rs`, `layout.rs`, `resting.rs`, `session.rs`, `lyric_follower.rs`, `lyrics/mod.rs`, `lyrics/client.rs` |
 
 To run one file's tests, or a single test, filter by name:
@@ -89,8 +106,8 @@ It checks, and fails when a limit is exceeded:
 The last check is the important one. A common mistake is leaving a timer or animation running, which makes the
 notch use CPU forever; it shows up there as several percent of a core.
 
-A healthy build is far under every limit (typically 0 % idle CPU, 19 MB, 80 ms per cycle). The limits are set in
-constants at the top of `scripts/perf.rs`; they exist to catch regressions, so fix the cause rather than raising
+A healthy build is far under every limit. The numbers in the README were measured on an earlier build; run the check
+for current ones. The limits are set in constants at the top of `scripts/perf.rs`; they exist to catch regressions, so fix the cause rather than raising
 one.
 
 `--with-media` prints memory and CPU with every page on and your music playing. It has no limits, because the result
@@ -119,10 +136,9 @@ For a change that affects drawing or input, run `scripts/reload.sh` and check:
 - the lyric button hides and shows lyrics, and the choice is remembered after restarting
 - the tray icon's Quit closes the notch and removes the icon
 
-For a change to the notch's frame, the editor or hiding: open the notch and check the dots and the settings button, open the settings button
-and add, drag, double-click and remove a page, tick "Hide when idle" in the tray menu and check that the notch
-disappears, shows its small pill when you rest the pointer on the top of the screen, and opens if you stay. The
-mouse-driven checks need an unlocked screen.
+For a change to the notch's frame or hiding: open the notch and check the dots, the status marks and the time, tick "Hide when idle" in the tray menu and check that the notch
+disappears, shows its small pill when you rest the pointer on the top of the screen, and opens if you stay. To check the "Edit pages" view, set `SETTINGS_BUTTON_SHOWN` to true in `chrome.rs` and
+add, drag, double-click and remove a page. The mouse-driven checks need an unlocked screen.
 
 For a change to the timer, seed a short session by hand (stop the notch, put `timer.state=running focus 30000 <end>` in
 the settings file, where `<end>` is the Unix time in milliseconds 30 seconds from now, and start it) and check: the ring
@@ -132,6 +148,10 @@ pause, +5 min and stop work.
 For a change to navigation, play something so the media page appears, then check: scrolling the wheel (and swiping a
 touchpad, and scrolling sideways) moves one page per notch (several quick notches go several pages) and loops from the last page to the first, a
 touchpad swipe drags the pages along and settles on the nearest one, clicking a dot opens that page, and the notch opens on the page you left.
+
+For a change to the shelf: drop files on the notch (it turns blue and the files drop in), check the pictures match Explorer, double-click one to open it, drag one into a folder (it is copied, and leaves the shelf), right-click one and press its cross to remove it, and check the original files are untouched.
+
+For a change to the calendar: with a calendar linked, click each day of the week (the events change, and today stays blue), and close and open the notch (today again).
 
 For a change to activities, also check (each one is a real event, so run them on a laptop):
 
@@ -144,4 +164,6 @@ For a change to activities, also check (each one is a real event, so run them on
 - start recording in any app: "Microphone on", then an orange dot until it stops, then "Microphone off"
 - open the camera in a browser or a video-call app: "Camera on", then a green dot, then "Camera off"
 - plug and unplug the charger, and let the battery fall through 20 % and 10 %: the matching message
+- receive a notification: a banner with the app's logo for about four seconds; point at the notch while it shows and it stays until you leave
 - untick an activity in the tray menu: it no longer shows, and stays off after restarting
+- open the tray menu with Windows in dark mode: the menu is dark; tick "Start with Windows" and check the entry under `HKCU\Software\Microsoft\Windows\CurrentVersion\Run`

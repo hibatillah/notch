@@ -6,14 +6,14 @@ see [configuration.md](configuration.md).
 
 ## Add a page
 
-The shared layout fixes every open view to 82 device-independent pixels of content height, plus 50 for the
-header and padding (132 total). Change `CONTENT_HEIGHT` in `src/host/chrome.rs` to adjust it. The host uses
-`PageSizes::expanded.width` but ignores its height; existing content can overflow and is clipped at the notch boundary.
+The shared layout fixes every open view to 86 device-independent pixels of content height, plus 50 for the
+header and padding (136 total). Change `CONTENT_HEIGHT` in `src/host/chrome.rs` to adjust it for every page. The host
+uses `PageSizes::expanded.width` but ignores its height; content taller than 86 px is clipped at the notch boundary.
 
 ### 1. Create the folder
 
 Make `src/pages/<name>/mod.rs`. A page may be one file or many; keep everything it needs inside its folder. A page
-can use `gfx` and `ui`, but never another page.
+can use `page`, `activity`, `gfx`, `ui` and `platform`, but never another page.
 
 ### 2. Implement `Page`
 
@@ -72,7 +72,7 @@ impl Page for GreetingPage {
     }
 
     fn sizes(&self) -> PageSizes {
-        PageSizes { resting_width: 150.0, expanded: Size::new(320.0, 90.0) }
+        PageSizes { resting_width: 150.0, expanded: Size::new(320.0, 86.0) }
     }
 
     fn draw_resting(&self, canvas: &Canvas, frame: &Frame, opacity: f32) {
@@ -113,7 +113,7 @@ What each part does:
   highest priority wins; `Priority::NORMAL` beats `BACKGROUND`. Open, every page that answers `Some` can be
   reached by scrolling or by the page dots, and the highest priority is only the page shown first.
 - Report the size of your content only; the notch adds 32 px to the width and 50 px to the height for its padding and
-  header. The window is 260 px high, so keep the content at most 200 px high.
+  header. The height is always 86 px whatever you ask for, so lay the content out for that.
 - `sizes` is the size you want, in device-independent pixels. Ask again whenever your content changes size; the host
   asks after every event and animates the change.
 - `draw_resting` and `draw_expanded` draw your content. Multiply sizes by `frame.scale` to get device pixels, and fade
@@ -184,11 +184,14 @@ To only turn a page off without deleting it, list the pages you want in `NOTCH_P
 | `on_timer(timer, context)` | no | when one of the page's timers fires |
 | `on_notify(context)` | no | after a background thread used the page's `Notifier` |
 | `animate(elapsed_seconds)` | no | each frame while the notch animates; return true while the page is still moving |
+| `draw_backdrop(canvas, frame, pill, radius, opacity)` | no | behind everything in the open notch, header included (the media page's lyric glow); `pill` is the whole notch |
+| `header_status_width()`, `draw_header_status(canvas, area, scale, opacity)`, `header_status_rank()` | no | a small mark kept in the header beside the time, whichever page is open (the wave, the timer's ring); the lowest rank sits nearest the time |
+| `shows_live_text()` | no | true while the collapsed pill shows text being read as it changes (the lyric line); lets it stay over a maximized window when the user asked |
 | `presence()` and `draw_presence(canvas, area, scale, opacity)` | no | after every event: something the page shows in the collapsed pill even when it is not the page on show, as an activity does |
 
 A page that also has something to say while closed (the timer's ring and minutes, the alert when a phase ends) answers
 `presence()` with `Presence::Badge { width }` (a mark kept beside the page on show) or `Presence::Transient { width }`
-(takes over the pill for a moment), and draws it in `draw_presence` into the area the host gives. It can use
+(takes over the pill for a moment; `Presence::Banner` is for activities), and draws it in `draw_presence` into the area the host gives. It can use
 `activity::Flash` for a transient that comes and goes, and its own timers and settings as usual. See
 [adding-an-activity.md](adding-an-activity.md) for how the host lays these out.
 
@@ -231,6 +234,7 @@ Passed to every hook that can change something.
 | `cached_image(key, build)` | an image you draw once on the CPU (for example with `Mask`) and reuse by `key`; this is how icons are drawn |
 | `fill_top_flares(bounds, flare, color)` | the concave notch-style corners where the pill meets the screen top (the host uses it) |
 | `image(&brush, rect, radius, opacity)` | an uploaded image in a rounded rectangle |
+| `upload(&image)` | upload an image to draw with `image`, for a page that keeps its own brushes and drops them when done (the shelf's previews) |
 | `clipped(rect, draw)` | run `draw` with everything outside `rect` cut away |
 | `scaled_about(point, factor, draw)` | run `draw` scaled around a point; text stays sharp |
 
@@ -243,7 +247,12 @@ into small cached images by `ui::Icon`, not font glyphs. Do not use Direct2D geo
 | Widget | Use |
 | --- | --- |
 | `IconButton` | an icon button (an `Icon`) with the ghost hover: nothing until the pointer is over it, then a faint rounded wash |
-| `ProgressBar` | a progress bar that can be scrubbed: `fraction_at(x)` and `is_hit(point)` |
+| `PillButton` | a rounded button with a label; primary (accent) or destructive (dark red) |
+| `Ring` | a circular progress mark |
+| `Icon` | a glyph drawn from a path into a cached image; add one in `src/ui/icons.rs` |
+| `draw_dashed_outline` | a dashed rounded outline that bends at the corners (the shelf's drop zone) |
+
+Text helpers in `gfx`: `clamp_lines` breaks text into at most a number of lines with an ellipsis, and `balance_lines` evens the lines out.
 
 ### Background work
 

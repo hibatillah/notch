@@ -1,43 +1,41 @@
 # Notch
 
 A Windows "dynamic island" written in Rust: a black pill at the top of the screen, drawn with Direct2D, no UI
-framework. It must use 0 % CPU when idle and stay under 50 MB of memory. Windows only. Read `docs/architecture.md`
-before changing structure.
+framework. It idles at 0 % CPU and stays under 50 MB of memory. Windows only.
 
 ## Commands
 
 ```
 cargo build --release                     # target\x86_64-pc-windows-msvc\release\notch.exe
 cargo test                                # unit tests, no window needed
+cargo test snapshots -- --ignored         # writes pictures of the pages to target/snapshots (see docs/testing.md)
 cargo fmt --check
 cargo clippy --all-targets -- -D warnings
 cargo license                             # dependency licenses
-scripts/reload.sh [--debug]                # build, start the new build, close the old one (Git Bash)
+scripts/reload.sh [--debug]               # build, start the new build, close the old one (Git Bash)
 scripts/watch.sh                          # debug build and relaunch on every saved source file (Git Bash)
 scripts/perf.sh [--no-build]              # memory and CPU checks (scripts/perf.rs); moves the mouse for about two minutes
 ```
 
 ## Rules
 
-The rules are in `.claude/rules/`; the ones without a `paths` filter always apply:
-
-| File | Applies to | Covers |
-| --- | --- | --- |
-| `workflow.md` | always | do not kill the notch, checks before done, no commits unless asked |
-| `performance.md` | always | 0 % idle CPU, memory budget, no polling |
-| `contributions.md` | always | no outside contributions |
-| `code-style.md` | `src/**/*.rs` | naming, comments, units, `unsafe` |
-| `pages-and-host.md` | `src/pages`, `activities`, `host`, `page.rs`, `activity.rs`, `gfx`, `ui` | what may depend on what, timer ids, settings keys |
-| `windows-and-hover.md` | `src/host`, `src/gfx`, `Cargo.toml` | pinned crates, hover tracking, window shape |
-| `testing.md` | `src/**/*.rs`, `scripts/**` | where tests live, how to write them |
-| `scripts.md` | `scripts/**` | thin `.sh` runners, logic in separate files |
-| `dependencies-and-license.md` | `Cargo.toml`, `Cargo.lock`, `LICENSE` | MIT, check licenses, ask before adding |
-| `ci-and-release.md` | `.github/**`, `Cargo.toml` | CI on default-branch pushes, release on tags only |
+`.claude/rules/` holds the rules, loaded by the paths they cover. Three have no path filter and always apply:
+`workflow.md` (checks before done, no commits unless asked, never kill the notch), `performance.md` (no polling, memory
+budget) and `contributions.md` (no outside contributions).
 
 ## Docs
 
-`docs/development.md` (build, run, checks, style, licenses), `docs/testing.md`, `docs/architecture.md`,
-`docs/adding-a-page.md`, `docs/adding-an-activity.md`, `docs/configuration.md`, `docs/releasing.md`.
+Read the doc for the work in front of you before starting it:
+
+| Work | Read |
+| --- | --- |
+| restructuring, or finding where something lives | `docs/architecture.md` |
+| a new page | `docs/adding-a-page.md` |
+| a new activity (volume, Caps Lock, notification banner) | `docs/adding-an-activity.md` |
+| layout, padding or the open and collapsed shapes | `docs/development.md` (the notch layout) |
+| a test, a snapshot, the manual checklist, `perf.sh` | `docs/testing.md` |
+| settings keys, environment variables, tray options | `docs/configuration.md` |
+| the installer, a release, updating | `docs/releasing.md` |
 
 ## Debugging
 

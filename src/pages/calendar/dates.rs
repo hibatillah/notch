@@ -4,10 +4,21 @@
 pub const SECONDS_PER_DAY: i64 = 86_400;
 pub const SECONDS_PER_MINUTE: i64 = 60;
 
-pub const WEEKDAY_NAMES: [&str; 7] = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"];
 pub const WEEKDAY_LETTERS: [&str; 7] = ["M", "T", "W", "T", "F", "S", "S"];
-pub const MONTH_NAMES: [&str; 12] =
-    ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+pub const MONTH_NAMES: [&str; 12] = [
+    "January",
+    "February",
+    "March",
+    "April",
+    "May",
+    "June",
+    "July",
+    "August",
+    "September",
+    "October",
+    "November",
+    "December",
+];
 
 /// Days since 1970-01-01 of a civil date (the proleptic Gregorian calendar).
 pub fn days_from_civil(year: i64, month: u32, day: u32) -> i64 {

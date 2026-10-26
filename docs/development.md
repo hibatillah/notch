@@ -11,7 +11,8 @@ These are needed only to build from source. To run an already-built `notch.exe` 
 - Visual Studio Build Tools with the **Desktop development with C++** workload, which provides the MSVC linker and
   the Windows SDK
 - [Git for Windows](https://git-scm.com/download/win), only for the `.sh` scripts (`scripts/reload.sh`,
-  `scripts/perf.sh`), which run in Git Bash
+  `scripts/watch.sh`, `scripts/perf.sh`), which run in Git Bash
+- [Inno Setup](https://jrsoftware.org/isinfo.php), only to build the installer by hand; the release workflow installs it
 
 `.cargo/config.toml` makes `x86_64-pc-windows-msvc` the default target. If your Rust install uses the GNU toolchain,
 add the target once:
@@ -91,60 +92,69 @@ The host owns the shape, the padding and the header. A page draws only the conte
 are in device-independent pixels (multiply by the display scale when drawing). The numbers are constants in
 `src/host/chrome.rs`; the time is drawn by `src/host/clock.rs`.
 
-**Open (pointer over the notch)**, here a page whose content is 300 x 80:
+**Open (pointer over the notch)**, here a page whose content is 300 px wide (the height is always 86):
 
 ```
-      flare                                              flare
-         \                                                /
-          \______________________________________________/     top edge of the screen
-          |                                              |
-          |  10 px padding top                           |
-          |  [== o o o o o]        18:41            [=]  |     header, 16 px high
-          |   page dots (left)   time (middle)  settings |     the time is centered on the notch
-          |  10 px gap                                   |
-          |  +----------------------------------------+  |
-          |  |                                        |  |
-    16 px |  |  THE PAGE: only this area is its own   |  | 16 px
-          |  |  width  = PageSizes.expanded.width     |  |
-          |  |  height = PageSizes.expanded.height    |  |
-          |  |  drawn in Frame::bounds                |  |
-          |  +----------------------------------------+  |
-          |  14 px padding bottom                        |
-          \______________________________________________/
+      flare                                                flare
+         \                                                  /
+          \________________________________________________/     top edge of the screen
+          |                                                |
+          |  10 px padding top                             |
+          |  [== o o o]               (o) |||  18:41       |     header, 16 px high
+          |   page dots (left)     status marks  time      |     marks and time sit at the right edge
+          |  10 px gap                                     |
+          |  +------------------------------------------+  |
+          |  |                                          |  |
+    16 px |  |  THE PAGE: only this area is its own     |  | 16 px
+          |  |  width  = PageSizes.expanded.width       |  |
+          |  |  height = 86 (chrome::CONTENT_HEIGHT)    |  |
+          |  |  drawn in Frame::bounds                  |  |
+          |  +------------------------------------------+  |
+          |  14 px padding bottom                          |
+          \________________________________________________/
 
-    pill width  = page width  + 32      (16 + 16)
-    pill height = page height + 50      (10 + 16 + 10 + 14)
+    pill width  = page width + 32     (16 + 16)
+    pill height = 86 + 50 = 136       (10 + 16 + 10 + 86 + 14)
 ```
 
-- The header belongs to the host, on every page: the page dots (the long one is the open page) on the left, the time
-  centered, and the settings button (it opens "Edit pages") on the right.
-- The window is 260 px high, so a page's content is at most about 200 px high.
+- The header belongs to the host, on every page: the page dots (the long one is the open page) on the left, and at the
+  right the status marks (the music wave, the timer ring, muted speakers, Caps Lock) and the time. The settings button
+  that opens "Edit pages" is switched off (`chrome::SETTINGS_BUTTON_SHOWN`).
+- Every page has the same 86 px of content height, whatever it asks for. Content that is taller is clipped, so lay a
+  page out for 86 px (the stats tiles and the calendar do).
 - A page cannot draw into the header or the padding.
 
-**Collapsed**, the pill is 30 px high (plus 3 px of bottom padding) and one of three things fills it:
+**Collapsed**, the pill is 30 px high (plus 3 px of bottom padding), and one of four things fills it:
 
 ```
-  nothing happening            music playing               activity or timer
-      _________                ______________________       ___________________
-     /  18:41  \              / (page draws it)  [o] \     /  (activity draws) \
-     \_________/              \______________________/     \___________________/
-     host: the time           the media page, plus an      a transient takes the pill for
-     in a 96 px pill          optional badge at the right  a moment (volume, charging, ...)
+  nothing happening     music playing        activity or timer      notification banner
+     _________        ____________________    __________________    ____________________
+    /  18:41  \      / (page draws it) [o] \  / (activity draws) \  | [D] Rafi - Discord  |
+    \_________/      \____________________/  \__________________/  |  Deploy is green... |
+    host: the time    the media page, plus    a transient takes      \____________________/
+    in a 96 px pill   an optional badge       the pill for a moment  an activity opens the pill
+                      at the right            (volume, Caps Lock)    into a card, 48 to 70 px high
 ```
 
 - A page answers `priority(Mode::Resting)` to claim the collapsed pill; with no answer the host shows the time.
-- An activity or a page can add a **badge** at the right end (the page draws to the left of it) or a **transient**
-  that replaces the pill's content for a moment (`presence()`; see [adding-an-activity.md](adding-an-activity.md)).
-- The time is one element: it glides from the middle of the collapsed pill to the middle of the header as the notch
+- An activity or a page can add a **badge** at the right end (the page draws to the left of it), a **transient** that
+  replaces the pill's content for a moment, or, for an activity, a **banner** that opens the pill into a card
+  (`presence()`; see [adding-an-activity.md](adding-an-activity.md)).
+- The time is one element: it glides from the middle of the collapsed pill to the right end of the header as the notch
   opens, and stays visible the whole way.
+- Over a maximized window the pill hides to a strip, and over a full-screen window the notch is off the screen; see
+  [architecture.md](architecture.md#hiding).
 
 **Where to change what:**
 
 | To change | Edit |
 | --- | --- |
-| padding, header height, the gap, the dots, the settings button | `src/host/chrome.rs` |
+| padding, header height, the gap, the dots, the content height | `src/host/chrome.rs` |
 | the time and the collapsed pill's minimum width | `src/host/clock.rs` |
-| which page shows, swiping, hover, the springs | `src/host/notch.rs` |
+| which page shows, swiping, hover, the springs, hiding | `src/host/notch.rs` |
+| maximized and full-screen detection | `src/host/screen_mode.rs` |
+| the tray menu | `src/host/tray.rs` (the items), `src/host/window.rs` (what they do) |
+| start with Windows | `src/host/startup.rs` (the tray item), `installer/notch.iss` (the installer's choice) |
 | a page's content and size | that page's folder in `src/pages/` |
 | register a page | `src/pages/mod.rs` |
 | register an activity | `src/activities/mod.rs` |

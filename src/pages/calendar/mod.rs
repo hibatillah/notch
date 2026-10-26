@@ -24,10 +24,8 @@ use windows::Win32::{
 };
 
 use self::{
-    agenda::{Agenda, Reminder, Row, State, build, reminder},
-    dates::{
-        MONTH_NAMES, WEEKDAY_LETTERS, WEEKDAY_NAMES, civil_from_days, day_of, seconds_from_civil, week_start, weekday,
-    },
+    agenda::{Agenda, Reminder, Row, State, build, list, reminder},
+    dates::{MONTH_NAMES, WEEKDAY_LETTERS, civil_from_days, day_of, seconds_from_civil, week_start},
     ics::{Clock, Event, Occurrence, occurrences_on, parse},
 };
 use crate::{
@@ -38,11 +36,21 @@ use crate::{
     ui::{self, Icon},
 };
 
-const EXPANDED_SIZE: Size = Size::new(508.0, 132.0);
+const EXPANDED_SIZE: Size = Size::new(508.0, 86.0);
 const RESTING_WIDTH: f32 = 150.0;
 const LEFT_WIDTH: f32 = 200.0;
 const COLUMN_GAP: f32 = 16.0;
 const DAY_WIDTH: f32 = 26.0;
+/// The height of a day in the week, on the bottom edge of the page: its letter, then its number.
+const DAY_TOP_PADDING: f32 = 5.0;
+const DAY_LETTER_HEIGHT: f32 = 12.0;
+const DAY_HEIGHT: f32 = DAY_TOP_PADDING + DAY_LETTER_HEIGHT + 1.0 + TODAY_SIZE + 1.0;
+/// How far the month sits below the top of the page, which brings it near the week.
+const HEADER_TOP: f32 = 8.0;
+/// The blue square of today, and the faint background of a day under the pointer or selected.
+const TODAY_SIZE: f32 = 24.0;
+const DAY_RADIUS: f32 = 5.0;
+const DAY_WASH_ALPHA: f32 = 0.12;
 const ROW_HEIGHT: f32 = 40.0;
 const ROW_GAP: f32 = 6.0;
 const ROW_RADIUS: f32 = 10.0;
@@ -63,11 +71,10 @@ const REFRESH_SETTING: &str = "calendar.refresh_minutes";
 const MINUTE_TIMER: TimerId = TimerId(1);
 const FETCH_TIMER: TimerId = TimerId(2);
 
-const MONTH: FontStyle = FontStyle::new(UI_FONT, 26.0, Weight::Medium, Align::Leading);
-const WEEKDAY: FontStyle = FontStyle::new(UI_FONT, 12.0, Weight::Regular, Align::Leading);
+const MONTH: FontStyle = FontStyle::new(UI_FONT, 22.0, Weight::Medium, Align::Leading);
+const YEAR: FontStyle = FontStyle::new(UI_FONT, 12.0, Weight::Regular, Align::Leading);
 const DAY_LETTER: FontStyle = FontStyle::new(UI_FONT, 9.0, Weight::Medium, Align::Center);
 const DAY_NUMBER: FontStyle = FontStyle::new("Consolas", 13.0, Weight::Regular, Align::Center);
-const SUMMARY: FontStyle = FontStyle::new(UI_FONT, 11.0, Weight::Regular, Align::Leading);
 const EVENT_TIME: FontStyle = FontStyle::new("Consolas", 12.0, Weight::Regular, Align::Leading);
 const EVENT_TITLE: FontStyle = FontStyle::new(UI_FONT, 13.0, Weight::Medium, Align::Leading);
 const EVENT_DETAIL: FontStyle = FontStyle::new(UI_FONT, 11.0, Weight::Regular, Align::Leading);
@@ -142,6 +149,9 @@ pub struct CalendarPage {
     alert_text: String,
     alert_width: f32,
     hovered_join: Option<usize>,
+    /// The day picked in the week, or `None` for today.
+    selected_day: Option<i64>,
+    hovered_day: Option<usize>,
 }
 
 impl CalendarPage {
@@ -163,6 +173,8 @@ impl CalendarPage {
             alert_text: String::new(),
             alert_width: 0.0,
             hovered_join: None,
+            selected_day: None,
+            hovered_day: None,
         }
     }
 
@@ -170,8 +182,15 @@ impl CalendarPage {
     fn refresh(&mut self, fonts: &Fonts) {
         let now = local_now();
         self.today = day_of(now);
+        // A day picked in an earlier week is forgotten when the week turns.
+        if self.selected_day.is_some_and(|day| !is_in_week_of(day, self.today)) {
+            self.selected_day = None;
+        }
         self.occurrences = occurrences_on(&self.events, self.today, &SystemClock);
-        self.agenda = build(&self.occurrences, now);
+        self.agenda = match self.selected_day {
+            Some(day) if day != self.today => list(&occurrences_on(&self.events, day, &SystemClock)),
+            _ => build(&self.occurrences, now),
+        };
         self.reminder = reminder(&self.occurrences, now);
         if let Some(reminder) = &self.reminder {
             let title = fonts.measure(&BADGE, &reminder.title).min(REMINDER_TITLE_WIDTH).ceil();
@@ -282,62 +301,70 @@ impl CalendarPage {
 
     fn draw_week(&self, canvas: &Canvas, bounds: Rect, opacity: f32) {
         let scale = canvas.scale();
-        let (year, month, day) = civil_from_days(self.today);
-        let _ = (year, day);
+        let (year, month, _) = civil_from_days(self.today);
         let column = Rect::new(bounds.left, bounds.top, bounds.left + LEFT_WIDTH * scale, bounds.bottom);
 
-        let summary = Rect::new(column.left, column.bottom - 16.0 * scale, column.right, column.bottom - 2.0 * scale);
-        canvas.text(&SUMMARY, &self.summary_text(), summary, GRAY.faded(opacity));
+        // The month and the year at the top, and the week on the bottom edge.
+        let month_name = MONTH_NAMES[(month as usize - 1) % 12];
+        let header = Rect::new(
+            column.left,
+            bounds.top + HEADER_TOP * scale,
+            column.right,
+            bounds.top + (HEADER_TOP + 28.0) * scale,
+        );
+        canvas.text(&MONTH, month_name, header, Color::WHITE.faded(opacity));
+        let month_width = canvas.measure(&MONTH, month_name) * scale;
+        let year_area =
+            Rect::new(header.left + month_width + 8.0 * scale, header.top, header.right, header.bottom - 3.0 * scale);
+        canvas.text(
+            &YEAR,
+            &year.to_string(),
+            Rect { top: year_area.bottom - 16.0 * scale, ..year_area },
+            GRAY.faded(opacity),
+        );
 
-        let strip_top = summary.top - 8.0 * scale - 32.0 * scale;
         let first_day = week_start(self.today);
-        let spacing = (LEFT_WIDTH - 7.0 * DAY_WIDTH) / 6.0;
-        for position in 0..7 {
-            let date = first_day + position;
-            let left = column.left + position as f32 * (DAY_WIDTH + spacing) * scale;
-            let cell = Rect::new(left, strip_top, left + DAY_WIDTH * scale, strip_top + 32.0 * scale);
+        let selected = self.selected();
+        for (position, letter) in WEEKDAY_LETTERS.iter().enumerate() {
+            let date = first_day + position as i64;
+            let cell = day_cell(position, bounds, scale);
             let is_today = date == self.today;
+            // Like a ghost button: nothing until the pointer is over it, and the same wash kept on the selected day.
+            if self.hovered_day == Some(position) || date == selected {
+                canvas.fill_rounded_rect(cell, DAY_RADIUS * scale, Color::WHITE.with_alpha(DAY_WASH_ALPHA * opacity));
+            }
             let letter_color = if is_today { BLUE } else { DIM };
             canvas.text(
                 &DAY_LETTER,
-                WEEKDAY_LETTERS[position as usize],
-                Rect { bottom: cell.top + 12.0 * scale, ..cell },
+                letter,
+                Rect::new(
+                    cell.left,
+                    cell.top + DAY_TOP_PADDING * scale,
+                    cell.right,
+                    cell.top + (DAY_TOP_PADDING + DAY_LETTER_HEIGHT) * scale,
+                ),
                 letter_color.faded(opacity),
             );
-            let number = Rect { top: cell.top + 13.0 * scale, ..cell };
+            let number = Rect { top: cell.bottom - (TODAY_SIZE + 1.0) * scale, bottom: cell.bottom - scale, ..cell };
             let (_, _, date_of_month) = civil_from_days(date);
             if is_today {
-                let pill = Rect::new(
-                    number.center_x() - 12.0 * scale,
-                    number.top + 1.0 * scale,
-                    number.center_x() + 12.0 * scale,
-                    number.bottom - 1.0 * scale,
+                let square = Rect::around(
+                    Point::new(number.center_x(), number.center_y()),
+                    TODAY_SIZE * scale / 2.0,
+                    TODAY_SIZE * scale / 2.0,
                 );
-                canvas.fill_rounded_rect(pill, 6.0 * scale, TODAY_FILL.faded(opacity));
+                canvas.fill_rounded_rect(square, 6.0 * scale, TODAY_FILL.faded(opacity));
                 canvas.text(&DAY_NUMBER, &date_of_month.to_string(), number, Color::WHITE.faded(opacity));
             } else {
                 let color = if position == 6 { SUNDAY_RED } else { LIGHT };
                 canvas.text(&DAY_NUMBER, &date_of_month.to_string(), number, color.faded(opacity));
             }
         }
-
-        let header_bottom = strip_top - 8.0 * scale;
-        let month_name = MONTH_NAMES[(month as usize - 1) % 12];
-        let header = Rect::new(column.left, header_bottom - 34.0 * scale, column.right, header_bottom);
-        canvas.text(&MONTH, month_name, header, Color::WHITE.faded(opacity));
-        let month_width = canvas.measure(&MONTH, month_name) * scale;
-        let weekday_area =
-            Rect::new(header.left + month_width + 8.0 * scale, header.top, header.right, header.bottom - 4.0 * scale);
-        canvas.text(
-            &WEEKDAY,
-            WEEKDAY_NAMES[weekday(self.today) as usize],
-            Rect { top: weekday_area.bottom - 18.0 * scale, ..weekday_area },
-            GRAY.faded(opacity),
-        );
     }
 
-    fn summary_text(&self) -> String {
-        if self.link.is_none() { "Not connected".to_owned() } else { self.agenda.summary.clone() }
+    /// The day whose events are listed: the one picked in the week, else today.
+    fn selected(&self) -> i64 {
+        self.selected_day.unwrap_or(self.today)
     }
 
     fn draw_row(&self, canvas: &Canvas, position: usize, row: &Row, bounds: Rect, hovered_join: bool, opacity: f32) {
@@ -406,6 +433,29 @@ fn events_area(bounds: Rect, scale: f32) -> Rect {
     Rect::new(bounds.left + (LEFT_WIDTH + 2.0 * COLUMN_GAP + 1.0) * scale, bounds.top, bounds.right, bounds.bottom)
 }
 
+/// The place of the day at `position` (0 is Monday) in the week on the left, on the bottom edge of the page.
+fn day_cell(position: usize, bounds: Rect, scale: f32) -> Rect {
+    let spacing = (LEFT_WIDTH - 7.0 * DAY_WIDTH) / 6.0;
+    let left = bounds.left + position as f32 * (DAY_WIDTH + spacing) * scale;
+    Rect::new(left, bounds.bottom - DAY_HEIGHT * scale, left + DAY_WIDTH * scale, bounds.bottom)
+}
+
+/// The day of the week under `point`, as a position from Monday.
+fn day_at(point: Point, bounds: Rect, scale: f32) -> Option<usize> {
+    // The gaps between days belong to the day beside them, so moving along the week never loses the pointer.
+    let spacing = (LEFT_WIDTH - 7.0 * DAY_WIDTH) / 6.0;
+    (0..7).find(|&position| {
+        let cell = day_cell(position, bounds, scale);
+        Rect::new(cell.left - spacing * scale / 2.0, cell.top, cell.right + spacing * scale / 2.0, cell.bottom)
+            .contains(point)
+    })
+}
+
+/// Whether `day` is in the same week (Monday to Sunday) as `today`.
+fn is_in_week_of(day: i64, today: i64) -> bool {
+    (week_start(today)..week_start(today) + 7).contains(&day)
+}
+
 fn row_rect(position: usize, bounds: Rect, scale: f32) -> Rect {
     let area = events_area(bounds, scale);
     let top = area.top + position as f32 * (ROW_HEIGHT + ROW_GAP) * scale;
@@ -451,16 +501,21 @@ impl Page for CalendarPage {
                 (
                     "No calendar linked",
                     Some(
-                        "Copy your calendar's iCal address, then right-click the tray icon and choose \"Use calendar link from clipboard\".",
+                        "Copy your calendar's iCal address, then pick \"Use calendar link from clipboard\" in the tray menu.",
                     ),
                 )
             } else {
-                ("Nothing for today", None)
+                (if self.selected() == self.today { "Nothing for today" } else { "Nothing on this day" }, None)
             };
-            let icon_center =
-                Point::new(area.center_x(), area.center_y() - if hint.is_some() { 30.0 } else { 14.0 } * scale);
-            Icon::Calendar.draw(canvas, icon_center, 22.0 * scale, DIM, opacity);
-            let text = Rect::new(area.left, icon_center.y + 14.0 * scale, area.right, icon_center.y + 34.0 * scale);
+            // With a hint there is no room for the icon: the message and two lines under it fill the page.
+            let text_top = if hint.is_some() {
+                area.center_y() - 26.0 * scale
+            } else {
+                let icon_center = Point::new(area.center_x(), area.center_y() - 14.0 * scale);
+                Icon::Calendar.draw(canvas, icon_center, 22.0 * scale, DIM, opacity);
+                icon_center.y + 14.0 * scale
+            };
+            let text = Rect::new(area.left, text_top, area.right, text_top + 20.0 * scale);
             canvas.text(&EMPTY, message, text, LIGHT.faded(opacity));
             if let Some(hint) = hint {
                 let hint_area = Rect::new(area.left + 8.0 * scale, text.bottom, area.right - 8.0 * scale, area.bottom);
@@ -538,6 +593,9 @@ impl Page for CalendarPage {
             context.request_repaint();
         } else {
             self.hovered_join = None;
+            self.hovered_day = None;
+            // The next time the page opens it shows today again.
+            self.selected_day = None;
         }
     }
 
@@ -567,12 +625,23 @@ impl Page for CalendarPage {
                 let hovered = (0..self.agenda.rows.len()).find(|&position| {
                     self.join_button(position, bounds, scale).is_some_and(|button| button.contains(point))
                 });
-                if hovered != self.hovered_join {
+                let hovered_day = day_at(point, bounds, scale);
+                if hovered != self.hovered_join || hovered_day != self.hovered_day {
                     self.hovered_join = hovered;
+                    self.hovered_day = hovered_day;
                     context.request_repaint();
                 }
             }
             PointerEvent::Pressed(point) if frame.is_open() => {
+                if let Some(position) = day_at(point, bounds, scale) {
+                    let day = week_start(self.today) + position as i64;
+                    // Today is the day the page falls back to, so it is kept as "no day picked".
+                    self.selected_day = (day != self.today).then_some(day);
+                    self.hovered_join = None;
+                    self.refresh(context.fonts());
+                    context.request_repaint();
+                    return;
+                }
                 for (position, row) in self.agenda.rows.iter().enumerate() {
                     if let (Some(button), Some(meeting)) = (self.join_button(position, bounds, scale), &row.meeting)
                         && button.contains(point)
@@ -582,7 +651,7 @@ impl Page for CalendarPage {
                 }
             }
             PointerEvent::Left | PointerEvent::CaptureLost => {
-                let was_hovered = self.hovered_join.take().is_some();
+                let was_hovered = self.hovered_join.take().is_some() | self.hovered_day.take().is_some();
                 if was_hovered {
                     context.request_repaint();
                 }
@@ -619,13 +688,67 @@ mod tests {
         *,
     };
 
-    const BOUNDS: Rect = Rect::new(0.0, 0.0, 508.0, 132.0);
+    const BOUNDS: Rect = Rect::new(0.0, 0.0, 508.0, 86.0);
 
     #[test]
-    fn three_rows_fill_the_height_of_the_page() {
-        let last = row_rect(2, BOUNDS, 1.0);
+    fn the_rows_fill_the_height_of_the_page() {
+        let last = row_rect(agenda::MAX_ROWS - 1, BOUNDS, 1.0);
         assert_eq!(last.bottom, BOUNDS.bottom);
         assert!(row_rect(1, BOUNDS, 1.0).top > row_rect(0, BOUNDS, 1.0).bottom);
+    }
+
+    #[test]
+    fn the_week_sits_on_the_bottom_edge_and_each_day_has_its_own_place() {
+        let (first, last) = (day_cell(0, BOUNDS, 1.0), day_cell(6, BOUNDS, 1.0));
+        assert_eq!(first.bottom, BOUNDS.bottom);
+        assert_eq!(first.left, BOUNDS.left);
+        assert!((last.right - LEFT_WIDTH).abs() < 0.01);
+        assert!(day_cell(1, BOUNDS, 1.0).left > first.right);
+        assert!(first.top >= HEADER_TOP + 28.0, "the week stays below the month");
+    }
+
+    #[test]
+    fn a_press_finds_the_day_under_it_even_between_two_days() {
+        for position in 0..7 {
+            let cell = day_cell(position, BOUNDS, 1.0);
+            assert_eq!(day_at(Point::new(cell.center_x(), cell.center_y()), BOUNDS, 1.0), Some(position));
+        }
+        let (first, second) = (day_cell(0, BOUNDS, 1.0), day_cell(1, BOUNDS, 1.0));
+        let between = Point::new((first.right + second.left) / 2.0, first.center_y());
+        assert!(day_at(between, BOUNDS, 1.0).is_some());
+        assert_eq!(day_at(Point::new(LEFT_WIDTH + 40.0, 60.0), BOUNDS, 1.0), None);
+        assert_eq!(day_at(Point::new(50.0, 5.0), BOUNDS, 1.0), None);
+    }
+
+    #[test]
+    fn the_week_is_monday_to_sunday() {
+        let monday = week_start(days_from_civil(2026, 10, 28));
+        assert!(is_in_week_of(monday, monday + 3));
+        assert!(is_in_week_of(monday + 6, monday));
+        assert!(!is_in_week_of(monday + 7, monday));
+        assert!(!is_in_week_of(monday - 1, monday + 2));
+    }
+
+    #[test]
+    fn the_month_is_written_in_full() {
+        assert_eq!(MONTH_NAMES[9], "October");
+        assert_eq!(MONTH_NAMES[11], "December");
+    }
+
+    #[test]
+    fn a_picked_day_lists_its_own_events_and_today_is_the_fallback() {
+        let fonts = Fonts::new(1.0).unwrap();
+        let mut page = CalendarPage::sample(&fonts);
+        assert_eq!(page.selected(), page.today);
+        assert!(!page.agenda.rows.is_empty());
+        // The sample has events only today, so another day of the week is empty and has no next event.
+        page.selected_day = Some(week_start(page.today) + (page.today - week_start(page.today) + 1) % 7);
+        page.refresh(&fonts);
+        assert!(page.agenda.rows.iter().all(|row| row.state == State::Later));
+        // A day from an earlier week is forgotten.
+        page.selected_day = Some(week_start(page.today) - 3);
+        page.refresh(&fonts);
+        assert_eq!(page.selected(), page.today);
     }
 
     #[test]
@@ -641,11 +764,6 @@ mod tests {
         assert!(page.priority(Mode::Expanded).is_some());
         assert_eq!(page.menu_items().len(), 2);
         assert_eq!(page.presence(), None);
-    }
-
-    #[test]
-    fn a_page_without_a_link_says_it_is_not_connected() {
-        assert_eq!(CalendarPage::new().summary_text(), "Not connected");
     }
 
     #[test]

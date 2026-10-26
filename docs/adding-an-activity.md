@@ -26,8 +26,8 @@ An activity answers `presence()` after every event, and the host does the layout
 
 ### 1. Create the file
 
-Make `src/activities/<name>.rs` (or a folder). An activity depends on `activity`, `page` (for `Context`), `gfx` and
-`ui`, never on a page or another activity.
+Make `src/activities/<name>.rs` (or a folder when it has several parts, like `notifications/`). An activity depends on
+`activity`, `page` (for `Context`), `gfx` and `ui`, never on a page or another activity.
 
 ### 2. Implement `Activity`
 
@@ -64,6 +64,8 @@ The notch must use no CPU while nothing happens, so an activity never polls. Pic
 | the clipboard | `context.listen_to_clipboard()`; arrives as `SystemMessage::ClipboardChanged` |
 | a COM callback (Core Audio) | store the change in an `Arc<Mutex<..>>` and call `context.notifier().notify()`; read it in `on_notify` |
 | a Windows event log channel | `EvtSubscribe` with a callback, which runs on a system thread and calls the `Notifier`; see `camera.rs` |
+| one key | a low-level keyboard hook on a thread of its own that wakes the activity for that key only, then read the state from Windows; see `caps_lock.rs` |
+| a folder changing | `FindFirstChangeNotificationW` and a blocking wait on a thread of its own; see `notifications/listener.rs` |
 
 ### 4. Register it
 
@@ -84,7 +86,7 @@ Delete its file, its `mod` line and its entry in `all()`.
 
 | Id | Shows | Source |
 | --- | --- | --- |
-| `volume` | volume bar, or "Muted" | Core Audio endpoint volume callback; follows the default speakers |
+| `volume` | volume bar, or "Muted", and a crossed speaker in the header while muted | Core Audio endpoint volume callback; follows the default speakers; the mute state is read when listening starts |
 | `brightness` | brightness bar | power setting `GUID_DEVICE_POWER_POLICY_VIDEO_BRIGHTNESS`; laptop panel only |
 | `battery` | "Charging", "On battery", "Low battery" at 20 % and 10 % | power settings for the power source and battery level |
 | `bluetooth` | "<device> connected" with its battery when known, or "disconnected" | `ConnectionStatusChanged` of every paired device, on a thread of its own; the battery is read two seconds after a connection from the device node that reports it |
@@ -93,4 +95,3 @@ Delete its file, its `mod` line and its entry in `all()`.
 | `clipboard` | "Copied" | clipboard change message; never reads the clipboard, skips copies that ask not to be monitored |
 | `notifications` | a banner with the app's logo, who it is from and up to two lines; while the pointer is on the notch it stays, and it has no buttons | `UserNotificationListener`, read on a thread of its own when the notification folder changes; arrives a few seconds after Windows' own banner |
 | `caps_lock` | "Caps Lock on/off", and an arrow in the header while it is on | a low-level keyboard hook on a thread of its own that only wakes the activity when the Caps Lock key goes down; the lock state is then read from Windows, and no other key is looked at |
-| `volume` also | a crossed speaker in the header while muted | the mute state read when listening starts, then the volume callback |

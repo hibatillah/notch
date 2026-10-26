@@ -41,7 +41,13 @@ versions or uses the network for it. Never change the `AppId`, or the installer 
 
 ## Notes
 
-- The executable is not code-signed, so Windows SmartScreen may warn people who download it.
+- The installer is not code-signed, so Windows SmartScreen may warn people who download it. Free signing for open
+  source projects exists (SignPath Foundation); it needs an application from the project owner, and signing is then one
+  more step in `release.yml`.
+- The installer is built only by the release workflow. To build it by hand, install Inno Setup and run
+  `ISCC /DAppVersion=0.2.0 /DExeName=notch.exe /DSourceExe=<path to a release notch.exe> installer
+otch.iss`; the result
+  goes to `installer\Output` unless `/O` says otherwise (the workflow uses `dist`).
 - Both workflows install the latest stable Rust, so a new Rust release can add a Clippy warning that fails CI. Fix the
   warning; do not pin an old compiler unless a release is urgent.
 - To delete a bad release, delete the release and its tag on GitHub (or `git push --delete origin <tag>`), fix, and tag
