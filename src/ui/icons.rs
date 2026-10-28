@@ -1,13 +1,10 @@
 use crate::gfx::{Canvas, Color, ImageData, Mask, Path, Point, Rect};
 
-/// Icons are drawn on a 24-unit grid and scaled to the size asked for.
 const GRID: f32 = 24.0;
 const LINE_WIDTH: f32 = 2.0;
 const CORNER_RADIUS: f32 = 1.8;
-/// Play and pause read as the main buttons, so they are drawn a little larger.
 const SIZE: f32 = 18.0;
 const LARGE_SIZE: f32 = 22.0;
-/// Empty pixels around an icon inside its image, so soft edges are never cut off.
 const MARGIN: u32 = 1;
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -39,7 +36,6 @@ pub enum Icon {
     CapsLock,
 }
 
-/// How a path is painted: solid shapes are filled, line icons are stroked with round ends.
 #[derive(Debug, PartialEq)]
 enum Paint {
     Fill,
@@ -47,7 +43,7 @@ enum Paint {
 }
 
 impl Icon {
-    /// Edge length in device-independent pixels.
+    /// Preferred edge length in device-independent pixels.
     pub fn size(self) -> f32 {
         match self {
             Icon::Play | Icon::Pause => LARGE_SIZE,
@@ -55,20 +51,17 @@ impl Icon {
         }
     }
 
-    /// Draws the icon centered on `center`, `size` device pixels wide, in `color` faded by `opacity`.
-    /// Each icon is drawn once into a small image and reused, so drawing it again costs almost nothing.
+    /// Center and size are device pixels.
     pub fn draw(self, canvas: &Canvas, center: Point, size: f32, color: Color, opacity: f32) {
         let side = size.ceil() as u32 + 2 * MARGIN;
         let key = ("icon", self as u8, side, color.rgb_bytes());
         let Some(brush) = canvas.cached_image(key, || self.render(size, side, color)) else { return };
-        // Whole pixels keep the image crisp.
         let left = (center.x - side as f32 / 2.0).round();
         let top = (center.y - side as f32 / 2.0).round();
         let rect = Rect::new(left, top, left + side as f32, top + side as f32);
         canvas.image(&brush, rect, 0.0, opacity * color.a);
     }
 
-    /// The icon as a `side` pixel square image, in `color`.
     fn render(self, size: f32, side: u32, color: Color) -> ImageData {
         let middle = side as f32 / 2.0;
         let (path, paint) = self.path(Point::new(middle, middle), size);
@@ -260,7 +253,6 @@ impl Icon {
     }
 }
 
-/// A closed circle of four curves.
 fn circle(center: Point, radius: f32) -> Path {
     const KAPPA: f32 = 0.552_284_8;
     let (x, y, reach) = (center.x, center.y, radius * KAPPA);
@@ -273,7 +265,6 @@ fn circle(center: Point, radius: f32) -> Path {
         .close()
 }
 
-/// Puts the figures of `second` after those of `first`.
 fn join(mut first: Path, second: Path) -> Path {
     first.append(second);
     first

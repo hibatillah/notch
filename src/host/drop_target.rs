@@ -1,10 +1,5 @@
-//! Lets files be dragged onto the notch.
-//!
-//! While a file is dragged no mouse message reaches ordinary windows, and a drop target has to be registered with OLE,
-//! which needs a single-threaded apartment; the notch's own thread is multithreaded (WinRT blocks on it). So a second
-//! thread owns an almost invisible window that is the drop target. It sits over the collapsed pill; when a file
-//! arrives it grows to cover the open notch and tells the notch to open, and it forwards the pointer to the notch
-//! while nothing is dragged. It steps aside while the notch is open, so it never blocks clicks.
+//! OLE drops need an STA thread; the WinRT host uses MTA, so a separate overlay receives drops.
+//! The overlay forwards hover while collapsed and steps aside when the notch opens.
 
 use std::{
     cell::Cell,
@@ -37,22 +32,17 @@ use windows::{
 
 use crate::log;
 
-/// Sent to the notch window when a file drag reaches the drop target, leaves it, or ends in a drop.
 pub const WM_DRAG_ENTERED: u32 = WM_APP + 10;
 pub const WM_DRAG_LEFT: u32 = WM_APP + 11;
 pub const WM_DRAG_DROPPED: u32 = WM_APP + 12;
-/// The pointer moved over the drop target while it covers the collapsed pill; `lparam` is relative to the notch.
-/// It is not a mouse message, so the notch does not ask Windows to track a leave it would get at once.
+/// Relative to the notch; not a mouse message, so it must not arm leave tracking on the notch.
 pub const WM_POINTER_MOVED: u32 = WM_APP + 13;
 
-/// Sent to the drop target's window: `wparam` is 1 while the notch is hovered or open, 0 when it is collapsed.
 const MESSAGE_HOVERING: u32 = WM_APP + 20;
-/// Sent to the drop target's window when the collapsed pill's area (in `RESTING_AREA`) changed.
 const MESSAGE_RESTING_AREA: u32 = WM_APP + 21;
-/// Sent to the drop target's window: `wparam` is 1 while a full-screen app is in front and the target must not show.
 const MESSAGE_SUPPRESSED: u32 = WM_APP + 22;
+const MESSAGE_RESET_INTERACTION: u32 = WM_APP + 23;
 
-/// How big the drop target is while a file is dragged, in device-independent pixels; it covers the open notch.
 const DRAG_WIDTH: f32 = 720.0;
 const DRAG_HEIGHT: f32 = 230.0;
 
@@ -60,10 +50,8 @@ static TARGET_WINDOW: AtomicIsize = AtomicIsize::new(0);
 static RESTING_AREA: Mutex<Option<RECT>> = Mutex::new(None);
 static DROPPED_PATHS: Mutex<Vec<PathBuf>> = Mutex::new(Vec::new());
 
-/// Where the notch is, so the drop target can cover it.
 #[derive(Clone, Copy)]
 struct Placement {
-    /// The notch window's handle, kept as a number so it can move to this thread.
     notch_window: isize,
     scale: f32,
     center_x: i32,
@@ -83,7 +71,6 @@ thread_local! {
     static IS_SUPPRESSED: Cell<bool> = const { Cell::new(false) };
 }
 
-/// Starts the drop target for the notch window at `center_x` (screen pixels) and `top`.
 pub fn start(notch_window: HWND, scale: f32, center_x: i32, top: i32) {
     let placement = Placement { notch_window: notch_window.0 as isize, scale, center_x, top };
     std::thread::Builder::new()
@@ -96,17 +83,18 @@ pub fn start(notch_window: HWND, scale: f32, center_x: i32, top: i32) {
         .ok();
 }
 
-/// Tells the drop target whether the notch is hovered or open, in which case it must not cover anything.
 pub fn set_hovering(is_hovering: bool) {
     post(MESSAGE_HOVERING, WPARAM(usize::from(is_hovering)));
 }
 
-/// Tells the drop target that a full-screen app is in front, so it must stay out of the way.
 pub fn set_suppressed(is_suppressed: bool) {
     post(MESSAGE_SUPPRESSED, WPARAM(usize::from(is_suppressed)));
 }
 
-/// Tells the drop target where the collapsed pill is on screen.
+pub fn reset_interaction() {
+    post(MESSAGE_RESET_INTERACTION, WPARAM(0));
+}
+
 pub fn set_resting_area(area: RECT) {
     let Ok(mut current) = RESTING_AREA.lock() else { return };
     let unchanged = matches!(*current, Some(old) if (old.left, old.top, old.right, old.bottom) == (area.left, area.top, area.right, area.bottom));
@@ -118,7 +106,6 @@ pub fn set_resting_area(area: RECT) {
     post(MESSAGE_RESTING_AREA, WPARAM(0));
 }
 
-/// The files of the last drop.
 pub fn take_dropped_paths() -> Vec<PathBuf> {
     DROPPED_PATHS.lock().map(|mut paths| std::mem::take(&mut *paths)).unwrap_or_default()
 }
@@ -183,8 +170,6 @@ fn run(placement: Placement) -> Result<()> {
     Ok(())
 }
 
-/// Puts the window where it belongs now: over the open notch while a file is dragged, over the pill while the notch
-/// is collapsed, and nowhere while the notch is hovered.
 fn arrange(window: HWND) {
     let Some(placement) = PLACEMENT.get() else { return };
     let area = if IS_SUPPRESSED.get() {
@@ -222,7 +207,6 @@ fn arrange(window: HWND) {
     }
 }
 
-/// Forwards a pointer message to the notch window, in coordinates relative to it.
 fn forward(window: HWND, message: u32, lparam: LPARAM) {
     let Some(placement) = PLACEMENT.get() else { return };
     let (mut origin, mut bounds) = (POINT::default(), RECT::default());
@@ -244,6 +228,12 @@ fn forward(window: HWND, message: u32, lparam: LPARAM) {
 
 extern "system" fn window_procedure(window: HWND, message: u32, wparam: WPARAM, lparam: LPARAM) -> LRESULT {
     match message {
+        MESSAGE_RESET_INTERACTION => {
+            IS_DRAGGING.set(false);
+            IS_NOTCH_HOVERED.set(false);
+            arrange(window);
+            LRESULT(0)
+        }
         MESSAGE_HOVERING => {
             IS_NOTCH_HOVERED.set(wparam.0 != 0);
             arrange(window);
@@ -267,7 +257,6 @@ extern "system" fn window_procedure(window: HWND, message: u32, wparam: WPARAM, 
     }
 }
 
-/// The window of this thread, for the drop target methods (which run on this thread).
 fn this_window() -> HWND {
     HWND(TARGET_WINDOW.load(Ordering::Relaxed) as *mut _)
 }
@@ -286,7 +275,6 @@ fn carries_files(data: Option<&IDataObject>) -> bool {
     data.is_some_and(|data| unsafe { data.QueryGetData(&files_format()) } == S_OK)
 }
 
-/// The file paths in `data`.
 fn files_in(data: &IDataObject) -> Vec<PathBuf> {
     let Ok(mut medium) = (unsafe { data.GetData(&files_format()) }) else { return Vec::new() };
     let drop = HDROP(unsafe { medium.u.hGlobal.0 });
@@ -318,7 +306,6 @@ impl IDropTarget_Impl for FileDropTarget_Impl {
         _point: &POINTL,
         effect: *mut DROPEFFECT,
     ) -> Result<()> {
-        // A file dragged out of the shelf is not a new file to add, even when it passes over the notch.
         let accepts = carries_files(data.as_ref()) && !crate::platform::is_dragging_out();
         log::debug(&format!("drop target: drag entered, files: {accepts}"));
         unsafe { *effect = if accepts { DROPEFFECT_COPY } else { DROPEFFECT_NONE } };

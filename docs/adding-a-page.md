@@ -118,10 +118,13 @@ What each part does:
   asks after every event and animates the change.
 - `draw_resting` and `draw_expanded` draw your content. Multiply sizes by `frame.scale` to get device pixels, and fade
   your colors with the `opacity` you are given so the content follows the open and close animation.
+  During navigation, each visible page keeps its requested width in `frame.bounds` and `frame.expanded.width`.
+  The notch clips the visible portion; do not stretch your content to the neighbouring page's width. Pointer events
+  use the same shifted frame as drawing, including while the user rests between pages.
 - `on_start` runs once. Read settings and start timers or background work here.
 - `on_timer` runs when a timer from `context.set_timer` fires. Request a repaint when something visible changed.
-- `on_pointer` receives pointer events while your page is the one shown open. Positions are in the same space as
-  `frame.bounds`.
+- `on_pointer` receives pointer events while your page is visible, including beside another page during a swipe.
+  Positions are in the same space as its own shifted `frame.bounds`.
 
 ### 3. Register it
 

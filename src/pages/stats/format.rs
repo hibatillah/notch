@@ -4,17 +4,14 @@ const KILO: f64 = 1000.0;
 const GIGA: f64 = 1_000_000_000.0;
 const GIBI: f64 = 1024.0 * 1024.0 * 1024.0;
 
-/// "12%".
 pub fn percent_text(percent: f32) -> String {
     format!("{}%", percent.round().clamp(0.0, 100.0) as u32)
 }
 
-/// A number with one decimal below 100 and none from 100 up: "2.4", "120".
 fn short_number(value: f64) -> String {
     if value >= 99.95 { format!("{}", value.round() as u64) } else { format!("{value:.1}") }
 }
 
-/// A transfer rate: "0 B/s", "120 KB/s", "2.4 MB/s".
 pub fn rate_text(bytes_per_second: f64) -> String {
     let rate = bytes_per_second.max(0.0);
     if rate < KILO {

@@ -1,5 +1,4 @@
-//! The charger being plugged in or unplugged, and the battery running low (20 % and 10 %). Windows reports both as
-//! power settings, so nothing here polls.
+//! Charger and low-battery changes arrive through Windows power settings without polling.
 
 use windows::core::GUID;
 
@@ -14,7 +13,7 @@ use crate::{
 const POWER_SOURCE_SETTING: GUID = GUID::from_u128(0x5d3e9a59_e9d5_4b00_a6bd_ff34ff516548);
 const BATTERY_PERCENTAGE_SETTING: GUID = GUID::from_u128(0xa7ad8041_b45a_4cae_87a3_eecbb468a9e1);
 const ON_BATTERY: u32 = 1;
-/// Charge levels that warn, lowest first so a drop through both reports the more urgent one.
+// Lowest first so crossing both thresholds reports the more urgent warning.
 const LOW_LEVELS: [u32; 2] = [10, 20];
 const SHOW_MILLISECONDS: u32 = 3000;
 const CHARGING_GREEN: Color = Color::rgb(0.19, 0.82, 0.35);
@@ -24,7 +23,6 @@ const LOW_RED: Color = Color::rgb(1.0, 0.27, 0.23);
 enum Event {
     PluggedIn,
     Unplugged,
-    /// The charge fell to this level or below.
     Low(u32),
 }
 

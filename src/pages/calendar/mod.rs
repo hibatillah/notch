@@ -1,9 +1,4 @@
-//! The calendar page: a week strip and today's events, read from a calendar file at an address the user gives (for
-//! Google Calendar, the "secret address in iCal format" of a calendar, which needs no sign-in). Open, it lists the
-//! day's events and offers Join for a video meeting; collapsed, a reminder appears 15 minutes before an event.
-//!
-//! The address is set from the tray menu ("Use calendar link from clipboard"), so the notch needs no settings window.
-//! It is kept in the settings file, and the downloaded calendar is kept in `calendar.ics` beside it.
+//! Calendar links and cached ICS data live beside settings; collapsed reminders precede events by 15 minutes.
 
 mod agenda;
 mod dates;
@@ -41,13 +36,10 @@ const RESTING_WIDTH: f32 = 150.0;
 const LEFT_WIDTH: f32 = 200.0;
 const COLUMN_GAP: f32 = 16.0;
 const DAY_WIDTH: f32 = 26.0;
-/// The height of a day in the week, on the bottom edge of the page: its letter, then its number.
 const DAY_TOP_PADDING: f32 = 5.0;
 const DAY_LETTER_HEIGHT: f32 = 12.0;
 const DAY_HEIGHT: f32 = DAY_TOP_PADDING + DAY_LETTER_HEIGHT + 1.0 + TODAY_SIZE + 1.0;
-/// How far the month sits below the top of the page, which brings it near the week.
 const HEADER_TOP: f32 = 8.0;
-/// The blue square of today, and the faint background of a day under the pointer or selected.
 const TODAY_SIZE: f32 = 24.0;
 const DAY_RADIUS: f32 = 5.0;
 const DAY_WASH_ALPHA: f32 = 0.12;
@@ -61,7 +53,6 @@ const JOIN_HEIGHT: f32 = 22.0;
 const ALERT_MILLISECONDS: u32 = 2500;
 const DEFAULT_REFRESH_MINUTES: u64 = 15;
 const FIRST_FETCH_MILLISECONDS: u32 = 2000;
-/// The longest the reminder shows an event's title, in device-independent pixels.
 const REMINDER_TITLE_WIDTH: f32 = 96.0;
 
 const LINK_SETTING: &str = "calendar.ics_url";
@@ -95,7 +86,6 @@ const ROW: Color = Color::rgb(0.078, 0.078, 0.094);
 const ROW_NEXT: Color = Color::rgb(0.063, 0.141, 0.227);
 const DIVIDER: Color = Color::rgb(0.149, 0.149, 0.176);
 
-/// Turns UTC into local time through Windows, which knows the time zone and its daylight saving rules.
 struct SystemClock;
 
 const UNIX_TO_FILE_TIME_SECONDS: i64 = 11_644_473_600;
@@ -120,7 +110,6 @@ impl Clock for SystemClock {
     }
 }
 
-/// The local date and time now, as seconds since 1970-01-01 on the wall clock.
 fn local_now() -> i64 {
     let time = unsafe { GetLocalTime() };
     seconds_from_civil(
@@ -139,7 +128,6 @@ pub struct CalendarPage {
     storage: Option<PathBuf>,
     fetched: fetch::Outcome,
     notifier: Option<Notifier>,
-    /// The local day shown, and what happens on it.
     today: i64,
     occurrences: Vec<Occurrence>,
     agenda: Agenda,
@@ -149,7 +137,6 @@ pub struct CalendarPage {
     alert_text: String,
     alert_width: f32,
     hovered_join: Option<usize>,
-    /// The day picked in the week, or `None` for today.
     selected_day: Option<i64>,
     hovered_day: Option<usize>,
 }
@@ -178,7 +165,6 @@ impl CalendarPage {
         }
     }
 
-    /// Works out what the page shows from the events and the time now.
     fn refresh(&mut self, fonts: &Fonts) {
         let now = local_now();
         self.today = day_of(now);
@@ -199,7 +185,6 @@ impl CalendarPage {
         }
     }
 
-    /// A page with a day of example events around the time now, for rendering the page off-screen.
     #[cfg(test)]
     pub fn sample(fonts: &Fonts) -> Self {
         let now = local_now();
@@ -284,7 +269,6 @@ impl CalendarPage {
         self.announce("Calendar link removed", context);
     }
 
-    /// The join button's place in the row at `position`, if that row has a meeting and is the next one.
     fn join_button(&self, position: usize, bounds: Rect, scale: f32) -> Option<Rect> {
         let row = self.agenda.rows.get(position)?;
         if row.state != State::Next || row.meeting.is_none() {
@@ -304,7 +288,6 @@ impl CalendarPage {
         let (year, month, _) = civil_from_days(self.today);
         let column = Rect::new(bounds.left, bounds.top, bounds.left + LEFT_WIDTH * scale, bounds.bottom);
 
-        // The month and the year at the top, and the week on the bottom edge.
         let month_name = MONTH_NAMES[(month as usize - 1) % 12];
         let header = Rect::new(
             column.left,
@@ -329,7 +312,6 @@ impl CalendarPage {
             let date = first_day + position as i64;
             let cell = day_cell(position, bounds, scale);
             let is_today = date == self.today;
-            // Like a ghost button: nothing until the pointer is over it, and the same wash kept on the selected day.
             if self.hovered_day == Some(position) || date == selected {
                 canvas.fill_rounded_rect(cell, DAY_RADIUS * scale, Color::WHITE.with_alpha(DAY_WASH_ALPHA * opacity));
             }
@@ -362,7 +344,6 @@ impl CalendarPage {
         }
     }
 
-    /// The day whose events are listed: the one picked in the week, else today.
     fn selected(&self) -> i64 {
         self.selected_day.unwrap_or(self.today)
     }
@@ -423,24 +404,20 @@ impl CalendarPage {
     }
 }
 
-/// The digits of a time replaced by zeros, so a width measured for it does not change as the time does.
 fn widest_form(text: &str) -> String {
     text.chars().map(|character| if character.is_ascii_digit() { '0' } else { character }).collect()
 }
 
-/// The area of the events on the right.
 fn events_area(bounds: Rect, scale: f32) -> Rect {
     Rect::new(bounds.left + (LEFT_WIDTH + 2.0 * COLUMN_GAP + 1.0) * scale, bounds.top, bounds.right, bounds.bottom)
 }
 
-/// The place of the day at `position` (0 is Monday) in the week on the left, on the bottom edge of the page.
 fn day_cell(position: usize, bounds: Rect, scale: f32) -> Rect {
     let spacing = (LEFT_WIDTH - 7.0 * DAY_WIDTH) / 6.0;
     let left = bounds.left + position as f32 * (DAY_WIDTH + spacing) * scale;
     Rect::new(left, bounds.bottom - DAY_HEIGHT * scale, left + DAY_WIDTH * scale, bounds.bottom)
 }
 
-/// The day of the week under `point`, as a position from Monday.
 fn day_at(point: Point, bounds: Rect, scale: f32) -> Option<usize> {
     // The gaps between days belong to the day beside them, so moving along the week never loses the pointer.
     let spacing = (LEFT_WIDTH - 7.0 * DAY_WIDTH) / 6.0;
@@ -507,7 +484,6 @@ impl Page for CalendarPage {
             } else {
                 (if self.selected() == self.today { "Nothing for today" } else { "Nothing on this day" }, None)
             };
-            // With a hint there is no room for the icon: the message and two lines under it fill the page.
             let text_top = if hint.is_some() {
                 area.center_y() - 26.0 * scale
             } else {
@@ -594,7 +570,6 @@ impl Page for CalendarPage {
         } else {
             self.hovered_join = None;
             self.hovered_day = None;
-            // The next time the page opens it shows today again.
             self.selected_day = None;
         }
     }
@@ -635,7 +610,6 @@ impl Page for CalendarPage {
             PointerEvent::Pressed(point) if frame.is_open() => {
                 if let Some(position) = day_at(point, bounds, scale) {
                     let day = week_start(self.today) + position as i64;
-                    // Today is the day the page falls back to, so it is kept as "no day picked".
                     self.selected_day = (day != self.today).then_some(day);
                     self.hovered_join = None;
                     self.refresh(context.fonts());
@@ -741,11 +715,9 @@ mod tests {
         let mut page = CalendarPage::sample(&fonts);
         assert_eq!(page.selected(), page.today);
         assert!(!page.agenda.rows.is_empty());
-        // The sample has events only today, so another day of the week is empty and has no next event.
         page.selected_day = Some(week_start(page.today) + (page.today - week_start(page.today) + 1) % 7);
         page.refresh(&fonts);
         assert!(page.agenda.rows.iter().all(|row| row.state == State::Later));
-        // A day from an earlier week is forgotten.
         page.selected_day = Some(week_start(page.today) - 3);
         page.refresh(&fonts);
         assert_eq!(page.selected(), page.today);
@@ -773,7 +745,6 @@ mod tests {
 
     #[test]
     fn utc_converts_to_local_time_without_going_backwards() {
-        // Whatever the zone of the machine running the test, local time is within a day of UTC and consistent.
         let utc = days_from_civil(2026, 10, 24) * SECONDS_PER_DAY + 12 * 3600;
         let local = SystemClock.utc_to_local(utc);
         assert!((local - utc).abs() <= 14 * 3600);

@@ -1,7 +1,4 @@
-//! The "Edit pages" view, opened with the settings button: the pages that are in the notch as chips to drag into a new order or
-//! double-click to remove, and the pages that are available to click and add. Layout and the drag rules are pure
-//! functions and a small state machine, so they are tested without a window; `notch.rs` draws and applies them.
-//! Sizes are in device-independent pixels.
+//! Page reordering and selection; layout sizes are device-independent pixels.
 
 use crate::{
     gfx::{Align, Canvas, Color, FontStyle, Point, Rect, UI_FONT, Weight},
@@ -14,15 +11,12 @@ const CHIP_GAP: f32 = 8.0;
 const ROW_GAP: f32 = 8.0;
 const SECTION_GAP: f32 = 10.0;
 const LABEL_GAP: f32 = 6.0;
-/// Space inside a chip around its icon and name.
 const CHIP_PADDING: f32 = 10.0;
 const CHIP_ICON: f32 = 14.0;
 const CHIP_ICON_GAP: f32 = 6.0;
 const DONE_WIDTH: f32 = 54.0;
 const DONE_HEIGHT: f32 = 24.0;
-/// Two presses on a chip within this time, without dragging, remove it.
 const DOUBLE_CLICK_MILLISECONDS: u64 = 450;
-/// A press that moves less than this is a click, not a drag.
 const DRAG_THRESHOLD: f32 = 4.0;
 
 pub const TITLE: FontStyle = FontStyle::new(UI_FONT, 12.0, Weight::Medium, Align::Leading);
@@ -40,21 +34,17 @@ const LABEL_COLOR: Color = Color::rgb(0.431, 0.431, 0.478);
 pub const IN_NOTCH_LABEL: &str = "IN THE ISLAND \u{00b7} DRAG TO REORDER \u{00b7} DOUBLE-CLICK TO REMOVE";
 pub const AVAILABLE_LABEL: &str = "AVAILABLE \u{00b7} CLICK TO ADD";
 
-/// One page as the editor shows it.
 #[derive(Clone, Copy, Debug)]
 pub struct Entry {
     pub page: usize,
     pub is_on: bool,
-    /// Width of the chip in device-independent pixels: its padding, icon and name.
     pub chip_width: f32,
 }
 
-/// The width of a chip for a name that is `text_width` wide.
 pub fn chip_width(text_width: f32) -> f32 {
     2.0 * CHIP_PADDING + CHIP_ICON + CHIP_ICON_GAP + text_width.ceil()
 }
 
-/// Where everything is, in device pixels.
 pub struct Layout {
     pub in_label: Rect,
     pub available_label: Rect,
@@ -62,11 +52,9 @@ pub struct Layout {
     pub off_chips: Vec<(usize, Rect)>,
     pub title: Rect,
     pub done: Rect,
-    /// The height the content needs, in device-independent pixels.
     pub content_height: f32,
 }
 
-/// Lays chips left to right and wraps them into rows no wider than `width`; positions are relative to the top-left.
 fn flow(widths: &[f32], width: f32, top: f32) -> (Vec<Rect>, f32) {
     let (mut x, mut y) = (0.0, top);
     let mut rects = Vec::with_capacity(widths.len());
@@ -81,7 +69,6 @@ fn flow(widths: &[f32], width: f32, top: f32) -> (Vec<Rect>, f32) {
     (rects, if widths.is_empty() { top } else { y + CHIP_HEIGHT })
 }
 
-/// Lays the editor out in `content` (the notch below its header) and `header` (the row at the top).
 pub fn layout(entries: &[Entry], content: Rect, header: Rect, scale: f32) -> Layout {
     let width = content.width() / scale;
     let on: Vec<&Entry> = entries.iter().filter(|entry| entry.is_on).collect();
@@ -119,7 +106,6 @@ pub fn layout(entries: &[Entry], content: Rect, header: Rect, scale: f32) -> Lay
     }
 }
 
-/// Where a dragged chip lands: the place in the order of the chip nearest to `point`.
 pub fn drop_position(chips: &[(usize, Rect)], point: Point) -> usize {
     let distance = |rect: &Rect| {
         let (dx, dy) = (rect.center_x() - point.x, (rect.center_y() - point.y) * 3.0);
@@ -132,20 +118,16 @@ pub fn drop_position(chips: &[(usize, Rect)], point: Point) -> usize {
         .map_or(0, |(position, _)| position)
 }
 
-/// What a press, move or release asks the notch to do.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Outcome {
     Nothing,
-    /// Leave the editor.
     Done,
     /// Put the page at this position among the pages that are on.
     Move {
         page: usize,
         position: usize,
     },
-    /// Take the page out of the notch.
     Remove(usize),
-    /// Put the page into the notch.
     Add(usize),
 }
 
@@ -184,7 +166,6 @@ impl PageEditor {
         Outcome::Nothing
     }
 
-    /// Follows the pointer while a chip is held; returns true when something should be redrawn.
     pub fn moved(&mut self, point: Point) -> bool {
         let Some(drag) = self.drag.as_mut() else { return false };
         drag.pointer = point;
@@ -198,12 +179,10 @@ impl PageEditor {
         if !drag.is_moving {
             return Outcome::Nothing;
         }
-        // A drag cancels a double-click that could have followed.
         self.last_click = None;
         Outcome::Move { page: drag.page, position: drop_position(&layout.on_chips, point) }
     }
 
-    /// True while a chip is held down, before it is known whether it will be dragged.
     pub fn is_holding(&self) -> bool {
         self.drag.is_some()
     }
@@ -213,14 +192,12 @@ impl PageEditor {
         self.drag.as_ref().is_some_and(|drag| drag.is_moving)
     }
 
-    /// The page being dragged and where its chip is drawn, as an offset from where it sits.
     pub fn dragged(&self) -> Option<(usize, Point)> {
         let drag = self.drag.as_ref().filter(|drag| drag.is_moving)?;
         Some((drag.page, Point::new(drag.pointer.x - drag.start.x, drag.pointer.y - drag.start.y)))
     }
 }
 
-/// What the notch draws a chip with.
 pub struct ChipView<'a> {
     pub name: &'a str,
     pub icon: Icon,

@@ -70,6 +70,9 @@ when open while paused so playback can be resumed. When no page answers for a mo
 collapsed pill shows the time, and the open notch shows its header alone. The host asks again after every event, so a
 page changes what it shows by changing its own state.
 
+With lyrics off, the collapsed media player uses the measured song-title width, artwork and wave spacing, plus 2 DIP
+of text slack. Its total width stays between 96 and 400 DIP; titles that exceed this limit are ellipsized.
+
 ### The open notch
 
 Every open page sits inside the same frame, drawn by `chrome.rs`: 10 px of padding, a 16 px header, a 10 px gap, then
@@ -89,6 +92,7 @@ Pointing at the notch starts a timer; if the pointer stays, the notch opens in t
 then the whole page, and it closes in two legs the other way, after a short delay once the pointer leaves. One spring,
 `expansion`, goes from 0 (collapsed) through `HEADER_STAGE` (the header-only pill) to 1 (open), and the sizes, the
 fades and the time's glide all follow it. The springs, delays and fades are constants at the top of `notch.rs`.
+The closing spring uses stiffness 330 and damping 22 for a small bounce into idle; the opening response is separate.
 While files are dragged over the notch it opens at once on the page that takes drops and grows a little, as if ready.
 
 ### Hiding
@@ -97,11 +101,12 @@ The notch can step out of the way in three cases, all in `notch.rs` (`is_hidden`
 
 - **Hide when idle** (a tray option): with nothing to show it shrinks to a nearly invisible 240 x 6 px strip that still
   receives the pointer, shows the small pill after the pointer rests on it for 150 ms, and opens if the pointer stays.
-- **Over a maximized window** (`Hide for full-screen apps`, on by default): the same, with a 3 px strip and a 350 ms
+- **Over a maximized window** (`Show notch over maximized windows`, off by default): the same, with a 3 px strip and a 350 ms
   wait, so the tabs and title bar of the window are not caught. A banner, a transient message or a badge still show.
-  The collapsed pill's page content (music) is hidden, except the lyric line when the user ticked "Show lyrics over
-  maximized windows" (`Page::shows_live_text`).
-- **Over a full-screen window**: the notch's window is hidden and nothing is drawn, so no hover, banner or message
+  Page content is hidden except active lyrics when "Show lyrics over maximized windows" is on (the default), using
+  `Page::shows_live_text`. Turning on the whole-notch option keeps even the idle clock visible and overrides
+  **Hide when idle** over maximized windows.
+- **Over a full-screen window** (`Hide for full-screen apps`, on by default): the notch's window is hidden and nothing is drawn, so no hover, banner or message
   shows until the window leaves full screen.
 
 `screen_mode.rs` decides which case applies. It hooks Windows' events for the window in front changing, and, for as
@@ -109,12 +114,31 @@ long as one window is in front, for the moves and resizes of that window's threa
 time, so mouse moves never wake the notch). A window covering the whole primary monitor without a title bar is full
 screen; a zoomed one is maximized; the desktop, the taskbar and the notch's own windows never count.
 
+Every foreground change reaches the host, even when the screen mode is unchanged, so a demoted Notch window can
+regain topmost status without taking focus. Hover restores topmost before the drop-target overlay steps aside.
+Session lock/unlock and automatic resume reset hover, capture, drag and reveal state, then restore the overlay's
+placement. Session notifications use `WTSRegisterSessionNotification` for the current session; if registration fails,
+the error is logged and foreground recovery remains available. Leave tracking is armed only while
+`WindowFromPoint` identifies the Notch window, preventing repeated leave messages from an occluded window.
+
 ### Navigation
 
 With two or more pages that answer `Some` for `Mode::Expanded`, the page dots in the header show where the user is.
 The user moves between pages by scrolling the mouse wheel, swiping two fingers on a touchpad (sent as scrolling), or
-clicking a dot. The pages sit in a row that slides sideways like a carousel: each wheel notch moves one page, a swipe
-drags the row along with the fingers, at most two pages from where it began, and it settles on the nearest page.
+clicking a dot. Touchpad scrolling moves continuously through the row with a fast smoothing spring. After a 200 ms
+quiet interval, a softer, critically damped spring centers the nearest page, preserving the visible position and
+velocity at release. New input can interrupt it immediately. Layout updates do not center the row while fingers
+are scrolling. The nearest page is remembered as the logical selection.
+
+Each visible page gets its own requested content width for drawing and pointer input. Their center spacing is half
+of each width plus the page gap. The notch's width interpolates between these natural widths using the rendered
+scroll progress, so it progressively shrinks or grows instead of stretching the incoming page to the outgoing one.
+No per-frame allocations are needed for this pair of page frames, and the animation timer stops once motion settles.
+
+Windows input-source metadata identifies touchpads; drivers without it fall back to small deltas and the active
+gesture. Large deltas stay in touchpad mode once a swipe starts. Input-end timers ignore stale queued messages.
+Smooth scroll sensitivity is 400 units per page. Wheel input still moves one page per notch and can queue up to two
+pages ahead; wheel and dot navigation use a critically damped transition to a page center.
 The pages form a loop (past the last comes the first), and the page left open is remembered as `navigation.page` in
 the settings. `host/navigation.rs` holds the rules as pure functions; `notch.rs` applies them.
 
@@ -151,7 +175,8 @@ The host asks every running activity for its `presence()` after each event.
   itself, transients wait behind it, and while it shows, pointing at the notch holds it instead of opening the notch
   (`Activity::on_hover_changed`).
 
-Activities start only when switched on (`activity.<id>` in the settings, or the tray menu). The host registers the
+Required activities always start and ignore saved disable settings. Only optional activities expose a saved
+`activity.<id>` tray toggle; Notifications is the only optional built-in and defaults to on. The host registers the
 window for Windows power-setting and clipboard messages on their behalf (`Context::listen_to_power_setting`,
 `listen_to_clipboard`) and hands them to every running activity as a `SystemMessage`. Activity timers use ids from
 1000 up and their wake-ups use their own window message, so they never clash with a page's. See

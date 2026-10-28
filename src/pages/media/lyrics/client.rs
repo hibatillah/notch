@@ -20,7 +20,6 @@ use windows::{
 use super::{Lyrics, parse_synced_lyrics};
 
 const USER_AGENT: &str = "notch/0.1 (personal desktop widget)";
-/// Waits between retries after the first failed request, about 18 s in total.
 const RETRY_DELAYS: [Duration; 4] = [
     Duration::from_millis(1500),
     Duration::from_millis(3000),
@@ -29,10 +28,8 @@ const RETRY_DELAYS: [Duration; 4] = [
 ];
 const SEARCH_DURATION_TOLERANCE_SECONDS: f64 = 4.0;
 
-/// Looks up synced lyrics for a track. `Ok(None)` means the service has none; `Err` means it could not be reached.
-///
-/// The exact-match request and the search run at the same time and the first one that finds lyrics wins, so a slow or
-/// failing exact match does not hold up the search.
+/// Ok(None) means no synced lyrics; Err means lookup failed.
+/// Race exact match and search so a slow request cannot block a successful result.
 pub fn fetch(artist: &str, title: &str, album: &str, duration_seconds: i64) -> Result<Option<Lyrics>> {
     let client = HttpClient::new()?;
     client.DefaultRequestHeaders()?.UserAgent()?.TryParseAdd(&HSTRING::from(USER_AGENT))?;
@@ -73,12 +70,10 @@ pub fn fetch(artist: &str, title: &str, album: &str, duration_seconds: i64) -> R
     });
 
     let result = first_found(receiver.iter().take(2));
-    // Whichever request is still retrying has nothing left to do.
     is_settled.store(true, Ordering::Relaxed);
     result
 }
 
-/// The first lyrics found among the lookups' results; otherwise an error if any lookup failed, otherwise `None`.
 fn first_found(results: impl Iterator<Item = Result<Option<Lyrics>>>) -> Result<Option<Lyrics>> {
     let mut failure = None;
     for result in results {
@@ -91,8 +86,7 @@ fn first_found(results: impl Iterator<Item = Result<Option<Lyrics>>>) -> Result<
     failure.map_or(Ok(None), Err)
 }
 
-/// GET with retries: `Ok(None)` on 404, `Ok(Some(body))` on 200, and `Err` once every attempt failed (the service reports 503 when overloaded).
-/// Retrying stops as soon as `is_settled` is set, because the other lookup already answered.
+/// Retry failures; 404 means no result. Stop when the competing lookup settles.
 fn request(client: &HttpClient, url: &str, is_settled: &AtomicBool) -> Result<Option<HSTRING>> {
     let uri = Uri::CreateUri(&HSTRING::from(url))?;
     let mut last_error = windows::core::Error::from_hresult(windows::core::HRESULT(-1));
@@ -125,7 +119,6 @@ fn lyrics_from_object(object: &JsonObject) -> Option<Lyrics> {
     (!lines.is_empty()).then_some(Lyrics { lines })
 }
 
-/// Picks the search result whose length is closest to the playing track, ignoring results more than a few seconds off.
 fn best_search_match(body: &HSTRING, duration_seconds: i64) -> Option<Lyrics> {
     let results = JsonArray::Parse(body).ok()?;
     let mut best: Option<(f64, Lyrics)> = None;

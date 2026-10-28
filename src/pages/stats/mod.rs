@@ -1,5 +1,4 @@
-//! The system stats page: processor, memory, network and disk in four tiles. It is opt-in, has no collapsed state, and
-//! reads the system every two seconds only while it is on screen, so it costs nothing the rest of the time.
+//! Opt-in system stats; sample every two seconds only while visible.
 
 mod format;
 mod sampler;
@@ -30,7 +29,6 @@ const BAR_HEIGHT: f32 = 5.0;
 const HISTORY_LENGTH: usize = 30;
 
 const SAMPLE_TIMER: TimerId = TimerId(0);
-/// The first reading comes soon after the page appears; the rest follow at the normal pace.
 const FIRST_SAMPLE_MILLISECONDS: u32 = 600;
 const SAMPLE_INTERVAL_MILLISECONDS: u32 = 2000;
 
@@ -57,7 +55,6 @@ impl StatsPage {
         Self { sampler: Sampler::new(), latest: None, cpu_history: VecDeque::with_capacity(HISTORY_LENGTH) }
     }
 
-    /// A page with example readings, for rendering the page off-screen.
     #[cfg(test)]
     pub fn sample() -> Self {
         let mut page = Self::new();
@@ -90,7 +87,6 @@ impl StatsPage {
     }
 }
 
-/// The four tiles side by side across `bounds`.
 fn tile_rects(bounds: Rect, scale: f32) -> [Rect; TILE_COUNT] {
     let gap = TILE_GAP * scale;
     let width = (bounds.width() - gap * (TILE_COUNT - 1) as f32) / TILE_COUNT as f32;
@@ -100,7 +96,6 @@ fn tile_rects(bounds: Rect, scale: f32) -> [Rect; TILE_COUNT] {
     })
 }
 
-/// A rectangle inside a tile, given in device-independent pixels from the tile's top-left corner.
 fn inside(tile: Rect, scale: f32, left: f32, top: f32, bottom: f32) -> Rect {
     Rect::new(
         tile.left + left * scale,
@@ -122,7 +117,6 @@ fn draw_bar(canvas: &Canvas, tile: Rect, scale: f32, percent: f32, color: Color,
     }
 }
 
-/// The recent load as a row of thin bars, oldest on the left.
 fn draw_history(canvas: &Canvas, tile: Rect, scale: f32, history: &VecDeque<f32>, opacity: f32) {
     let area = inside(tile, scale, TILE_PADDING_X, 0.0, 0.0);
     let bottom = tile.top + (GRAPHIC_TOP + GRAPHIC_HEIGHT) * scale;
@@ -157,7 +151,6 @@ impl Page for StatsPage {
         true
     }
 
-    /// There is no collapsed state, so it never takes the collapsed pill.
     fn priority(&self, mode: Mode) -> Option<Priority> {
         (mode == Mode::Expanded).then_some(Priority::BACKGROUND)
     }
@@ -179,21 +172,18 @@ impl Page for StatsPage {
         let value_area = |tile: Rect| inside(tile, scale, TILE_PADDING_X, 19.0, 45.0);
         let sub_area = |tile: Rect| inside(tile, scale, TILE_PADDING_X, SUB_TOP, SUB_TOP + 14.0);
 
-        // Processor
         text(canvas, &LABEL, "CPU", label_area(tiles[0]), GRAY, opacity);
         let cpu = sample.cpu_percent.map_or_else(|| "\u{2013}".to_owned(), percent_text);
         text(canvas, &VALUE, &cpu, value_area(tiles[0]), Color::WHITE, opacity);
         draw_history(canvas, tiles[0], scale, &self.cpu_history, opacity);
         text(canvas, &LABEL, &format!("{} threads", sample.logical_processors), sub_area(tiles[0]), GRAY, opacity);
 
-        // Memory
         text(canvas, &LABEL, "Memory", label_area(tiles[1]), GRAY, opacity);
         text(canvas, &VALUE, &percent_text(sample.memory_percent), value_area(tiles[1]), Color::WHITE, opacity);
         draw_bar(canvas, tiles[1], scale, sample.memory_percent, MEMORY_PURPLE, opacity);
         let memory = memory_pair_text(sample.memory_used_bytes, sample.memory_total_bytes);
         text(canvas, &LABEL, &memory, sub_area(tiles[1]), GRAY, opacity);
 
-        // Network
         text(canvas, &LABEL, "Network", label_area(tiles[2]), GRAY, opacity);
         let rate = |value: Option<f64>| value.map_or_else(|| "\u{2013}".to_owned(), rate_text);
         let download = format!("\u{2193} {}", rate(sample.download_bytes_per_second));
@@ -202,7 +192,6 @@ impl Page for StatsPage {
         text(canvas, &RATE, &upload, inside(tiles[2], scale, TILE_PADDING_X, 37.0, 53.0), GRAY, opacity);
         text(canvas, &LABEL, sample.network_kind.label(), sub_area(tiles[2]), GRAY, opacity);
 
-        // Disk
         text(canvas, &LABEL, &self.sampler.disk_label(), label_area(tiles[3]), GRAY, opacity);
         text(canvas, &VALUE, &percent_text(sample.disk_percent), value_area(tiles[3]), Color::WHITE, opacity);
         draw_bar(canvas, tiles[3], scale, sample.disk_percent, DISK_GREEN, opacity);
@@ -211,7 +200,6 @@ impl Page for StatsPage {
 
     fn on_shown_changed(&mut self, is_shown: bool, context: &mut Context) {
         if is_shown {
-            // The first reading only sets the baseline that the next ones are compared with.
             self.sampler.reset();
             self.cpu_history.clear();
             self.latest = Some(self.sampler.sample());

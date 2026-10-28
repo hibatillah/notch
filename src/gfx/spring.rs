@@ -1,14 +1,11 @@
-/// Damped spring that eases a value toward its target and slightly overshoots.
 pub struct Spring {
     pub position: f32,
     pub target: f32,
     velocity: f32,
     stiffness: f32,
     damping: f32,
-    /// Multiplies the damping while the spring is past its target on its way back, so the return from an overshoot is
-    /// slow and does not swing to the other side.
+    /// Extra damping on the return from overshoot prevents a second swing.
     rebound_damping_factor: f32,
-    /// Which way the spring was heading when it last got a new target: 1 upward, -1 downward, 0 not yet.
     approach: f32,
     last_target: f32,
 }
@@ -31,14 +28,12 @@ impl Spring {
         }
     }
 
-    /// Changes how the spring moves from now on, keeping its position and velocity, so a spring can move one way
-    /// faster than the other.
+    /// Changes response without resetting position or velocity.
     pub fn set_response(&mut self, stiffness: f32, damping: f32) {
         self.stiffness = stiffness;
         self.damping = damping;
     }
 
-    /// Damps the return from an overshoot `factor` times as much as the push toward the target.
     pub fn with_rebound_damping(mut self, factor: f32) -> Self {
         self.rebound_damping_factor = factor;
         self
@@ -65,7 +60,6 @@ impl Spring {
         (self.target - self.position).abs() < SETTLE_DISTANCE && self.velocity.abs() < SETTLE_VELOCITY
     }
 
-    /// Places the spring at `value` with no motion, so the next target change starts a fresh transition.
     pub fn jump_to(&mut self, value: f32) {
         self.position = value;
         self.target = value;

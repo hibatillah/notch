@@ -1,6 +1,4 @@
-//! The microphone being in use, found through the audio sessions of the default recording device: a session turns
-//! active while an app records. Core Audio calls back on a system thread when a session appears or changes state,
-//! so nothing polls.
+//! Core Audio session callbacks report recording on the default input device without polling.
 
 use windows::{
     Win32::{
@@ -85,7 +83,6 @@ struct Listener {
     manager: IAudioSessionManager2,
     created: IAudioSessionNotification,
     events: IAudioSessionEvents,
-    /// Sessions whose state changes are already watched, by their instance identifier.
     watched: Vec<(String, IAudioSessionControl)>,
 }
 
@@ -100,7 +97,6 @@ impl Listener {
         Ok(Self { manager, created, events, watched: Vec::new() })
     }
 
-    /// Watches any new session and tells whether some session is recording right now.
     fn refresh(&mut self) -> bool {
         let Ok(sessions) = (unsafe { self.manager.GetSessionEnumerator() }) else { return false };
         let count = unsafe { sessions.GetCount() }.unwrap_or(0);

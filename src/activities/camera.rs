@@ -1,9 +1,5 @@
-//! The camera being in use, found through the Windows Frame Server, the system service that apps reach cameras
-//! through (browsers, video-call apps, the Camera app). It logs a start and a stop for every camera stream in the
-//! `Microsoft-Windows-MF-FrameServer/Camera_FrameServer` event channel, which any user may read, and the log tells
-//! the notch when one arrives, so nothing polls. Apps that reach the camera without the Frame Server, such as some
-//! older DirectShow programs, are not seen, and a camera already streaming when the notch starts is not either.
-//! The consent-store registry keys are not used: this Windows build no longer updates them.
+//! Frame Server events report new camera streams; existing streams and direct access are not detected.
+//! Consent-store registry keys are not used because this Windows build no longer updates them.
 
 use std::{
     collections::HashSet,
@@ -35,18 +31,15 @@ const GREEN: Color = Color::rgb(0.19, 0.82, 0.35);
 const CHANNEL: windows::core::PCWSTR = w!("Microsoft-Windows-MF-FrameServer/Camera_FrameServer");
 /// Only the watchdog events about streams: event 11 is logged when a stream operation begins.
 const QUERY: windows::core::PCWSTR = w!("*[System[EventID=11] and EventData[Data[@Name='TimerScope']='2']]");
-/// `WatchdogOperation` values of a stream.
 const OPERATION_START: u32 = 2;
 const OPERATION_STOP: u32 = 3;
 
-/// One camera stream starting or stopping.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 struct StreamEvent {
     stream_id: u64,
     is_start: bool,
 }
 
-/// The text of the `<Data Name='name'>` element of an event's XML.
 fn data_value<'a>(xml: &'a str, name: &str) -> Option<&'a str> {
     let marker = format!("Name='{name}'>");
     let start = xml.find(&marker)? + marker.len();
@@ -54,7 +47,6 @@ fn data_value<'a>(xml: &'a str, name: &str) -> Option<&'a str> {
     Some(&xml[start..start + length])
 }
 
-/// The stream event an XML-rendered watchdog event describes; `None` for any other operation.
 fn parse_stream_event(xml: &str) -> Option<StreamEvent> {
     let stream_id = data_value(xml, "TimerScopeId")?.parse().ok()?;
     match data_value(xml, "WatchdogOperation")?.parse().ok()? {
@@ -64,14 +56,12 @@ fn parse_stream_event(xml: &str) -> Option<StreamEvent> {
     }
 }
 
-/// The streams that have started and not stopped yet; the camera is in use while there is one.
 #[derive(Default)]
 struct Streams {
     open: HashSet<u64>,
 }
 
 impl Streams {
-    /// Applies an event and tells whether the camera is in use afterwards.
     fn apply(&mut self, event: StreamEvent) -> bool {
         if event.is_start {
             self.open.insert(event.stream_id);
@@ -82,7 +72,6 @@ impl Streams {
     }
 }
 
-/// What the event-log callback needs; it lives as long as the subscription.
 struct Subscriber {
     streams: Mutex<Streams>,
     is_in_use: Arc<AtomicBool>,
@@ -91,7 +80,6 @@ struct Subscriber {
 
 fn render_xml(event: EVT_HANDLE) -> Option<String> {
     let (mut used, mut properties) = (0u32, 0u32);
-    // The first call only reports how large the buffer must be.
     let _ = unsafe { EvtRender(None, event, EvtRenderEventXml.0, 0, None, &mut used, &mut properties) };
     if used == 0 {
         return None;
@@ -105,7 +93,7 @@ fn render_xml(event: EVT_HANDLE) -> Option<String> {
     Some(String::from_utf16_lossy(&buffer[..length]))
 }
 
-/// Called by Windows on a thread-pool thread for every matching event.
+// Windows invokes this on a thread-pool thread.
 unsafe extern "system" fn on_event(
     action: EVT_SUBSCRIBE_NOTIFY_ACTION,
     context: *const c_void,

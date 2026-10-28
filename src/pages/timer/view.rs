@@ -1,5 +1,4 @@
-//! What the timer page says and offers in each state: the words, the time and the buttons. Pure, so it is tested
-//! without a window.
+//! Timer presentation rules, independent of drawing.
 
 use super::session::{Phase, SESSIONS_PER_ROUND, State, Timer, clock_text, compact_text};
 
@@ -20,15 +19,12 @@ pub struct ButtonSpec {
     pub action: Action,
     pub label: String,
     pub is_primary: bool,
-    /// Ends the session, so it is drawn in red.
     pub is_destructive: bool,
 }
 
-/// The open page's content.
 pub struct View {
     pub title: String,
     pub detail: Option<String>,
-    /// The big time on the left, when there is one.
     pub time: Option<String>,
     pub buttons: Vec<ButtonSpec>,
 }
@@ -45,7 +41,6 @@ fn phase_name(phase: Phase) -> &'static str {
     }
 }
 
-/// "Focus · 2 of 4" for a focus session, or just the break's name.
 fn running_title(timer: &Timer, phase: Phase) -> String {
     match phase {
         Phase::Focus => format!("Focus · {} of {SESSIONS_PER_ROUND}", timer.session_number()),
@@ -123,10 +118,8 @@ pub fn view(timer: &Timer, now: u64) -> View {
     }
 }
 
-/// How the collapsed pill shows a running timer.
 pub struct Compact {
     pub text: String,
-    /// How much of the phase has passed, for the ring.
     pub fraction: f32,
     pub tone: Tone,
 }
@@ -152,12 +145,10 @@ pub fn compact(timer: &Timer, now: u64) -> Option<Compact> {
     Some(Compact { text, fraction: timer.elapsed_fraction(now), tone })
 }
 
-/// The same text with every digit replaced by `0`, so the width measured for it does not change as the time does.
 pub fn widest_form(text: &str) -> String {
     text.chars().map(|character| if character.is_ascii_digit() { '0' } else { character }).collect()
 }
 
-/// The message shown for a few seconds when a phase ends: what ended, and what comes next.
 pub fn alert(timer: &Timer) -> Option<(String, String)> {
     let State::Finished { phase } = timer.state else { return None };
     Some(match phase {

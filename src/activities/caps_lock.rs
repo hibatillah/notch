@@ -1,6 +1,4 @@
-//! Caps Lock being switched on or off. Windows has no notification for it, so a keyboard hook on a thread of its own
-//! wakes the activity when the Caps Lock key goes down; the hook looks at no other key and keeps nothing it sees. The
-//! activity then reads the lock state from Windows, so nothing polls.
+//! A dedicated hook observes only Caps Lock presses and retains no key data; the activity reads the state.
 
 use std::sync::Mutex;
 
@@ -28,11 +26,10 @@ const SHOW_MILLISECONDS: u32 = 1200;
 const READ_DELAY_MILLISECONDS: u32 = 40;
 const READ_TIMER: TimerId = TimerId(1);
 
-/// Whom the hook wakes; the hook is a plain function, so it cannot carry this itself.
 static WAKE: Mutex<Option<Notifier>> = Mutex::new(None);
 
 unsafe extern "system" fn on_key(code: i32, wparam: WPARAM, lparam: LPARAM) -> LRESULT {
-    // A negative code means the hook must pass the event on untouched.
+    // Negative hook codes must pass through untouched.
     if code >= 0 && matches!(wparam.0 as u32, WM_KEYDOWN | WM_SYSKEYDOWN) {
         // SAFETY: for a low-level keyboard hook, `lparam` points to a valid `KBDLLHOOKSTRUCT` during the call.
         let key = unsafe { &*(lparam.0 as *const KBDLLHOOKSTRUCT) };
@@ -68,12 +65,10 @@ fn start_hook(notifier: Notifier) {
     });
 }
 
-/// Whether Caps Lock is on, as Windows has it.
 fn is_caps_lock_on() -> bool {
     unsafe { GetKeyState(i32::from(VK_CAPITAL.0)) & 1 != 0 }
 }
 
-/// What the pill says when the lock changes.
 fn message(is_on: bool) -> &'static str {
     if is_on { "Caps Lock on" } else { "Caps Lock off" }
 }
@@ -135,7 +130,6 @@ impl Activity for CapsLockActivity {
         }
         context.kill_timer(READ_TIMER);
         let is_on = is_caps_lock_on();
-        // Holding the key repeats it, and a repeat changes nothing.
         if is_on == self.is_on {
             return;
         }

@@ -6,8 +6,6 @@ use crate::{
 
 const GRAY: Color = Color::rgb(0.604, 0.604, 0.651);
 
-/// The open media player: artwork with the player's icon on it, the title, the artist, the controls and,
-/// when enabled, the lyrics.
 pub fn draw(page: &MediaPage, canvas: &Canvas, frame: &Frame, opacity: f32) {
     let layout = Layout::new(frame, page.title_lines.len(), page.text_width);
 

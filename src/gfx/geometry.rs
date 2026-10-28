@@ -41,7 +41,6 @@ impl Rect {
         Self { left, top, right, bottom }
     }
 
-    /// A rectangle `half_width` and `half_height` away from `center` on every side.
     pub fn around(center: Point, half_width: f32, half_height: f32) -> Self {
         Self::new(center.x - half_width, center.y - half_height, center.x + half_width, center.y + half_height)
     }

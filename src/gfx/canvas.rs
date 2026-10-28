@@ -20,7 +20,6 @@ use super::{
     raster::Mask,
 };
 
-/// Text below this opacity is invisible, so drawing it is skipped.
 const MIN_VISIBLE_ALPHA: f32 = 0.01;
 
 /// What a page draws with. All coordinates are device pixels; multiply device-independent sizes by `scale`.
@@ -49,7 +48,6 @@ impl<'a> Canvas<'a> {
         Self { target, brush, images, fonts, scale }
     }
 
-    /// Display scale: device pixels per device-independent pixel.
     pub fn scale(&self) -> f32 {
         self.scale
     }
@@ -64,23 +62,18 @@ impl<'a> Canvas<'a> {
         }
     }
 
-    /// An image made by `build`, uploaded once and reused whenever the same `key` is asked for again.
-    /// Everything that changes how the image looks must be part of the key.
+    /// Uploaded once per key; include every visual input in the cache key.
     pub fn cached_image(&self, key: impl Hash, build: impl FnOnce() -> ImageData) -> Option<Rc<ImageBrush>> {
         let mut hasher = DefaultHasher::new();
         key.hash(&mut hasher);
         self.images.get_or_insert(hasher.finish(), || image::upload(self.target, &build()).ok())
     }
 
-    /// Uploads an image to the renderer, for a page that keeps its own brushes and frees them when it is done with them.
     pub fn upload(&self, image: &ImageData) -> Option<ImageBrush> {
         image::upload(self.target, image).ok()
     }
 
-    /// Fills the two concave fillets that join a shape's vertical sides to the top edge of the screen, like the
-    /// outward-curving corners of a MacBook notch. `flare` is each fillet's radius; `bounds` is the shape they join.
-    ///
-    /// They are small cached images rather than Direct2D geometry, which costs about 10 MB of memory when first used.
+    /// Concave top fillets, cached as images to avoid the initial 10 MB cost of Direct2D geometry.
     pub fn fill_top_flares(&self, bounds: Rect, flare: f32, color: Color) {
         let size = flare.round().max(1.0) as u32;
         let rgb = color.rgb_bytes();
@@ -108,12 +101,11 @@ impl<'a> Canvas<'a> {
         }
     }
 
-    /// Width of `text` in device-independent pixels when drawn on one line with `style`.
+    /// Returns device-independent pixels, unlike drawing coordinates.
     pub fn measure(&self, style: &FontStyle, text: &str) -> f32 {
         self.fonts.measure(style, text)
     }
 
-    /// Draws one run of text inside `rect`, aligned and trimmed according to `style`.
     pub fn text(&self, style: &FontStyle, text: &str, rect: Rect, color: Color) {
         if color.a <= MIN_VISIBLE_ALPHA || text.is_empty() {
             return;
@@ -134,7 +126,6 @@ impl<'a> Canvas<'a> {
         }
     }
 
-    /// Fills a rounded rectangle with an uploaded image, scaled so the whole image covers `rect`.
     pub fn image(&self, image: &ImageBrush, rect: Rect, radius: f32, opacity: f32) {
         let pixel_scale = rect.width() / image.width as f32;
         let brush = image.brush();
@@ -155,14 +146,12 @@ impl<'a> Canvas<'a> {
         }
     }
 
-    /// Runs `draw` with everything outside `rect` cut away.
     pub fn clipped(&self, rect: Rect, draw: impl FnOnce()) {
         unsafe { self.target.PushAxisAlignedClip(&rect.into(), D2D1_ANTIALIAS_MODE_ALIASED) };
         draw();
         unsafe { self.target.PopAxisAlignedClip() };
     }
 
-    /// Runs `draw` with the drawing scaled by `factor` around `origin`; text stays sharp at any factor.
     pub fn scaled_about(&self, origin: Point, factor: f32, draw: impl FnOnce()) {
         unsafe {
             self.target.SetTransform(&Matrix3x2 {
@@ -183,8 +172,7 @@ impl<'a> Canvas<'a> {
     }
 }
 
-/// One flare as an image `size` pixels square plus one column that overlaps the shape it joins.
-/// It is solid where it lies outside a circle of radius `size` centered on the shape's top edge, one flare away.
+/// The solid region is outside the circle; an extra column overlaps the adjoining shape.
 fn flare_image(size: u32, side: FlareSide, color: Color) -> ImageData {
     let (width, radius) = (size + 1, size as f32);
     let mask = Mask::from_distance(width, size, |point| {
@@ -210,10 +198,8 @@ mod tests {
     fn a_left_flare_is_solid_at_the_top_edge_and_empty_where_the_curve_meets_the_side() {
         let image = flare_image(10, FlareSide::Left, Color::BLACK);
         assert_eq!((image.width, image.height), (11, 10));
-        // Along the top the flare is solid, tapering to nothing at the bottom of the shape's side.
         assert_eq!(coverage(&image, 9, 0), 255);
         assert_eq!(coverage(&image, 0, 9), 0);
-        // The overlap column is solid all the way down.
         assert_eq!(coverage(&image, 10, 9), 255);
     }
 

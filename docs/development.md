@@ -32,6 +32,19 @@ cargo build --release
 The executable is `target\x86_64-pc-windows-msvc\release\notch.exe`. A debug build (`cargo build`) works too, but
 animation is noticeably slower, so use release for anything you look at.
 
+## App icon
+
+`assets/branding/logo.png` is the orange master logo; the shaded black and white variants live beside it.
+`assets/branding/logo.ico` is the Windows export, with transparent 16, 20, 24, 32, 40, 48, 64, 96, 128 and 256 px frames.
+After changing the master, regenerate the export from Git Bash with `scripts/export-icon.sh` (requires `uv`; Pillow
+is used only for this export, not by the app or normal builds).
+
+`build.rs` uses the Windows SDK resource compiler to embed `logo.rc` and `logo.ico` in the executable. The window and
+tray load this same resource at the current display scale. The installer uses the same ICO, and its Start menu
+shortcut and installed-app entry use the executable's embedded icon. No image files are needed beside the installed
+executable. Rebuild and restart Notch to see an icon change; updating an installed copy requires the newer installer.
+Windows may cache an old shortcut icon until its icon cache refreshes.
+
 ## Run
 
 ```

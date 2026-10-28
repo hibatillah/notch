@@ -1,5 +1,4 @@
-//! Downloads the calendar file from the address the user gave. It runs on a thread of its own, since a web request
-//! can take a while, and wakes the page when it is done.
+//! Calendar requests run off-thread and notify the page when complete.
 
 use std::sync::{Arc, Mutex};
 
@@ -7,7 +6,6 @@ use windows::{Foundation::Uri, Web::Http::HttpClient, core::HSTRING};
 
 use crate::page::Notifier;
 
-/// What a download left behind, until the page takes it.
 pub type Outcome = Arc<Mutex<Option<Result<String, String>>>>;
 
 /// The address to download from what the user copied: a `webcal://` address is the same address over `https://`.
@@ -30,7 +28,6 @@ fn download(link: &str) -> Result<String, String> {
     Ok(text.to_string())
 }
 
-/// Starts a download; the result lands in `outcome` and the page is woken through `notifier`.
 pub fn start(link: String, outcome: Outcome, notifier: Notifier) {
     std::thread::spawn(move || {
         let result = download(&link);

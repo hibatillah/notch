@@ -5,14 +5,10 @@ const FILL: Color = Color::gray(0.137);
 const FILL_HOVERED: Color = Color::gray(0.2);
 const DANGER_FILL: Color = Color::rgb(0.55, 0.1, 0.12);
 const DANGER_FILL_HOVERED: Color = Color::rgb(0.67, 0.14, 0.16);
-/// Text on a filled accent button.
 const ACCENT_LABEL: Color = Color::gray(0.05);
 
-/// A rounded button with a text label. A primary button is filled with the accent color, and a button that ends or
-/// removes something is dark red with white text.
 pub struct PillButton<'a> {
     pub label: &'a str,
-    /// Where it sits, in device pixels.
     pub area: Rect,
     pub is_primary: bool,
     pub is_destructive: bool,

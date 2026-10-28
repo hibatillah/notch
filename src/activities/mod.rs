@@ -1,8 +1,4 @@
-//! Every activity the notch can show. This list is the only place activities are registered.
-//!
-//! To add an activity: create a file or folder here with a type that implements `Activity`, declare the module below
-//! and add the type to `all()`. To remove one: delete it, its `mod` line and its entry in `all()`.
-//! Each activity can be switched off from the tray menu, which stores `activity.<id>=off` in the settings file.
+//! The only activity registry; optional activities persist their tray choice as activity.<id>=off.
 
 mod battery;
 mod bluetooth;
@@ -17,7 +13,6 @@ mod volume;
 
 use crate::activity::Activity;
 
-/// The notifications activity showing an example banner, for rendering the notch off-screen.
 #[cfg(test)]
 pub fn sample_notification(fonts: &crate::gfx::Fonts) -> Box<dyn Activity> {
     Box::new(notifications::NotificationsActivity::sample(fonts))

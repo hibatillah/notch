@@ -1,5 +1,4 @@
-//! Volume and mute of the default speakers. Core Audio calls back on a system thread when either changes, so nothing
-//! polls; the callback stores the change and wakes the UI thread.
+//! Core Audio callbacks store volume changes and wake the UI thread without polling.
 
 use std::sync::{Arc, Mutex};
 
@@ -29,7 +28,6 @@ const SHOW_MILLISECONDS: u32 = 1500;
 
 #[derive(Default)]
 struct Shared {
-    /// The latest volume (0 to 1) and mute state reported, until the UI thread takes it.
     level: Option<(f32, bool)>,
     default_device_changed: bool,
 }
@@ -87,7 +85,6 @@ impl IMMNotificationClient_Impl for DeviceWatcher_Impl {
     }
 }
 
-/// Everything held while listening, so it can be released in the right order.
 struct Listener {
     enumerator: IMMDeviceEnumerator,
     device_watcher: IMMNotificationClient,
@@ -100,7 +97,6 @@ pub struct VolumeActivity {
     notifier: Option<Notifier>,
     volume: f32,
     is_muted: bool,
-    /// Width of the "Muted" message, measured when the speakers are muted.
     muted_width: f32,
     flash: Flash,
 }
@@ -118,7 +114,6 @@ impl VolumeActivity {
         }
     }
 
-    /// Listens to the current default speakers, replacing the previous ones.
     fn attach(&mut self) -> Result<()> {
         let (Some(listener), Some(notifier)) = (self.listener.as_mut(), self.notifier) else { return Ok(()) };
         if let Some((endpoint, callback)) = listener.endpoint.take() {
@@ -155,7 +150,6 @@ impl Drop for VolumeActivity {
     }
 }
 
-/// "42" for a volume of 0.42.
 fn value_text(volume: f32) -> String {
     format!("{}", (volume * 100.0).round() as u32)
 }

@@ -4,82 +4,59 @@ use crate::{
     page::Frame,
 };
 
-// Sizes are in device-independent pixels; `Layout` converts to device pixels. They are the size of the page's content,
-// which the notch surrounds with its padding and header.
-/// The height of the open player, with and without lyrics. The notch gives every open page this height, so it must
-/// equal `CONTENT_HEIGHT` in `host/chrome.rs`.
+// Layout converts content DIP to device pixels; the host adds padding and the header.
+/// Must match the fixed CONTENT_HEIGHT in host/chrome.rs.
 pub const PLAIN_HEIGHT: f32 = 86.0;
-/// The most room the title and the artist get; the title wraps to fit it.
 pub const TEXT_MAX_WIDTH: f32 = 180.0;
-/// The least room the text column gets: enough for the buttons.
 pub const TEXT_MIN_WIDTH: f32 = 140.0;
-/// The artwork is as high as the page, which has room for two title lines, the detail line and the buttons.
 const ARTWORK_SIZE: f32 = 86.0;
 const ARTWORK_RADIUS: f32 = 14.0;
 const TEXT_GAP: f32 = 19.0;
-/// Without lyrics the page is the artwork and a column of text and buttons, as wide as its widest text.
 pub fn plain_width(text_width: f32) -> f32 {
     ARTWORK_SIZE + TEXT_GAP + text_width
 }
-/// With lyrics: the player on the left, three lyric lines on the right.
 pub const LYRICS_WIDTH: f32 = 582.0;
-/// The text column beside the lyrics.
 const COLUMN_WIDTH_WITH_LYRICS: f32 = 160.0;
-/// The title can use this many lines; what does not fit ends with an ellipsis.
 pub const TITLE_MAX_LINES: usize = 2;
 const LINE_HEIGHT: f32 = 16.0;
 const DETAIL_GAP: f32 = 2.0;
 const CONTROLS_GAP: f32 = 6.0;
 const BUTTON_SIZE: f32 = 30.0;
 const BUTTON_GAP: f32 = 2.0;
-/// The first button starts left of the text, so its icon lines up with the text above it.
 const BUTTON_OUTSET: f32 = 6.0;
-/// The empty space between the player and the lyrics.
 const LYRIC_GAP: f32 = 8.0;
-/// A lyric line can take this many lines of text; what does not fit ends with an ellipsis.
 pub const LYRIC_MAX_LINES: usize = 2;
-/// The icon of the app that plays the track, at the artwork's bottom right corner and partly outside it.
 const BADGE_SIZE: f32 = 19.0;
 const BADGE_RADIUS: f32 = 5.0;
-/// How far the badge sticks out past the artwork's right and bottom edges.
 const BADGE_OVERHANG: f32 = 4.0;
-/// The black rim around the badge that separates it from the artwork.
 const BADGE_RING: f32 = 3.0;
 
-/// The width of the lyric panel, in device-independent pixels.
 pub fn lyric_panel_width() -> f32 {
     LYRICS_WIDTH - (ARTWORK_SIZE + TEXT_GAP + COLUMN_WIDTH_WITH_LYRICS + LYRIC_GAP)
 }
 
-/// How wide a line of the title can be, in device-independent pixels.
 pub fn title_width(has_lyrics: bool) -> f32 {
     if has_lyrics { COLUMN_WIDTH_WITH_LYRICS } else { TEXT_MAX_WIDTH }
 }
 
-/// Where everything in the expanded view goes, in device pixels, for the current animation frame.
 pub struct Layout {
     pub scale: f32,
     pub bounds: Rect,
-    /// 0 without lyrics, 1 with them; in between while the pill changes width.
     blend: f32,
-    /// How many lines the title takes, one or two; the text beside the artwork is centered on whatever it adds up to.
     title_lines: usize,
 }
 
 impl Layout {
-    /// `text_width` is the width of the text column without lyrics, which sets how wide the page is then.
     pub fn new(frame: &Frame, title_lines: usize, text_width: f32) -> Self {
         let plain = plain_width(text_width);
         let blend = ((frame.expanded.width - plain) / (LYRICS_WIDTH - plain)).clamp(0.0, 1.0);
         Self { scale: frame.scale, bounds: frame.bounds, blend, title_lines: title_lines.clamp(1, TITLE_MAX_LINES) }
     }
 
-    /// The part of the lyrics layout that is in effect, from 0 to 1.
     pub fn lyric_blend(&self) -> f32 {
         self.blend
     }
 
-    /// Top of the title, from the top of the content: the title, the detail line and the buttons are centered together.
     fn stack_top(&self) -> f32 {
         let height = self.title_lines as f32 * LINE_HEIGHT + DETAIL_GAP + LINE_HEIGHT + CONTROLS_GAP + BUTTON_SIZE;
         (PLAIN_HEIGHT - height) / 2.0
@@ -98,7 +75,6 @@ impl Layout {
         ARTWORK_RADIUS * self.scale
     }
 
-    /// The app icon square, overlapping the artwork's bottom right corner.
     pub fn app_badge(&self) -> Rect {
         let artwork = self.artwork();
         let right = artwork.right + BADGE_OVERHANG * self.scale;
@@ -110,7 +86,6 @@ impl Layout {
         BADGE_RADIUS * self.scale
     }
 
-    /// The black rim around the badge, and its corner radius.
     pub fn app_badge_ring(&self) -> (Rect, f32) {
         let badge = self.app_badge();
         let ring = BADGE_RING * self.scale;
@@ -132,12 +107,10 @@ impl Layout {
         Rect::new(self.text_left(), top, self.text_right(), top + LINE_HEIGHT * self.scale)
     }
 
-    /// One line of the title, counting from 0.
     pub fn title_line(&self, index: usize) -> Rect {
         self.row(index as f32 * LINE_HEIGHT)
     }
 
-    /// The artist, under the title.
     pub fn detail(&self) -> Rect {
         self.row(self.title_lines as f32 * LINE_HEIGHT + DETAIL_GAP)
     }

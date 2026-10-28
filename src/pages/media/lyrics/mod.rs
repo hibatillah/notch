@@ -17,7 +17,6 @@ pub struct Lyrics {
 }
 
 impl Lyrics {
-    /// Index of the line being sung at `position_ticks`, or `None` before the first line starts.
     pub fn index_at(&self, position_ticks: i64) -> Option<usize> {
         self.lines.partition_point(|line| line.start_ticks <= position_ticks).checked_sub(1)
     }
@@ -49,7 +48,6 @@ fn parse_synced_lyrics(text: &str) -> Vec<LyricLine> {
     lines
 }
 
-/// Parses `mm:ss.xx`; returns `None` for metadata tags such as `ar:Artist`.
 fn parse_timestamp(tag: &str) -> Option<i64> {
     let (minutes, seconds) = tag.split_once(':')?;
     let minutes: f64 = minutes.parse().ok()?;

@@ -1,9 +1,7 @@
-//! Anti-aliased shapes drawn on the CPU into small images, so icons and corner fillets need no Direct2D geometry
-//! (which costs about 10 MB of memory the first time it is used).
+//! Rasterize small shapes on the CPU to avoid the initial 10 MB cost of Direct2D geometry.
 
 use super::{geometry::Point, image::ImageData, path::Figure};
 
-/// How much of each pixel a shape covers, from 0 to 1.
 pub struct Mask {
     width: u32,
     height: u32,
@@ -11,8 +9,7 @@ pub struct Mask {
 }
 
 impl Mask {
-    /// Builds a mask from a signed distance to a shape's edge: negative inside, positive outside, in pixels.
-    /// A pixel whose center is on the edge is half covered, which gives smooth edges.
+    /// Signed distance in pixels: negative inside, positive outside, half coverage on the edge.
     pub fn from_distance(width: u32, height: u32, distance: impl Fn(Point) -> f32) -> Self {
         let mut coverage = Vec::with_capacity((width * height) as usize);
         for y in 0..height {
@@ -29,7 +26,6 @@ impl Mask {
         Self::from_distance(width, height, |point| signed_distance(figures, point))
     }
 
-    /// A line of `half_width` on each side along `figures`, with rounded ends and corners.
     pub fn stroke(width: u32, height: u32, figures: &[Figure], half_width: f32) -> Self {
         Self::from_distance(width, height, |point| edge_distance(figures, point, false) - half_width)
     }
@@ -39,7 +35,6 @@ impl Mask {
         self.coverage[(y * self.width + x) as usize]
     }
 
-    /// The mask as an image of one color, in the premultiplied BGRA order Direct2D expects.
     pub fn tinted(&self, red: f32, green: f32, blue: f32) -> ImageData {
         let mut pixels = Vec::with_capacity(self.coverage.len() * 4);
         for &coverage in &self.coverage {
@@ -51,21 +46,18 @@ impl Mask {
     }
 }
 
-/// Distance from `point` to the nearest edge of any figure; see `edges` for `closes_open_figures`.
 fn edge_distance(figures: &[Figure], point: Point, closes_open_figures: bool) -> f32 {
     edges(figures, closes_open_figures)
         .map(|(start, end)| distance_to_segment(point, start, end))
         .fold(f32::MAX, f32::min)
 }
 
-/// Distance to the nearest edge, negative when `point` is inside the figures.
 fn signed_distance(figures: &[Figure], point: Point) -> f32 {
     let distance = edge_distance(figures, point, true);
     if is_inside(figures, point) { -distance } else { distance }
 }
 
-/// Every edge of every figure. The edge back to the start is included for closed figures, and for open ones when
-/// `closes_open_figures` is set, which a fill needs and a stroked line must not have.
+/// Fills close open figures; strokes must leave them open.
 fn edges(figures: &[Figure], closes_open_figures: bool) -> impl Iterator<Item = (Point, Point)> + '_ {
     figures.iter().flat_map(move |figure| {
         let count = figure.points.len();
@@ -124,7 +116,6 @@ mod tests {
 
     #[test]
     fn an_edge_through_a_pixel_covers_it_partly() {
-        // An edge at x = 5.25 leaves the quarter of pixel 5 that lies left of it covered.
         let mask = Mask::fill(10, 10, &[square(0.0, 0.0, 5.25, 10.0)]);
         let coverage = mask.coverage_at(5, 5);
         assert!((coverage - 0.25).abs() < 0.01, "{coverage}");
@@ -144,7 +135,6 @@ mod tests {
         assert_eq!(mask.coverage_at(10, 4), 1.0);
         assert_eq!(mask.coverage_at(10, 5), 1.0);
         assert_eq!(mask.coverage_at(10, 2), 0.0);
-        // The round end reaches one half-width past the last point, and no further.
         assert!(mask.coverage_at(16, 4) > 0.5);
         assert_eq!(mask.coverage_at(18, 4), 0.0);
     }
@@ -153,7 +143,6 @@ mod tests {
     fn a_tinted_mask_is_premultiplied() {
         let mask = Mask::from_distance(1, 1, |_| 0.0);
         let image = mask.tinted(1.0, 0.0, 0.0);
-        // Half covered: blue 0, green 0, red 128, alpha 128.
         assert_eq!(image.bgra_premultiplied, vec![0, 0, 128, 128]);
     }
 }

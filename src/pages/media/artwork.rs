@@ -8,10 +8,8 @@ use windows::{
 
 use crate::gfx::ImageData;
 
-/// Side length in pixels of the decoded album art; the page scales it down when drawing.
 pub const ARTWORK_PIXELS: u32 = 192;
 
-/// The size to decode an image of `width` x `height` at so its shorter side is `side` and its shape is kept.
 fn cover_size(width: u32, height: u32, side: u32) -> (u32, u32) {
     let shorter = width.min(height).max(1);
     let scaled =
@@ -19,8 +17,7 @@ fn cover_size(width: u32, height: u32, side: u32) -> (u32, u32) {
     (scaled(width).max(side), scaled(height).max(side))
 }
 
-/// Decodes the session's album art thumbnail to premultiplied BGRA at `ARTWORK_PIXELS`. An image that is not square
-/// keeps its shape and loses its edges, so the part in the middle fills the square (like `object-fit: cover`).
+/// Decode to premultiplied BGRA, preserving aspect ratio for a centered square crop.
 pub fn read(properties: &GlobalSystemMediaTransportControlsSessionMediaProperties) -> Result<ImageData> {
     let stream = properties.Thumbnail()?.OpenReadAsync()?.join()?;
     let decoder = BitmapDecoder::CreateAsync(&stream)?.join()?;

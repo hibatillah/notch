@@ -1,5 +1,4 @@
-//! Reads CPU, memory, network and disk numbers from Windows. It keeps the previous reading, because load and speed
-//! are differences between two readings. One reading takes under a millisecond.
+//! Load and transfer rates require differences between consecutive Windows counter readings.
 
 use std::time::Instant;
 
@@ -37,7 +36,6 @@ impl NetworkKind {
     }
 }
 
-/// One reading of the system.
 #[derive(Clone, Copy, Debug)]
 pub struct Sample {
     /// Busy share of all processors since the previous reading; `None` on the first reading.
@@ -54,7 +52,6 @@ pub struct Sample {
     pub disk_free_bytes: u64,
 }
 
-/// Busy share in percent between two readings of (idle time, total time).
 pub fn cpu_percent(previous: (u64, u64), now: (u64, u64)) -> Option<f32> {
     let total = now.1.checked_sub(previous.1).filter(|total| *total > 0)?;
     let idle = now.0.saturating_sub(previous.0).min(total);
@@ -66,7 +63,6 @@ pub fn bytes_per_second(previous: u64, now: u64, seconds: f64) -> f64 {
     if seconds <= 0.0 { 0.0 } else { now.saturating_sub(previous) as f64 / seconds }
 }
 
-/// Used share of a disk in percent.
 pub fn used_percent(total: u64, free: u64) -> f32 {
     if total == 0 { 0.0 } else { 100.0 * (1.0 - free.min(total) as f32 / total as f32) }
 }
@@ -89,12 +85,10 @@ impl Sampler {
         }
     }
 
-    /// "Disk C:", the name of the tile that shows the system drive.
     pub fn disk_label(&self) -> String {
         format!("Disk {}", self.drive_name)
     }
 
-    /// Forgets the previous readings, so the next reading starts a fresh comparison.
     pub fn reset(&mut self) {
         self.previous_cpu = None;
         self.previous_network = None;
@@ -147,7 +141,6 @@ fn file_time_ticks(time: FILETIME) -> u64 {
     (u64::from(time.dwHighDateTime) << 32) | u64::from(time.dwLowDateTime)
 }
 
-/// (idle time, total time) of all processors, in 100-nanosecond ticks.
 fn cpu_times() -> (u64, u64) {
     let (mut idle, mut kernel, mut user) = (FILETIME::default(), FILETIME::default(), FILETIME::default());
     let _ = unsafe { GetSystemTimes(Some(&mut idle), Some(&mut kernel), Some(&mut user)) };
@@ -155,7 +148,6 @@ fn cpu_times() -> (u64, u64) {
     (file_time_ticks(idle), file_time_ticks(kernel) + file_time_ticks(user))
 }
 
-/// Bytes received and sent by the physical network adapters that are up, and the kind of the busiest one.
 fn network_counters() -> (u64, u64, NetworkKind) {
     let mut table: *mut MIB_IF_TABLE2 = std::ptr::null_mut();
     if unsafe { GetIfTable2(&mut table) }.is_err() || table.is_null() {

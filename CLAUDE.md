@@ -41,4 +41,4 @@ Read the doc for the work in front of you before starting it:
 
 `NOTCH_DEBUG=<file>` writes a timestamped log (Unix milliseconds). `NOTCH_PAGES=shelf,media` picks pages,
 `NOTCH_LYRICS=off` stops lyric lookups, `NOTCH_TOP=<px>` moves the pill down. Settings are in
-`%APPDATA%\notch\settings.txt`; `activity.<id>=off` switches an activity off (the tray menu does it too).
+`%APPDATA%\notch\settings.txt`; `activity.notifications=off` disables notifications (the tray menu does it too). Other activities stay enabled.

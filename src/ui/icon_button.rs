@@ -1,14 +1,11 @@
 use super::icons::Icon;
 use crate::gfx::{Canvas, Color, Point, Rect};
 
-/// Half the side of the square that holds the icon and answers clicks.
 const HIT_HALF: f32 = 17.0;
-/// Half the side of the faint background shown under the pointer.
 const WASH_HALF: f32 = 15.0;
 const WASH_RADIUS: f32 = 8.0;
 const WASH_ALPHA: f32 = 0.12;
 
-/// An icon button with a ghost-style hover: no background until the pointer is over it, then a faint rounded wash.
 pub struct IconButton {
     pub icon: Icon,
     pub center: Point,
@@ -26,7 +23,6 @@ impl IconButton {
         self.icon.draw(canvas, self.center, self.icon.size() * scale, self.color, opacity);
     }
 
-    /// Whether `point` is on a button centered at `center`.
     pub fn is_hit(center: Point, scale: f32, point: Point) -> bool {
         Rect::around(center, HIT_HALF * scale, HIT_HALF * scale).contains(point)
     }

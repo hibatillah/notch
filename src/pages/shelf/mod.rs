@@ -1,7 +1,4 @@
-//! The file shelf: a place to keep files for a while. Drop files on the notch to put them on the shelf. Each file shows
-//! what Explorer shows for it. Double-click one to open it, drag it out to take it off the shelf into another app, or
-//! remove it with right-click or the cross on its corner. The files stay where they are; the shelf keeps their paths.
-//! When files are added or removed, the collapsed pill says so for a moment.
+//! The shelf stores paths; adding, dragging, and removing entries never moves or deletes the originals.
 
 mod items;
 
@@ -25,7 +22,6 @@ use crate::{
     ui::{self, Icon},
 };
 
-/// The page is as wide as its places and the padding around them, and that padding is the same on every side.
 const EXPANDED_WIDTH: f32 = 2.0 * ZONE_PADDING + MAX_SLOTS as f32 * FILE_WIDTH + (MAX_SLOTS - 1) as f32 * FILE_GAP;
 const EXPANDED_SIZE: Size = Size::new(EXPANDED_WIDTH, 86.0);
 const RESTING_WIDTH: f32 = 150.0;
@@ -33,7 +29,6 @@ const ZONE_RADIUS: f32 = 14.0;
 const BORDER_WIDTH: f32 = 1.5;
 const DASH: f32 = 10.0;
 const DASH_GAP: f32 = 6.0;
-/// The space between the outline and the files, above, below and at both sides.
 const ZONE_PADDING: f32 = 9.5;
 const FILE_WIDTH: f32 = 78.0;
 const FILE_GAP: f32 = 4.0;
@@ -44,14 +39,12 @@ const NAME_LINE_HEIGHT: f32 = 12.0;
 const NAME_LINES: usize = 2;
 const NAME_WIDTH: f32 = FILE_WIDTH - 2.0;
 const COLUMN_HEIGHT: f32 = PREVIEW_SIZE + NAME_TOP + NAME_LINE_HEIGHT * NAME_LINES as f32;
-/// How far the wash behind a hovered file reaches above and below its column.
 const WASH_REACH: f32 = 3.0;
 /// Files shown at once; with more, the last place says how many more there are.
-const MAX_SLOTS: usize = 7;
+const MAX_SLOTS: usize = 6;
 const REMOVE_RADIUS: f32 = 7.0;
 const REMOVE_RING: f32 = 1.5;
 const REMOVE_HIT_RADIUS: f32 = 9.0;
-/// How far the pointer must move with a file pressed before it counts as a drag, not a click.
 const DRAG_START_DISTANCE: f32 = 5.0;
 /// Pixels asked of Explorer for each preview; enough for a 40 px tile on a screen scaled to 200 %.
 const PREVIEW_PIXELS: i32 = 96;
@@ -60,12 +53,9 @@ const EMPTY_TITLE_HEIGHT: f32 = 17.0;
 const EMPTY_DETAIL_HEIGHT: f32 = 14.0;
 const EMPTY_GAP: f32 = 3.0;
 const EMPTY_TEXT_HEIGHT: f32 = EMPTY_TITLE_HEIGHT + EMPTY_GAP + EMPTY_DETAIL_HEIGHT;
-/// The spring of a new file arriving: a little bounce as it settles.
 const ARRIVAL_RESPONSE: (f32, f32) = (200.0, 19.0);
-/// A new file starts this much smaller and this far above its place, in device-independent pixels.
 const ARRIVAL_SCALE: f32 = 0.7;
 const ARRIVAL_FALL: f32 = 12.0;
-/// Files dropped together arrive one after the other, this much of the arrival apart.
 const ARRIVAL_STAGGER: f32 = 0.18;
 
 const TILE_LABEL: FontStyle = FontStyle::new("Consolas", 10.0, Weight::Medium, Align::Center);
@@ -74,21 +64,17 @@ const EMPTY_TITLE: FontStyle = FontStyle::new(UI_FONT, 13.0, Weight::Medium, Ali
 const EMPTY_DETAIL: FontStyle = FontStyle::new(UI_FONT, 11.0, Weight::Regular, Align::Center);
 
 const BORDER: Color = Color::rgb(0.227, 0.227, 0.267);
-/// The color of the outline and the tint while files are dragged over the notch.
 const ACCENT: Color = Color::rgb(0.25, 0.56, 1.0);
 const NAME_COLOR: Color = Color::rgb(0.769, 0.769, 0.8);
 const GRAY: Color = Color::rgb(0.604, 0.604, 0.651);
 const WASH: Color = Color::rgb(1.0, 1.0, 1.0);
 
-/// What a place on the shelf shows.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum Slot {
     File(usize),
-    /// A place that stands for this many files that do not fit.
     More(usize),
 }
 
-/// The places to draw for `count` files: all of them while they fit, else the first ones and a "more" place.
 fn slots(count: usize) -> Vec<Slot> {
     if count <= MAX_SLOTS {
         (0..count).map(Slot::File).collect()
@@ -97,7 +83,6 @@ fn slots(count: usize) -> Vec<Slot> {
     }
 }
 
-/// The file shown in the place at `position`, if that place shows a file.
 fn file_index(position: usize, count: usize) -> Option<usize> {
     match slots(count).get(position) {
         Some(Slot::File(index)) => Some(*index),
@@ -105,8 +90,7 @@ fn file_index(position: usize, count: usize) -> Option<usize> {
     }
 }
 
-/// The column of one place: its preview and its name below. The places stay in the middle of the page when it is
-/// bigger than they need, as while files are dragged over the notch.
+/// Keep slots centered while the drop target expands the page.
 fn slot_rect(position: usize, bounds: Rect, scale: f32) -> Rect {
     let spare_width = (bounds.width() - EXPANDED_WIDTH * scale).max(0.0) / 2.0;
     let spare_height = (bounds.height() - (COLUMN_HEIGHT + 2.0 * ZONE_PADDING) * scale).max(0.0) / 2.0;
@@ -120,24 +104,19 @@ fn preview_rect(column: Rect, scale: f32) -> Rect {
     Rect::new(left, column.top, left + PREVIEW_SIZE * scale, column.top + PREVIEW_SIZE * scale)
 }
 
-/// Where the cross that removes a file sits: on the top right corner of its preview.
 fn remove_center(preview: Rect, scale: f32) -> Point {
     Point::new(preview.right - scale, preview.top + scale)
 }
 
-/// The largest rectangle with the proportions of a `size` picture that fits in the middle of `area`.
 fn fitted(size: (u32, u32), area: Rect) -> Rect {
     let (width, height) = (size.0.max(1) as f32, size.1.max(1) as f32);
     let factor = (area.width() / width).min(area.height() / height);
     Rect::around(Point::new(area.center_x(), area.center_y()), width * factor / 2.0, height * factor / 2.0)
 }
 
-/// What is under `point`.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum Target {
-    /// The file or the "more" place at this position.
     Slot(usize),
-    /// The cross on the file at this position.
     Remove(usize),
 }
 
@@ -155,36 +134,29 @@ fn target_at(point: Point, bounds: Rect, scale: f32, count: usize) -> Option<Tar
     (0..places.len()).find(|&position| slot_rect(position, bounds, scale).contains(point)).map(Target::Slot)
 }
 
-/// The lines a file name is broken into under its preview: at most two, the last ending in an ellipsis when cut.
 fn name_lines(name: &str, fonts: &Fonts) -> Vec<String> {
     clamp_lines(name, NAME_LINES, NAME_WIDTH, |text| fonts.measure(&NAME, text))
 }
 
-/// Whether a click on `path` at `now` is the second of a double click that the click `previous` began.
 fn is_double_click(previous: Option<&(PathBuf, Instant)>, path: &Path, now: Instant, limit: Duration) -> bool {
     previous.is_some_and(|(last_path, at)| last_path == path && now.duration_since(*at) <= limit)
 }
 
-/// A button or file that was pressed and not yet released.
 #[derive(Clone, Copy, Debug)]
 struct Press {
     target: Target,
     origin: Point,
 }
 
-/// A file's picture from Explorer, uploaded the first time it is drawn.
 struct Preview {
     size: (u32, u32),
     waiting: Option<ImageData>,
     brush: Option<ImageBrush>,
 }
 
-/// What background threads hand back to the page.
 #[derive(Default)]
 struct Inbox {
-    /// Pictures that were asked for; `None` when Explorer had none.
     previews: Vec<(PathBuf, Option<ImageData>)>,
-    /// Files that were dragged out, and whether the drop took them.
     drags: Vec<(PathBuf, bool)>,
 }
 
@@ -197,18 +169,12 @@ pub struct ShelfPage {
     alert_width: f32,
     hovered: Option<Target>,
     press: Option<Press>,
-    /// Files are being dragged over the notch, ready to be dropped on the shelf.
     is_drag_over: bool,
-    /// The file being dragged out right now, shown faded until the drop is over.
     dragging: Option<PathBuf>,
-    /// The name lines of the files in view, by position on the shelf.
     names: Vec<Vec<String>>,
     previews: RefCell<HashMap<PathBuf, Preview>>,
-    /// Files that were just put on the shelf and are still settling into their places, by how far along they are.
     arrivals: HashMap<PathBuf, Spring>,
-    /// The file last clicked and when, to tell a double click from two single ones.
     last_click: Option<(PathBuf, Instant)>,
-    /// Files whose picture was asked for, so each is asked for once.
     requested: HashSet<PathBuf>,
     inbox: Arc<Mutex<Inbox>>,
 }
@@ -237,14 +203,13 @@ impl ShelfPage {
         }
     }
 
-    /// A page holding example files, with their pictures, for rendering the page off-screen.
     #[cfg(test)]
     pub fn sample(directory: &Path, fonts: &Fonts, is_drag_over: bool) -> Self {
         let mut page = Self::new();
         page.storage = None;
         page.is_drag_over = is_drag_over;
         let files: Vec<PathBuf> =
-            ["hover-state-v3.png", "wallpaper-1440p.jpg", "notch-brief.pdf", "budget-q4.xlsx", "notes.txt"]
+            ["hover-state-v3.png", "wallpaper-1440p.jpg", "notch-brief.pdf", "budget-q4.xlsx", "notes.txt", "tasks.md"]
                 .iter()
                 .map(|name| {
                     let path = directory.join(name);
@@ -280,8 +245,6 @@ impl ShelfPage {
             self.shelf.items().iter().take(MAX_SLOTS).map(|path| name_lines(&file_name(path), fonts)).collect();
     }
 
-    /// Asks Explorer, once and in the background, for the picture of each file in view, and forgets the pictures of
-    /// files that are no longer on the shelf.
     fn request_previews(&mut self, context: &Context) {
         let items = self.shelf.items();
         self.requested.retain(|path| items.contains(path));
@@ -302,7 +265,6 @@ impl ShelfPage {
         }
     }
 
-    /// Everything that depends on which files are on the shelf, after they changed.
     fn shelf_changed(&mut self, context: &mut Context) {
         self.save();
         self.refresh_names(context.fonts());
@@ -320,7 +282,6 @@ impl ShelfPage {
         }
     }
 
-    /// Starts carrying the file at `index` to wherever the user drops it; it leaves the shelf once something takes it.
     fn begin_drag(&mut self, index: usize, context: &mut Context) {
         let path = self.shelf.items()[index].clone();
         let (inbox, notifier) = (Arc::clone(&self.inbox), context.notifier());
@@ -337,7 +298,6 @@ impl ShelfPage {
         context.request_repaint();
     }
 
-    /// Draws what stands for a file: its picture from Explorer, or a gray tile until that has arrived.
     fn draw_preview(&self, canvas: &Canvas, path: &Path, area: Rect, opacity: f32) {
         let scale = canvas.scale();
         if let Some(preview) = self.previews.borrow_mut().get_mut(path) {
@@ -368,7 +328,6 @@ impl ShelfPage {
         Icon::Close.draw(canvas, center, 10.0 * scale, Color::WHITE, opacity);
     }
 
-    /// Draws one place; a file that has just arrived drops in from above, growing to its size as it fades in.
     fn draw_slot(&self, canvas: &Canvas, position: usize, slot: Slot, bounds: Rect, opacity: f32) {
         let scale = canvas.scale();
         let column = slot_rect(position, bounds, scale);
@@ -642,6 +601,16 @@ mod tests {
     use super::*;
 
     const BOUNDS: Rect = Rect::new(0.0, 0.0, EXPANDED_WIDTH, 86.0);
+
+    #[test]
+    fn six_files_fit_and_a_seventh_uses_the_last_place_for_overflow() {
+        assert_eq!(slots(6), (0..6).map(Slot::File).collect::<Vec<_>>());
+        assert_eq!(
+            slots(7),
+            vec![Slot::File(0), Slot::File(1), Slot::File(2), Slot::File(3), Slot::File(4), Slot::More(2)]
+        );
+        assert_eq!(EXPANDED_SIZE.width, 507.0);
+    }
 
     fn middle(rect: Rect) -> Point {
         Point::new(rect.center_x(), rect.center_y())

@@ -1,6 +1,4 @@
-//! The focus timer: focus sessions and breaks. Open, it shows the time and the controls; collapsed, a small ring and
-//! the minutes left sit beside whatever page is on show, and an alert with a sound announces the end of a phase.
-//! The timer keeps real time, so it survives restarting the notch.
+//! The running timer uses a collapsed presence and announces phase endings with sound.
 
 mod layout;
 mod session;
@@ -29,7 +27,6 @@ const PAUSED_GRAY: Color = Color::gray(0.6);
 const RESTING_WIDTH: f32 = 104.0;
 const RING_DIAMETER: f32 = 14.0;
 const RING_GAP: f32 = 6.0;
-/// Space after the text so the badge does not touch what is beside it.
 const BADGE_TRAILING: f32 = 6.0;
 const ALERT_MILLISECONDS: u32 = 5000;
 
@@ -38,7 +35,7 @@ const DETAIL: FontStyle = FontStyle::new(UI_FONT, 12.0, Weight::Regular, Align::
 const TIME: FontStyle = FontStyle::new("Consolas", 40.0, Weight::Medium, Align::Leading);
 const BADGE: FontStyle = FontStyle::new(UI_FONT, 12.0, Weight::Medium, Align::Leading);
 
-/// The timer that keeps the time of the current phase; `FLASH_TIMER` (0) belongs to the alert.
+/// Timer zero belongs to Flash; the session uses a separate timer.
 const TICK_TIMER: TimerId = TimerId(1);
 
 pub struct TimerPage {
@@ -70,7 +67,6 @@ impl TimerPage {
         }
     }
 
-    /// Re-reads what the collapsed pill shows from the timer, and how wide that is.
     fn refresh_compact(&mut self, fonts: &Fonts) {
         self.compact = view::compact(&self.timer, now_ms());
         if let Some(compact) = &self.compact {
@@ -79,7 +75,6 @@ impl TimerPage {
         }
     }
 
-    /// Arms the timer for the next moment the shown time changes, or stops it when nothing is counting.
     fn schedule(&self, context: &mut Context) {
         let remaining = match self.timer.state {
             State::Running { .. } => self.timer.remaining(now_ms()),
@@ -94,7 +89,6 @@ impl TimerPage {
         }
     }
 
-    /// A page with a focus session running, for rendering the page off-screen.
     #[cfg(test)]
     pub fn sample(fonts: &Fonts) -> Self {
         let mut page = Self::new();
@@ -106,7 +100,6 @@ impl TimerPage {
         page
     }
 
-    /// Brings everything in line with a changed timer: saves it, redraws and re-arms the timer.
     fn changed(&mut self, context: &mut Context) {
         self.timer.save(context.settings);
         self.refresh_compact(context.fonts());
@@ -114,7 +107,6 @@ impl TimerPage {
         context.request_repaint();
     }
 
-    /// Plays the sound and shows the alert for the phase that just ended.
     fn announce(&mut self, context: &mut Context) {
         let Some((title, value)) = view::alert(&self.timer) else { return };
         self.alert_tint = if self.timer.phase() == Some(Phase::Focus) { BREAK_GREEN } else { FOCUS_ORANGE };
@@ -138,13 +130,11 @@ impl TimerPage {
             Action::StartNext => self.timer.start_next(now),
             Action::Skip => self.timer.skip(),
         }
-        // Acting on the finished phase answers the alert.
         self.alert.on_timer(FLASH_TIMER, context);
         self.hovered_button = None;
         self.changed(context);
     }
 
-    /// The color of the main button and the ring: what the user is about to do or is doing.
     fn accent(&self) -> Color {
         match self.timer.state {
             State::Running { phase: Phase::Focus, .. } | State::Paused { phase: Phase::Focus, .. } | State::Idle => {
@@ -233,7 +223,6 @@ impl Page for TimerPage {
         self.compact.as_ref().map(|_| RING_DIAMETER)
     }
 
-    /// The ring sits at the far left of the marks.
     fn header_status_rank(&self) -> u8 {
         1
     }
@@ -282,7 +271,6 @@ impl Page for TimerPage {
         if !is_hovering {
             self.hovered_button = None;
         }
-        // While open the seconds are shown, so the timer wakes every second.
         self.schedule(context);
         context.request_repaint();
     }

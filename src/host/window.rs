@@ -1,6 +1,6 @@
 use std::{
     cell::RefCell,
-    sync::atomic::{AtomicU32, Ordering},
+    sync::atomic::{AtomicBool, AtomicU32, Ordering},
 };
 
 use windows::{
@@ -10,11 +10,19 @@ use windows::{
             LibraryLoader::GetModuleHandleW,
             Performance::QueryPerformanceFrequency,
             Power::POWERBROADCAST_SETTING,
+            RemoteDesktop::{
+                NOTIFY_FOR_THIS_SESSION, WTSRegisterSessionNotification, WTSUnRegisterSessionNotification,
+            },
             WinRT::{RO_INIT_MULTITHREADED, RoInitialize},
         },
         UI::{
-            HiDpi::{DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2, SetProcessDpiAwarenessContext},
-            Input::KeyboardAndMouse::{TME_LEAVE, TRACKMOUSEEVENT, TrackMouseEvent},
+            HiDpi::{
+                DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2, GetSystemMetricsForDpi, SetProcessDpiAwarenessContext,
+            },
+            Input::{
+                GetCurrentInputMessageSource, IMDT_TOUCHPAD, INPUT_MESSAGE_SOURCE,
+                KeyboardAndMouse::{TME_LEAVE, TRACKMOUSEEVENT, TrackMouseEvent},
+            },
             WindowsAndMessaging::*,
         },
     },
@@ -23,6 +31,7 @@ use windows::{
 
 use super::{
     display, drop_target,
+    icon::Icon,
     notch::{Notch, NotchParts, WINDOW_HEIGHT, WINDOW_WIDTH},
     registry,
     screen_mode::{self, ScreenMode},
@@ -45,6 +54,7 @@ const PBT_POWERSETTINGCHANGE: usize = 0x8013;
 
 /// Registered message id the shell broadcasts when Explorer restarts and the tray is rebuilt.
 static TASKBAR_CREATED_MESSAGE: AtomicU32 = AtomicU32::new(0);
+static SESSION_NOTIFICATIONS_REGISTERED: AtomicBool = AtomicBool::new(false);
 
 thread_local! {
     static NOTCH: RefCell<Option<Notch>> = const { RefCell::new(None) };
@@ -55,7 +65,6 @@ fn with_notch<R>(action: impl FnOnce(&mut Notch) -> R) -> Option<R> {
     NOTCH.with(|cell| cell.try_borrow_mut().ok().and_then(|mut slot| slot.as_mut().map(action)))
 }
 
-/// Shows the tray menu and carries out the choice.
 fn show_menu(window: HWND) {
     let activities = with_notch(|notch| notch.activity_menu()).unwrap_or_default();
     let page_items = with_notch(|notch| notch.page_menu()).unwrap_or_default();
@@ -64,6 +73,7 @@ fn show_menu(window: HWND) {
         starts_with_windows: false,
         hides_for_apps: notch.hides_for_apps(),
         lyrics_over_maximized: notch.keeps_lyrics_over_windows(),
+        notch_over_maximized: notch.keeps_notch_over_windows(),
     })
     .unwrap_or_default();
     let state = tray::MenuState { starts_with_windows: startup::is_enabled(), ..state };
@@ -78,6 +88,9 @@ fn show_menu(window: HWND) {
         Some(tray::MenuChoice::ToggleLyricsOverMaximized) => {
             with_notch(|notch| notch.toggle_lyrics_over_maximized());
         }
+        Some(tray::MenuChoice::ToggleNotchOverMaximized) => {
+            with_notch(|notch| notch.toggle_notch_over_maximized());
+        }
         Some(tray::MenuChoice::PageItem { page, item }) => {
             with_notch(|notch| notch.page_menu_item_chosen(page, item));
         }
@@ -89,7 +102,6 @@ fn show_menu(window: HWND) {
     }
 }
 
-/// The power setting a `WM_POWERBROADCAST` reports, if it is one with a 32-bit value.
 fn power_setting_message(lparam: LPARAM) -> Option<SystemMessage> {
     let setting = unsafe { (lparam.0 as *const POWERBROADCAST_SETTING).as_ref()? };
     if (setting.DataLength as usize) < size_of::<u32>() {
@@ -107,8 +119,12 @@ fn high_word_signed(value: isize) -> i32 {
     i32::from(((value >> 16) & 0xFFFF) as u16 as i16)
 }
 
-/// Asks Windows to send one `WM_MOUSELEAVE` when the pointer leaves the window; it must be re-armed after each use.
+/// Re-arming an occluded window immediately posts another leave, so check the actual pointer target first.
 fn track_mouse_leave(window: HWND) {
+    let mut cursor = POINT::default();
+    if unsafe { GetCursorPos(&mut cursor) }.is_err() || unsafe { WindowFromPoint(cursor) } != window {
+        return;
+    }
     let mut tracking = TRACKMOUSEEVENT {
         cbSize: size_of::<TRACKMOUSEEVENT>() as u32,
         dwFlags: TME_LEAVE,
@@ -117,6 +133,26 @@ fn track_mouse_leave(window: HWND) {
     };
     unsafe {
         let _ = TrackMouseEvent(&mut tracking);
+    }
+}
+
+pub(super) fn restore_topmost(window: HWND) {
+    if unsafe { GetWindowLongW(window, GWL_EXSTYLE) } as u32 & WS_EX_TOPMOST.0 != 0 {
+        return;
+    }
+    match unsafe {
+        SetWindowPos(
+            window,
+            Some(HWND_TOPMOST),
+            0,
+            0,
+            0,
+            0,
+            SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE | SWP_NOOWNERZORDER,
+        )
+    } {
+        Ok(()) => log::debug("restored topmost"),
+        Err(error) => log::debug(&format!("could not restore topmost: {error}")),
     }
 }
 
@@ -144,14 +180,17 @@ extern "system" fn window_procedure(window: HWND, message: u32, wparam: WPARAM, 
         }
         WM_MOUSEWHEEL | WM_MOUSEHWHEEL => {
             let amount = high_word_signed(wparam.0 as isize);
-            with_notch(|notch| notch.scrolled(amount, message == WM_MOUSEHWHEEL));
+            let mut source = INPUT_MESSAGE_SOURCE::default();
+            // Drivers without source metadata still use the delta/active-gesture fallback in scrolled().
+            let is_touchpad =
+                unsafe { GetCurrentInputMessageSource(&mut source) }.is_ok() && source.deviceType == IMDT_TOUCHPAD;
+            with_notch(|notch| notch.scrolled(amount, message == WM_MOUSEHWHEEL, is_touchpad));
             LRESULT(0)
         }
         WM_CAPTURECHANGED => {
             with_notch(|notch| notch.capture_lost());
             LRESULT(0)
         }
-        // The notch has no menu of its own; that is the tray icon's.
         WM_RBUTTONUP => {
             with_notch(|notch| notch.right_clicked(x, y));
             LRESULT(0)
@@ -192,7 +231,19 @@ extern "system" fn window_procedure(window: HWND, message: u32, wparam: WPARAM, 
             {
                 with_notch(|notch| notch.system_message(message));
             }
+            if wparam.0 == PBT_APMRESUMEAUTOMATIC as usize {
+                screen_mode::refresh_foreground();
+                with_notch(|notch| notch.reset_session_interaction());
+            }
             LRESULT(1)
+        }
+        WM_WTSSESSION_CHANGE if wparam.0 == WTS_SESSION_LOCK as usize || wparam.0 == WTS_SESSION_UNLOCK as usize => {
+            log::debug(if wparam.0 == WTS_SESSION_LOCK as usize { "session locked" } else { "session unlocked" });
+            if wparam.0 == WTS_SESSION_UNLOCK as usize {
+                screen_mode::refresh_foreground();
+            }
+            with_notch(|notch| notch.reset_session_interaction());
+            LRESULT(0)
         }
         WM_CLIPBOARDUPDATE => {
             with_notch(|notch| notch.system_message(SystemMessage::ClipboardChanged));
@@ -207,6 +258,11 @@ extern "system" fn window_procedure(window: HWND, message: u32, wparam: WPARAM, 
             LRESULT(0)
         }
         WM_DESTROY => {
+            if SESSION_NOTIFICATIONS_REGISTERED.swap(false, Ordering::Relaxed)
+                && let Err(error) = unsafe { WTSUnRegisterSessionNotification(window) }
+            {
+                log::debug(&format!("could not unregister session notifications: {error}"));
+            }
             tray::remove(window);
             unsafe { PostQuitMessage(0) };
             LRESULT(0)
@@ -219,12 +275,10 @@ extern "system" fn window_procedure(window: HWND, message: u32, wparam: WPARAM, 
     }
 }
 
-/// The window in front now covers the screen differently: the notch steps out of its way.
 fn on_screen_mode(mode: ScreenMode) {
     with_notch(|notch| notch.set_screen_mode(mode));
 }
 
-/// Creates the notch window, starts the pages and runs the message loop until the notch quits.
 pub fn run(pages: Vec<Box<dyn Page>>, activities: Vec<Box<dyn Activity>>) -> Result<()> {
     unsafe {
         let _ = SetProcessDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2);
@@ -232,11 +286,16 @@ pub fn run(pages: Vec<Box<dyn Page>>, activities: Vec<Box<dyn Activity>>) -> Res
 
         let scale = display::system_scale();
         let instance = GetModuleHandleW(None)?;
+        let dpi = (scale * 96.0).round() as u32;
+        let large_icon = Icon::load(GetSystemMetricsForDpi(SM_CXICON, dpi))?;
+        let small_icon = Icon::load(GetSystemMetricsForDpi(SM_CXSMICON, dpi))?;
         let class = WNDCLASSEXW {
             cbSize: size_of::<WNDCLASSEXW>() as u32,
             lpfnWndProc: Some(window_procedure),
             hInstance: instance.into(),
             hCursor: LoadCursorW(None, IDC_ARROW)?,
+            hIcon: large_icon.handle(),
+            hIconSm: small_icon.handle(),
             lpszClassName: w!("NotchWindow"),
             ..Default::default()
         };
@@ -284,6 +343,12 @@ pub fn run(pages: Vec<Box<dyn Page>>, activities: Vec<Box<dyn Activity>>) -> Res
             ticks_per_second,
         });
         NOTCH.with(|cell| *cell.borrow_mut() = Some(notch));
+        match WTSRegisterSessionNotification(window, NOTIFY_FOR_THIS_SESSION) {
+            Ok(()) => SESSION_NOTIFICATIONS_REGISTERED.store(true, Ordering::Relaxed),
+            Err(error) => {
+                log::debug(&format!("session notifications unavailable; foreground recovery remains active: {error}"))
+            }
+        }
         with_notch(|notch| notch.start());
 
         let _ = ShowWindow(window, SW_SHOWNOACTIVATE);

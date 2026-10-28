@@ -2,14 +2,12 @@
 
 const ELLIPSIS: char = '\u{2026}';
 
-/// Breaks `text` into at most `max_lines` lines no wider than `max_width` (as `measure` reports). The words wrap; a word
-/// wider than a line is cut where it stops fitting. When the text needs more lines, the last one ends with an ellipsis.
+/// Wrap words, split overlong words, and ellipsize the last line when max_lines is exceeded.
 pub fn clamp_lines(text: &str, max_lines: usize, max_width: f32, measure: impl Fn(&str) -> f32) -> Vec<String> {
     clamp(text, max_lines, max_width, &measure)
 }
 
-/// Like `clamp_lines`, but when the text takes more than one line it makes the lines about equally long, like CSS
-/// `text-wrap: balance`, by finding the narrowest width that still gives the same number of lines.
+/// Find the narrowest width preserving the line count to balance wrapped text.
 pub fn balance_lines(text: &str, max_lines: usize, max_width: f32, measure: impl Fn(&str) -> f32) -> Vec<String> {
     let lines = clamp(text, max_lines, max_width, &measure);
     let is_cut = lines.last().is_some_and(|last| last.ends_with(ELLIPSIS));
@@ -48,13 +46,11 @@ fn clamp(text: &str, max_lines: usize, max_width: f32, measure: &dyn Fn(&str) ->
             continue;
         }
         if current.is_empty() {
-            // One word wider than a whole line: take what fits and carry on with the rest.
             let (fitting, rest) = split_to_fit(word, max_width, measure);
             lines.push(fitting);
             if lines.len() == max_lines {
                 return finish(lines, rest, &words[index + 1..], max_width, measure);
             }
-            // The rest of the word is tried again as the next word.
             return clamp_rest(lines, rest, &words[index + 1..], max_lines, max_width, measure);
         }
         lines.push(std::mem::take(&mut current));
@@ -66,7 +62,6 @@ fn clamp(text: &str, max_lines: usize, max_width: f32, measure: &dyn Fn(&str) ->
     lines
 }
 
-/// Carries on after a long word was cut: lays out its remainder followed by the words that were left.
 fn clamp_rest(
     mut lines: Vec<String>,
     rest: &str,
@@ -81,8 +76,7 @@ fn clamp_rest(
     lines
 }
 
-/// Replaces the last line with as much of it and of the text that follows as fits, ending in an ellipsis; when
-/// nothing follows, the last line stays as it is.
+/// Ellipsize the last line only when text remains.
 fn finish(
     mut lines: Vec<String>,
     rest_of_word: &str,
@@ -101,7 +95,6 @@ fn finish(
     lines
 }
 
-/// The longest start of `text` that, with an ellipsis after it, fits `max_width`.
 fn with_ellipsis(text: &str, max_width: f32, measure: &dyn Fn(&str) -> f32) -> String {
     let mut end = text.len();
     loop {
@@ -130,7 +123,6 @@ fn split_to_fit<'a>(word: &'a str, max_width: f32, measure: &dyn Fn(&str) -> f32
 mod tests {
     use super::*;
 
-    /// Every character is one unit wide.
     fn width(text: &str) -> f32 {
         text.chars().count() as f32
     }

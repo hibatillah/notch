@@ -1,20 +1,16 @@
-//! A notification as Windows gave it, and how it is worded in the banner. Pure, so it is tested without a window.
+//! Notification text and privacy-mode presentation.
 
 use std::sync::Arc;
 
 use crate::gfx::{Color, ImageData};
 
-/// What a notification says in private mode, in place of its text.
 pub const PRIVATE_TEXT: &str = "New message";
 
-/// One notification, as Windows gave it.
 #[derive(Clone)]
 pub struct Item {
     pub id: u32,
     pub app: String,
-    /// Identifies the app, so it can be opened.
     pub app_id: String,
-    /// The app's logo, when Windows has one; apps with the same id share it.
     pub icon: Option<Arc<ImageData>>,
     pub title: String,
     pub body: String,
@@ -31,13 +27,11 @@ const PALETTE: [Color; 8] = [
     Color::rgb(0.761, 0.145, 0.361),
 ];
 
-/// The color of an app's tile: the same app always gets the same one.
 pub fn app_color(app: &str) -> Color {
     let hash = app.bytes().fold(5381u32, |hash, byte| hash.wrapping_mul(33).wrapping_add(u32::from(byte)));
     PALETTE[hash as usize % PALETTE.len()]
 }
 
-/// The letter on an app's tile.
 pub fn app_letter(app: &str) -> String {
     app.chars()
         .find(|character| character.is_alphanumeric())
@@ -45,12 +39,10 @@ pub fn app_letter(app: &str) -> String {
         .unwrap_or_else(|| "?".to_owned())
 }
 
-/// The line above the message: who it is from, and its app when it has a title of its own.
 pub fn heading(item: &Item) -> String {
     if item.title.is_empty() { item.app.clone() } else { format!("{} \u{00b7} {}", item.title, item.app) }
 }
 
-/// The message on one line with single spaces, or the private-mode words.
 pub fn body_text(item: &Item, shows_text: bool) -> String {
     if !shows_text { PRIVATE_TEXT.to_owned() } else { item.body.split_whitespace().collect::<Vec<_>>().join(" ") }
 }

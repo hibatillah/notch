@@ -1,8 +1,10 @@
 # Notch
 
-A tiny notch for the top of your Windows screen, written in Rust. It sits at the top edge as a slim black pill, and opens when you hover over it. While music plays, it shows the track and scrolls the synced lyrics inline, line by line. It also keeps a file shelf, a calendar, a focus timer and system stats, and shows short messages (volume, notifications, Caps Lock) in the pill. It uses no CPU while idle.
+<img src="assets/branding/logo.png" alt="Notch folded-tab logo" width="96" />
 
-It draws straight to the screen with Direct2D: no UI framework, no web view. That keeps it small, fast, and at 0 % CPU while idle. Every page and every pill message is its own module, so you can switch them off, remove them, or write your own.
+A tiny notch for the top of your Windows screen, written in Rust. It sits at the top edge as a slim black pill, and opens when you hover over it. While music plays, it shows the track and scrolls the synced lyrics inline, line by line. It also keeps a file shelf, a calendar, a focus timer and system stats, and shows short messages (volume, notifications, Caps Lock) in the pill.
+
+It draws straight to the screen with Direct2D: no UI framework, no web view. Every page and every pill message is its own module. Pages can be disabled; notifications are the only optional activity. See [Resource use](#resource-use) for measured CPU and memory.
 
 ![The open notch on the media page, playing a song with its synced lyrics beside the controls](docs/images/notch-lyrics.png)
 
@@ -10,7 +12,7 @@ It draws straight to the screen with Direct2D: no UI framework, no web view. Tha
 
 Pages (what you see when you open the notch; the time sits in the header of every one):
 
-- Media player with synced lyrics
+- Media player with synced lyrics; with lyrics off, the collapsed pill fits the song title up to 400 DIP wide
 - File shelf: drop files to keep them for a while
 - Calendar: the week and the events of a day you pick
 - Focus timer
@@ -30,7 +32,7 @@ Activities (what the collapsed pill shows while something happens):
 
 ### Maximized and full-screen windows
 
-Over a **maximized** window the notch hides to a thin strip at the very top edge of the screen (like **Hide when idle**), and wakes when the pointer waits there a little. Volume, notifications and the other short messages still show. The lyric line stays if you tick **Show lyrics over maximized windows**. Over a **full-screen** window (a game, a video, F11 in a browser) the notch is not on screen at all, and nothing shows until you leave it. **Hide for full-screen apps** in the tray menu turns both off.
+Over a **maximized** window the notch hides to a thin strip at the very top edge and wakes when the pointer waits there. Volume, notifications and other short messages still show. **Show lyrics over maximized windows** is on by default, keeping active lyrics visible. Turn on **Show notch over maximized windows** to keep all notch content visible, including music without lyrics and the idle clock. This option is off by default and takes precedence over **Hide when idle** on maximized windows. **Hide for full-screen apps**, on by default, independently hides the entire notch over a game, video or F11 window.
 
 ### Status marks
 
@@ -38,7 +40,7 @@ While the notch is open, small marks beside the time show what is going on: the 
 
 ### Extensible
 
-Nothing here is fixed. The tray menu switches activities on and off, and the settings file orders and removes pages (the **Edit pages** view that does it in the notch is switched off for now; see [docs/configuration.md](docs/configuration.md)). To go further, write your own page or activity: each is one folder or file and one line in a registry, with no other code to touch. See [docs/adding-a-page.md](docs/adding-a-page.md) and [docs/adding-an-activity.md](docs/adding-an-activity.md).
+The tray menu can switch **Notifications** on or off; the other activities are always enabled. The settings file orders and removes pages (the **Edit pages** view that does it in the notch is switched off for now; see [docs/configuration.md](docs/configuration.md)). To go further, write your own page or activity: each is one folder or file and one line in a registry, with no other code to touch. See [docs/adding-a-page.md](docs/adding-a-page.md) and [docs/adding-an-activity.md](docs/adding-an-activity.md).
 
 ### Limitations
 
@@ -53,13 +55,29 @@ Nothing here is fixed. The tray menu switches activities on and off, and the set
 
 ## How to use it
 
-- **Hover** over the pill to open it; move away to close it.
-- **Pages:** scroll the wheel (or swipe two fingers on a touchpad) or click a dot. Pages loop, and the notch opens on the page you left.
+- **Hover** over the pill to open it; move away to close it with a small bounce into the idle state.
+- **Pages:** scroll the wheel (or swipe two fingers on a touchpad) or click a dot. Touchpad scrolling follows your fingers and gently centers the nearest page after input stops. Each page keeps its own width, and the notch gradually changes width with the swipe. The wheel and page dots use a firmer transition. Pages loop, and the notch opens on the page you left.
 - **Media:** click the buttons; the speech-bubble button turns lyrics on and off.
-- **Shelf:** drag files onto the notch (it turns blue when it is ready). Double-click a file to open it, drag it out to take it off the shelf into another app, and right-click it or press the cross on its corner to remove it.
+- **Shelf:** drag files onto the notch (it turns blue when it is ready). The shelf shows six places; when there are more files, the last place shows the overflow count. Double-click a file to open it, drag it out to take it off the shelf into another app, and right-click it or press the cross on its corner to remove it.
 - **Calendar:** click a day of the week to list its events.
 - **Calendar:** copy your calendar's iCal address, then right-click the tray icon and choose **Use calendar link from clipboard**. For Google Calendar, use "Secret address in iCal format" and treat it like a password.
-- **Tray menu** (right-click the tray icon; the notch itself has no menu): switch activities on and off, set the calendar link, **Hide when idle**, **Hide for full-screen apps**, **Show lyrics over maximized windows**, **Start with Windows**, and **Quit**. On Windows 11 the icon may sit under the `^` overflow menu.
+- **Tray menu** (right-click the tray icon; the notch itself has no menu): **Notifications**, the calendar link, **Hide when idle**, **Hide for full-screen apps**, **Show notch over maximized windows**, **Show lyrics over maximized windows**, **Start with Windows**, and **Quit**. On Windows 11 the icon may sit under the `^` overflow menu.
+
+| Option | Default |
+| --- | --- |
+| Notifications | On |
+| Hide when idle | Off |
+| Hide for full-screen apps | On |
+| Show notch over maximized windows | Off |
+| Show lyrics over maximized windows | On |
+| Start with Windows | On in the installer |
+
+Defaults apply when no choice has been saved; existing notification, visibility and startup choices are retained.
+
+After unlocking or resuming Windows, Notch restores its position above app windows and resets hover so the hidden
+strip can open again, without taking focus from the app you are using.
+
+The orange folded-tab logo identifies Notch in the tray, File Explorer, the installer, the installed-app list and Start search.
 
 ## Device requirements
 
@@ -113,6 +131,7 @@ Tests sit at the bottom of the source file they test. `scripts/perf.sh` measures
 | ---------------------------------------------- | ----------------------------------------------------------------------------------- |
 | [docs/development.md](docs/development.md)     | requirements, build, run, development loop, checks, code style, dependency licenses |
 | [docs/testing.md](docs/testing.md)             | where the tests live, how to write one, the performance check                       |
+| [docs/performance.md](docs/performance.md)     | measured CPU/RAM, workloads and measurement limits                                 |
 | [docs/architecture.md](docs/architecture.md)   | how the code is organized                                                           |
 | [docs/adding-a-page.md](docs/adding-a-page.md) | write, register and remove a page                                                   |
 | [docs/adding-an-activity.md](docs/adding-an-activity.md) | write, register and remove an activity                                    |
@@ -123,16 +142,28 @@ For an AI coding agent, [CLAUDE.md](CLAUDE.md) and `.claude/rules/` hold the pro
 
 ## Resource use
 
-Measured by `scripts/perf.sh` on the author's machine (Windows 11, 60 Hz display), on an earlier build: the shelf previews, the Caps Lock hook, the window hooks and the new layout came after, so run it for your own numbers:
+Latest recorded baseline: **2026-10-28**, after the convention audit, using `scripts/perf.sh --no-build`.
+Windows 11 Home build 26300, Ryzen 5 8645HS, 15.3 GiB usable RAM; Rust 1.97.1, Windows x64 release build.
+The test used the shelf page, existing activity settings, 20-second idle samples and 10 open/close cycles.
+CPU is a percentage of **one core**; RAM is **private working set** in MiB.
 
-|                                              | Result                                 |
-| -------------------------------------------- | -------------------------------------- |
-| Collapsed and idle                           | 0 % CPU, about 15 MB of private memory |
-| One open-and-close                           | about 80 ms of CPU                     |
-| Memory growth after 10 open-and-close cycles | under 1 MB                             |
-| Playing music with synced lyrics             | up to about 35 MB of private memory    |
+| Measurement | Result |
+| --- | ---: |
+| Collapsed idle CPU | 0.078% |
+| Initial RAM | 22.1 MiB |
+| CPU time per open/close cycle | 131 ms |
+| RAM growth over 10 cycles | 0.5 MiB |
+| Handle growth over 10 cycles | -8 |
+| Hover events | 20/20 |
+| Idle CPU after cycles | 0% |
 
-Run `scripts/perf.sh` to measure your own machine. See [docs/testing.md](docs/testing.md).
+All baseline checks passed in this run. Earlier runs intermittently exceeded CPU and memory-growth limits;
+one passing sample does not establish their cause or guarantee the same result on every machine.
+Music playback, live lyrics, held hover and swiping were not measured in this latest baseline.
+
+Run `scripts/perf.sh` to repeat the baseline, or add `--extended` for held hover and swiping.
+The check moves the mouse and replaces the running Notch; afterwards run `scripts/reload.sh` to restore normal pages.
+See [docs/testing.md](docs/testing.md) for options and limits.
 
 ## Privacy
 
@@ -147,7 +178,7 @@ It connects out for two things only:
 
 Notch is heavily inspired by Apple's Dynamic Island, and by the apps that bring the same idea to screens that have no hardware notch: [NotchNook](https://lo.cafe/notchnook) for the Mac and [Nusa](https://rama2555.github.io/nusa/) for Windows. They showed what a notch overlay can hold and how it should feel: the media player, the file shelf, the calendar and the short messages that open the pill.
 
-Notch itself is written independently, from scratch in Rust. It draws with Direct2D and uses no UI framework, and every page and every pill message is its own module, so you can switch one off, remove it or write your own. It is open source under the MIT license: clone or fork it and change your copy (see [Contributing](#contributing)).
+Notch itself is written independently, from scratch in Rust. It draws with Direct2D and uses no UI framework, and every page and every pill message is its own module, so you can remove one or write your own. It is open source under the MIT license: clone or fork it and change your copy (see [Contributing](#contributing)).
 
 Notch is not affiliated with or endorsed by Apple, NotchNook, Nusa or their developers. Dynamic Island is a trademark of Apple Inc., and the other names belong to their owners.
 

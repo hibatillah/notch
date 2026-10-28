@@ -6,12 +6,10 @@ use windows::{
     core::PCWSTR,
 };
 
-/// Device pixels per device-independent pixel on the primary display.
 pub fn system_scale() -> f32 {
     unsafe { GetDpiForSystem() as f32 / 96.0 }
 }
 
-/// One frame at the display's refresh rate, so animation never draws frames nobody sees.
 pub fn frame_interval_milliseconds() -> u32 {
     let mut mode = DEVMODEW { dmSize: size_of::<DEVMODEW>() as u16, ..Default::default() };
     let found = unsafe { EnumDisplaySettingsW(PCWSTR::null(), ENUM_CURRENT_SETTINGS, &mut mode).as_bool() };

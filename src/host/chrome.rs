@@ -1,13 +1,11 @@
-//! What the open notch has around every page: the padding, and a header with the page dots on the left and the settings button on
-//! the right. Geometry and drawing only; `notch.rs` decides when to use them. Sizes are in device-independent pixels.
+//! Shared header and padding; sizes are device-independent pixels.
 
 use crate::{
     gfx::{Canvas, Color, Point, Rect},
     ui::Icon,
 };
 
-/// Whether the header has the settings button, which opens "Edit pages". It is off: the button, its hover and its click
-/// are kept in the code and switched back on here.
+/// Retains the settings button implementation while hiding it from the header.
 pub const SETTINGS_BUTTON_SHOWN: bool = false;
 pub const PADDING_TOP: f32 = 10.0;
 pub const PADDING_SIDE: f32 = 16.0;
@@ -16,17 +14,14 @@ pub const HEADER_HEIGHT: f32 = 16.0;
 pub const HEADER_GAP: f32 = 10.0;
 /// Fixed content height for every open view, matching the media player's plain layout.
 pub const CONTENT_HEIGHT: f32 = 86.0;
-/// What the chrome adds to the width and the height of a page's own size.
 pub const WIDTH_EXTRA: f32 = 2.0 * PADDING_SIDE;
 pub const HEIGHT_EXTRA: f32 = PADDING_TOP + HEADER_HEIGHT + HEADER_GAP + PADDING_BOTTOM;
 
 const DOT_SIZE: f32 = 6.0;
 const ACTIVE_DOT_WIDTH: f32 = 16.0;
 const DOT_GAP: f32 = 4.0;
-/// How far from a dot a click still counts as on it.
 const DOT_HIT_SLACK: f32 = 5.0;
 const SETTINGS_BUTTON: f32 = 20.0;
-/// The settings button sits this far past the right padding, so its glyph lines up with the page's right edge.
 const SETTINGS_OVERHANG: f32 = 4.0;
 const SETTINGS_SIZE: f32 = 14.0;
 const DOT_INACTIVE: Color = Color::rgb(0.227, 0.227, 0.267);
@@ -34,14 +29,12 @@ const DOT_ACTIVE: Color = Color::rgb(0.9, 0.9, 0.92);
 const SETTINGS: Color = Color::rgb(0.43, 0.43, 0.48);
 const SETTINGS_HOVERED: Color = Color::rgb(0.8, 0.8, 0.84);
 
-/// Where a page draws: the open notch minus the padding and the header. `pill` is the whole notch in device pixels.
 pub fn content_rect(pill: Rect, scale: f32) -> Rect {
     let left = pill.left + PADDING_SIDE * scale;
     let top = pill.top + (PADDING_TOP + HEADER_HEIGHT + HEADER_GAP) * scale;
     Rect::new(left, top, (pill.right - PADDING_SIDE * scale).max(left), (pill.bottom - PADDING_BOTTOM * scale).max(top))
 }
 
-/// The header row across the top of the open notch.
 pub fn header_rect(pill: Rect, scale: f32) -> Rect {
     Rect::new(
         pill.left + PADDING_SIDE * scale,
@@ -55,16 +48,13 @@ fn header_center_y(pill: Rect, scale: f32) -> f32 {
     pill.top + (PADDING_TOP + HEADER_HEIGHT / 2.0) * scale
 }
 
-/// How long dot `position` of `count` is when the pages are at `track` (a page number that can fall between two): 1 on
-/// the page, fading to 0 a page away, so two dots both stretch in the middle of a swipe. The row of pages is a loop, so
-/// the last dot is next to the first.
+/// Adjacent dots stretch together mid-swipe; the last and first dots are neighbours.
 fn stretch(position: usize, count: usize, track: f32) -> f32 {
     let count = count as f32;
     let distance = (position as f32 - track).rem_euclid(count);
     (1.0 - distance.min(count - distance)).clamp(0.0, 1.0)
 }
 
-/// The dots for `count` pages, left to right; the ones near `track` are long.
 pub fn dot_rects(count: usize, track: f32, pill: Rect, scale: f32) -> Vec<Rect> {
     let center_y = header_center_y(pill, scale);
     let mut left = pill.left + PADDING_SIDE * scale;
@@ -91,7 +81,6 @@ pub fn draw_dots(canvas: &Canvas, dots: &[Rect], track: f32, opacity: f32) {
     }
 }
 
-/// The dot a press at `point` lands on, with a little slack around each.
 pub fn dot_at(dots: &[Rect], point: Point, scale: f32) -> Option<usize> {
     let slack = DOT_HIT_SLACK * scale;
     dots.iter().position(|rect| {
@@ -101,7 +90,6 @@ pub fn dot_at(dots: &[Rect], point: Point, scale: f32) -> Option<usize> {
     })
 }
 
-/// The settings button's clickable square.
 pub fn settings_button(pill: Rect, scale: f32) -> Rect {
     let right = pill.right - (PADDING_SIDE - SETTINGS_OVERHANG) * scale;
     let center_y = header_center_y(pill, scale);
@@ -189,7 +177,6 @@ mod tests {
 
     #[test]
     fn the_dots_loop_so_the_last_one_stretches_with_the_first() {
-        // Between the last of three pages and the first (position 2.5), both of those dots are half long.
         let dots = dot_rects(3, 2.5, PILL, 1.0);
         assert_eq!(dots[0].width(), dots[2].width());
         assert!(dots[0].width() > dots[1].width());

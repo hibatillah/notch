@@ -1,19 +1,14 @@
-//! The focus timer's rules: phases, the session counter, pause and resume, when to wake next, and saving to the
-//! settings. Pure, so it is tested without a window. Times are Unix milliseconds, so a timer survives a restart.
+//! Phase times use Unix milliseconds so sessions survive restarts.
 
 use crate::host::Settings;
 
-/// Focus sessions in one round; the break after the last one is the long one.
 pub const SESSIONS_PER_ROUND: u32 = 4;
-/// What the "+5 min" button adds.
 pub const EXTENSION_MINUTES: u64 = 5;
-/// Step and limits of the length shown while idle.
 pub const LENGTH_STEP_MINUTES: u64 = 5;
 const MIN_FOCUS_MINUTES: u64 = 5;
 const MAX_FOCUS_MINUTES: u64 = 120;
 const MILLISECONDS_PER_MINUTE: u64 = 60_000;
 const MILLISECONDS_PER_SECOND: u64 = 1000;
-/// With this much or less left, the compact view counts seconds.
 pub const SECONDS_SHOWN_BELOW_MINUTES: u64 = 10;
 /// Wake a little after a boundary so the clock has surely crossed it.
 const WAKE_SLACK_MILLISECONDS: u64 = 20;
@@ -64,13 +59,11 @@ pub enum State {
         total: u64,
         remaining: u64,
     },
-    /// The phase ran out and waits for the user to start the next one or skip it.
     Finished {
         phase: Phase,
     },
 }
 
-/// How long each phase lasts, in minutes.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Lengths {
     pub focus: u64,
@@ -96,7 +89,6 @@ impl Lengths {
 
 pub struct Timer {
     pub state: State,
-    /// Focus sessions finished in the current round, 0 to `SESSIONS_PER_ROUND`.
     pub completed: u32,
     pub lengths: Lengths,
 }
@@ -106,18 +98,15 @@ impl Timer {
         Self { state: State::Idle, completed: 0, lengths: Lengths::default() }
     }
 
-    /// The number of the focus session now running or next, from 1 to `SESSIONS_PER_ROUND`.
     pub fn session_number(&self) -> u32 {
         self.completed % SESSIONS_PER_ROUND + 1
     }
 
-    /// The break that follows a focus session that has just finished.
     pub fn break_after_focus(&self) -> Phase {
         let into_round = self.completed % SESSIONS_PER_ROUND;
         if self.completed > 0 && into_round == 0 { Phase::LongBreak } else { Phase::ShortBreak }
     }
 
-    /// The phase that `start_next` would begin once the phase in `Finished` is over.
     pub fn next_phase(&self) -> Option<Phase> {
         match self.state {
             State::Finished { phase: Phase::Focus } => Some(self.break_after_focus()),
@@ -132,14 +121,12 @@ impl Timer {
         }
     }
 
-    /// Begins the break after a finished focus session, or the next focus session after a break.
     pub fn start_next(&mut self, now: u64) {
         if let Some(phase) = self.next_phase() {
             self.begin(phase, now);
         }
     }
 
-    /// Leaves a finished phase without starting the next one.
     pub fn skip(&mut self) {
         if matches!(self.state, State::Finished { .. }) {
             self.state = State::Idle;
@@ -158,7 +145,6 @@ impl Timer {
         }
     }
 
-    /// Adds the extension to a running or paused phase.
     pub fn extend(&mut self) {
         let extra = EXTENSION_MINUTES * MILLISECONDS_PER_MINUTE;
         match &mut self.state {
@@ -181,7 +167,6 @@ impl Timer {
         }
     }
 
-    /// Changes the length of the next focus session while idle, in steps, within the limits.
     pub fn adjust_focus_length(&mut self, steps: i64) {
         if self.state != State::Idle {
             return;
@@ -190,7 +175,6 @@ impl Timer {
         self.lengths.focus = minutes.clamp(MIN_FOCUS_MINUTES as i64, MAX_FOCUS_MINUTES as i64) as u64;
     }
 
-    /// Moves a running phase whose time is up to `Finished`; returns true when that just happened.
     pub fn tick(&mut self, now: u64) -> bool {
         let State::Running { phase, ends_at, .. } = self.state else { return false };
         if now < ends_at {
@@ -203,7 +187,6 @@ impl Timer {
         true
     }
 
-    /// Time left in a running or paused phase, in milliseconds.
     pub fn remaining(&self, now: u64) -> Option<u64> {
         match self.state {
             State::Running { ends_at, .. } => Some(ends_at.saturating_sub(now)),
@@ -212,7 +195,6 @@ impl Timer {
         }
     }
 
-    /// How much of the phase has passed, from 0 to 1, for the progress ring.
     pub fn elapsed_fraction(&self, now: u64) -> f32 {
         let (total, remaining) = match self.state {
             State::Running { total, ends_at, .. } => (total, ends_at.saturating_sub(now)),
@@ -233,13 +215,12 @@ impl Timer {
     fn begin(&mut self, phase: Phase, now: u64) {
         let total = self.lengths.minutes(phase) * MILLISECONDS_PER_MINUTE;
         self.state = State::Running { phase, total, ends_at: now + total };
-        // A new round starts after the long break.
         if phase == Phase::Focus && self.completed >= SESSIONS_PER_ROUND {
             self.completed = 0;
         }
     }
 
-    // Settings
+    // Expired sessions restore as finished.
 
     /// Restores the timer saved by `save`; a phase that ran out while the notch was closed comes back finished.
     pub fn load(settings: &Settings, now: u64) -> Self {
@@ -299,9 +280,8 @@ fn parse_state(text: &str) -> Option<State> {
     }
 }
 
-// What to show
+// Compact timers switch to seconds in the last ten minutes.
 
-/// The time left as the compact view shows it: whole minutes ("24m") above ten minutes, then "m:ss".
 pub fn compact_text(remaining: u64) -> String {
     if remaining > SECONDS_SHOWN_BELOW_MINUTES * MILLISECONDS_PER_MINUTE {
         format!("{}m", remaining / MILLISECONDS_PER_MINUTE)
@@ -316,14 +296,12 @@ pub fn clock_text(remaining: u64) -> String {
     format!("{}:{:02}", seconds / 60, seconds % 60)
 }
 
-/// How long until the compact text next changes (or the phase ends), in milliseconds. While the notch is open the text
-/// changes every second.
+/// Milliseconds until the displayed time changes or the phase ends; open views update each second.
 pub fn next_wake(remaining: u64, is_open: bool) -> u64 {
     let counts_seconds = is_open || remaining <= SECONDS_SHOWN_BELOW_MINUTES * MILLISECONDS_PER_MINUTE;
     let unit = if counts_seconds { MILLISECONDS_PER_SECOND } else { MILLISECONDS_PER_MINUTE };
     let past_boundary = remaining % unit;
     let until_boundary = if past_boundary == 0 { unit } else { past_boundary };
-    // The phase may end before the next boundary.
     until_boundary.min(remaining) + WAKE_SLACK_MILLISECONDS
 }
 
@@ -491,11 +469,8 @@ mod tests {
 
     #[test]
     fn the_wake_comes_when_the_text_changes() {
-        // 24:13 shows "24m" until it falls below 24:00, 13 seconds later.
         assert_eq!(next_wake(24 * MINUTE + 13_000, false), 13_000 + WAKE_SLACK_MILLISECONDS);
-        // Exactly on a boundary the next change is a whole unit away.
         assert_eq!(next_wake(25 * MINUTE, false), MINUTE + WAKE_SLACK_MILLISECONDS);
-        // In the last ten minutes, and while the notch is open, the text changes every second.
         assert_eq!(next_wake(4 * MINUTE + 12_300, false), 300 + WAKE_SLACK_MILLISECONDS);
         assert_eq!(next_wake(24 * MINUTE + 13_300, true), 300 + WAKE_SLACK_MILLISECONDS);
     }

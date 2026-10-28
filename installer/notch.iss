@@ -1,6 +1,3 @@
-; Builds the installer of the notch with Inno Setup. The release workflow runs it with:
-;   ISCC /DAppVersion=0.2.0 /DExeName=notch.exe /DSourceExe=C:\path\to\notch.exe notch.iss
-; Installing again over an older copy updates it in place, after asking the user to confirm.
 
 #ifndef AppVersion
   #error Pass the version with /DAppVersion=x.y.z
@@ -12,7 +9,7 @@
   #error Pass the built executable with /DSourceExe=path
 #endif
 
-; The same id on every version is what makes a newer installer see the older install.
+; Keep this ID stable so upgrades find the existing installation.
 #define AppGuid "{B4D1E7A2-5C3F-4F68-9A0E-2D7C61B8E4F3}"
 
 [Setup]
@@ -30,8 +27,9 @@ Compression=lzma2
 SolidCompression=yes
 WizardStyle=modern
 LicenseFile=..\LICENSE
+SetupIconFile=..\assets\branding\logo.ico
+WizardSmallImageFile=..\assets\branding\logo.png
 UninstallDisplayIcon={app}\{#ExeName}
-; Closes the notch if it is running, so its file can be replaced, and starts it again afterwards.
 CloseApplications=force
 RestartApplications=no
 
@@ -44,7 +42,7 @@ Source: "..\LICENSE"; DestDir: "{app}"; DestName: "LICENSE.txt"; Flags: ignoreve
 Source: "..\assets\fonts\Geist-LICENSE.txt"; DestDir: "{app}"; Flags: ignoreversion
 
 [Icons]
-Name: "{autoprograms}\Notch"; Filename: "{app}\{#ExeName}"
+Name: "{autoprograms}\Notch"; Filename: "{app}\{#ExeName}"; IconFilename: "{app}\{#ExeName}"; IconIndex: 0
 
 [Registry]
 ; The same entry the "Start with Windows" item in the notch's tray menu switches.

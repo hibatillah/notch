@@ -8,10 +8,8 @@ pub(super) enum Segment {
     Close,
 }
 
-/// Line segments approximating each curve of a path.
 const CURVE_STEPS: usize = 12;
 
-/// One connected run of straight edges; a closed figure also has an edge from its last point back to its first.
 #[derive(Clone, Debug, PartialEq)]
 pub struct Figure {
     pub points: Vec<Point>,
@@ -29,7 +27,6 @@ impl Path {
         Self::default()
     }
 
-    /// Starts a new figure at `point`.
     pub fn move_to(mut self, point: Point) -> Self {
         self.segments.push(Segment::MoveTo(point));
         self
@@ -40,18 +37,15 @@ impl Path {
         self
     }
 
-    /// A cubic Bézier curve from the current point through two control points to `end`.
     pub fn curve_to(mut self, first_control: Point, second_control: Point, end: Point) -> Self {
         self.segments.push(Segment::CubicTo(first_control, second_control, end));
         self
     }
 
-    /// Adds the figures of `other` after this path's own.
     pub fn append(&mut self, other: Path) {
         self.segments.extend(other.segments);
     }
 
-    /// Closes the current figure with a line back to its start.
     pub fn close(mut self) -> Self {
         self.segments.push(Segment::Close);
         self
@@ -75,7 +69,6 @@ impl Path {
         path.close()
     }
 
-    /// An open line through `points`, in order.
     pub fn polyline(points: &[Point]) -> Self {
         let mut path = Self::new();
         for (index, &point) in points.iter().enumerate() {
@@ -84,7 +77,6 @@ impl Path {
         path
     }
 
-    /// The path as straight edges, with every curve replaced by `CURVE_STEPS` short lines.
     pub fn flatten(&self) -> Vec<Figure> {
         let mut figures: Vec<Figure> = Vec::new();
         let mut current: Option<Figure> = None;
@@ -126,7 +118,6 @@ impl Path {
     }
 
     #[cfg(test)]
-    /// Every point the path passes through or is shaped by, including curve control points.
     pub fn points(&self) -> impl Iterator<Item = Point> + '_ {
         self.segments.iter().flat_map(|segment| match *segment {
             Segment::MoveTo(point) | Segment::LineTo(point) => vec![point],
@@ -136,7 +127,6 @@ impl Path {
     }
 }
 
-/// The point at `amount` (0 to 1) along a cubic Bézier curve.
 fn cubic_point(start: Point, first: Point, second: Point, end: Point, amount: f32) -> Point {
     let remaining = 1.0 - amount;
     let weights =

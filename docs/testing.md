@@ -84,6 +84,8 @@ values can be tested; one that talks to the window cannot.
 scripts/perf.sh               # builds, then runs the checks (about two minutes)
 scripts/perf.sh --no-build    # reuse the existing release build
 scripts/perf.sh --with-media  # also print numbers with every page on; play music first
+scripts/perf.sh --extended    # also measure held hover, swipes, release snap, and recovery
+scripts/perf.sh --lyrics-only # live lyrics on/off, collapsed and open, in isolated test profiles
 ```
 
 The script starts a copy of the notch with only the shelf page (`NOTCH_PAGES=shelf`), so the result does not depend
@@ -106,12 +108,20 @@ It checks, and fails when a limit is exceeded:
 The last check is the important one. A common mistake is leaving a timer or animation running, which makes the
 notch use CPU forever; it shows up there as several percent of a core.
 
-A healthy build is far under every limit. The numbers in the README were measured on an earlier build; run the check
-for current ones. The limits are set in constants at the top of `scripts/perf.rs`; they exist to catch regressions, so fix the cause rather than raising
-one.
+The latest recorded baseline and its workload are summarized in [README.md](../README.md#resource-use).
+Run the check for your current machine. The limits are set
+in constants at the top of `scripts/perf.rs`; they exist to catch regressions, so fix the cause rather than raising one.
 
 `--with-media` prints memory and CPU with every page on and your music playing. It has no limits, because the result
 depends on the track and on how often its lyrics change.
+
+`--extended` adds 20-second samples while hovered open, after the touchpad release snap, and collapsed after swiping. Its swipe
+workload sends horizontal wheel messages to its own Notch window and verifies that the window width changes.
+`--lyrics-only` requires a playing Windows media session. It uses separate temporary settings under `run/` to compare
+the real display toggle on and off without editing your settings. It verifies that the synced-lyrics pane actually
+opens before reporting active-lyrics results; missing lyrics or stopped playback leave this comparison incomplete.
+These extra scenarios are informational, and CPU is reported as a percentage of one core. RAM means private working
+set; the reported swipe peak is sampled at each end of a swipe, not a continuously traced maximum.
 
 ### The two files
 
@@ -140,6 +150,12 @@ For a change to the notch's frame or hiding: open the notch and check the dots, 
 disappears, shows its small pill when you rest the pointer on the top of the screen, and opens if you stay. To check the "Edit pages" view, set `SETTINGS_BUTTON_SHOWN` to true in `chrome.rs` and
 add, drag, double-click and remove a page. The mouse-driven checks need an unlocked screen.
 
+For lock/unlock recovery, enable Hide when idle, focus a maximized app, lock Windows, then unlock. Rest the pointer
+on the hidden strip and verify that it reveals and opens. Switch between two maximized apps, a restored window and
+the desktop: Notch must remain above ordinary app windows and hover must still work. Fullscreen hiding must still
+win. Automated regressions demote an owned test window and reset stale interaction state; simulated unlock messages
+exercise the running app, but do not replace this physical lock/unlock check.
+
 For a change to the timer, seed a short session by hand (stop the notch, put `timer.state=running focus 30000 <end>` in
 the settings file, where `<end>` is the Unix time in milliseconds 30 seconds from now, and start it) and check: the ring
 and the time show in the collapsed pill, the alert and sound arrive at the end, the open page then offers the break, and
@@ -165,5 +181,8 @@ For a change to activities, also check (each one is a real event, so run them on
 - open the camera in a browser or a video-call app: "Camera on", then a green dot, then "Camera off"
 - plug and unplug the charger, and let the battery fall through 20 % and 10 %: the matching message
 - receive a notification: a banner with the app's logo for about four seconds; point at the notch while it shows and it stays until you leave
-- untick an activity in the tray menu: it no longer shows, and stays off after restarting
+- the activity section contains only Notifications; untick it and verify it stays off after restarting
+- old disable settings for volume, brightness and other required activities do not suppress them
+- Show notch over maximized windows keeps music without lyrics and the idle clock visible, even with Hide when idle on
+- turning that override off restores lyrics-only visibility; fullscreen hiding remains independent
 - open the tray menu with Windows in dark mode: the menu is dark; tick "Start with Windows" and check the entry under `HKCU\Software\Microsoft\Windows\CurrentVersion\Run`

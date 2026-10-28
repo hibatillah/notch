@@ -4,45 +4,41 @@ use crate::{
     page::{Frame, RESTING_HEIGHT},
 };
 
-/// Left and right padding in the collapsed pill.
 const PADDING: f32 = 8.0;
 const ICON_SIZE: f32 = 18.0;
 const ICON_RADIUS: f32 = 4.0;
 const GAP: f32 = 8.0;
-/// The space between the art, the title and the wave while music plays with the lyrics off.
 const WAVE_VIEW_GAP: f32 = 12.0;
-/// The smallest collapsed pill with the art, the title and the wave.
 const WAVE_VIEW_MIN_WIDTH: f32 = 96.0;
+const WAVE_VIEW_MAX_WIDTH: f32 = 400.0;
+const TITLE_WIDTH_SLACK: f32 = 2.0;
 const TITLE_LIMIT: f32 = 140.0;
 const ARTIST_LIMIT: f32 = 80.0;
 const LYRIC_SLACK: f32 = 8.0;
 /// Smallest collapsed pill while lyrics are on, so a short line or a rest in the music does not shrink it.
 const MIN_LYRIC_WIDTH: f32 = 240.0;
-/// Shown in place of a lyric line while the song has no words.
 const NOTE: &str = "\u{266A}";
-/// Largest collapsed pill, leaving room for the spring's small overshoot inside the window.
 const MAX_LYRIC_WIDTH: f32 = 520.0;
-/// How far a lyric line drifts while it changes.
 const LYRIC_TRAVEL: f32 = 6.0;
 
-/// What the collapsed pill shows for the music.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum View {
-    /// The art, the title and the wave: music plays with the lyrics off.
     Wave,
-    /// The art, the title and the artist: for a moment after the track changes.
     TrackChange,
-    /// The art and the line being sung.
     Lyrics,
 }
 
-/// Width of the collapsed pill for `view`, in device-independent pixels.
 pub fn width(view: View, title_width: f32, artist_width: f32, lyric_width: f32) -> f32 {
     match view {
-        View::Wave => {
-            (PADDING + ICON_SIZE + WAVE_VIEW_GAP + title_width.min(TITLE_LIMIT) + WAVE_VIEW_GAP + wave::WIDTH + PADDING)
-                .max(WAVE_VIEW_MIN_WIDTH)
-        }
+        View::Wave => (PADDING
+            + ICON_SIZE
+            + WAVE_VIEW_GAP
+            + title_width
+            + TITLE_WIDTH_SLACK
+            + WAVE_VIEW_GAP
+            + wave::WIDTH
+            + PADDING)
+            .clamp(WAVE_VIEW_MIN_WIDTH, WAVE_VIEW_MAX_WIDTH),
         View::TrackChange => {
             let artist = if artist_width > 0.0 { GAP + artist_width.min(ARTIST_LIMIT) } else { 0.0 };
             (PADDING + ICON_SIZE + GAP + title_width.min(TITLE_LIMIT) + artist + PADDING).max(150.0)
@@ -53,7 +49,6 @@ pub fn width(view: View, title_width: f32, artist_width: f32, lyric_width: f32) 
     }
 }
 
-/// The art of the track, or the player's icon when there is no art, or a note when there is neither.
 fn draw_art(page: &MediaPage, canvas: &Canvas, area: Rect, opacity: f32) {
     let radius = ICON_RADIUS * canvas.scale();
     match page.artwork.brush().or(page.app_icon.brush()) {
@@ -103,7 +98,6 @@ pub fn draw(page: &MediaPage, canvas: &Canvas, frame: &Frame, opacity: f32) {
             let transition = page.follower.transition().clamp(0.0, 1.0);
             let travel = LYRIC_TRAVEL * scale;
             let band = |offset: f32| Rect::new(lyric_left, row_top + offset, lyric_right, row_bottom + offset);
-            // The old line drifts up and fades while the new one rises into place.
             let previous = Color::WHITE.faded(opacity * (1.0 - transition));
             let current = Color::WHITE.faded(opacity * transition);
             let shown = |text: &str| if text.is_empty() { NOTE.to_owned() } else { text.to_owned() };
@@ -126,7 +120,17 @@ mod tests {
     fn the_wave_pill_grows_with_the_title_up_to_a_limit_and_is_never_tiny() {
         assert_eq!(width(View::Wave, 0.0, 0.0, 0.0), WAVE_VIEW_MIN_WIDTH);
         assert!(width(View::Wave, 100.0, 0.0, 0.0) > width(View::Wave, 60.0, 0.0, 0.0));
-        assert_eq!(width(View::Wave, 5000.0, 0.0, 0.0), width(View::Wave, TITLE_LIMIT, 0.0, 0.0));
+        assert_eq!(width(View::Wave, 5000.0, 0.0, 0.0), 400.0);
+    }
+
+    #[test]
+    fn the_idle_player_fits_a_long_song_title_without_trimming_it() {
+        let fonts = crate::gfx::Fonts::new(1.0).unwrap();
+        let title_width = fonts.measure(&styles::COMPACT_TITLE, "Somewhere Only We Know - Live at the O2 Arena");
+        assert!(title_width > TITLE_LIMIT);
+        let pill_width = width(View::Wave, title_width, 0.0, 0.0);
+        let title_space = pill_width - 2.0 * PADDING - ICON_SIZE - 2.0 * WAVE_VIEW_GAP - wave::WIDTH;
+        assert!(title_space >= title_width + 1.0, "title needs {title_width} DIP, available {title_space}");
     }
 
     #[test]

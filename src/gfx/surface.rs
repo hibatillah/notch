@@ -100,7 +100,6 @@ impl Surface {
         unsafe { std::slice::from_raw_parts(self.pixels, self.width as usize * self.height as usize * 4) }
     }
 
-    /// Uploads decoded pixels as a brush that can fill any shape, such as a rounded square.
     pub fn create_image_brush(&self, image: &ImageData) -> Result<ImageBrush> {
         image::upload(&self.target, image)
     }

@@ -1,11 +1,9 @@
 use crate::gfx::{Canvas, Color, Point, Rect};
 
-/// How a dash lies on the outline, which decides its shape.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum Direction {
     Horizontal,
     Vertical,
-    /// On a corner: a small square.
     Corner,
 }
 
@@ -18,8 +16,6 @@ fn point_at(rect: Rect, radius: f32, distance: f32) -> (Point, Direction) {
     let length = 2.0 * (straight_width + straight_height) + 4.0 * quarter;
     let mut remaining = distance.rem_euclid(length);
 
-    // Top edge, top-right corner, right edge, bottom-right corner, bottom edge, bottom-left corner, left edge,
-    // top-left corner.
     let sides = [
         (straight_width, Some((Point::new(rect.left + radius, rect.top), 1.0, 0.0, Direction::Horizontal))),
         (quarter, None),
@@ -44,7 +40,6 @@ fn point_at(rect: Rect, radius: f32, distance: f32) -> (Point, Direction) {
                     (Point::new(start.x + step_x * remaining, start.y + step_y * remaining), direction)
                 }
                 None => {
-                    // Corners start pointing along the edge that came before them.
                     let angle = -std::f32::consts::FRAC_PI_2
                         + corner_index as f32 * std::f32::consts::FRAC_PI_2
                         + if radius > 0.0 { remaining / radius } else { 0.0 };
@@ -61,16 +56,12 @@ fn point_at(rect: Rect, radius: f32, distance: f32) -> (Point, Direction) {
     (Point::new(rect.left + radius, rect.top), Direction::Horizontal)
 }
 
-/// One dash of the outline.
 #[derive(Clone, Debug, PartialEq)]
 enum Dash {
-    /// A dash on a straight edge: one rounded bar.
     Straight(Rect),
-    /// A dash that touches a rounded corner: round dots along it, so it bends with the corner.
     Curved(Vec<Point>),
 }
 
-/// The dashes that make up a dashed outline, evenly spread so the pattern closes without a seam.
 fn dashes(rect: Rect, radius: f32, thickness: f32, dash: f32, gap: f32) -> Vec<Dash> {
     let radius = radius.min(rect.width() / 2.0).min(rect.height() / 2.0).max(0.0);
     let length =
@@ -103,7 +94,7 @@ fn dashes(rect: Rect, radius: f32, thickness: f32, dash: f32, gap: f32) -> Vec<D
         .collect()
 }
 
-/// Draws a dashed outline just inside `rect`. Sizes are device pixels.
+/// All sizes and coordinates are device pixels.
 pub fn draw_dashed_outline(
     canvas: &Canvas,
     rect: Rect,

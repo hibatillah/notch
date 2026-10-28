@@ -1,21 +1,16 @@
-//! The shelf's list of files and the words it shows. The files stay where they are; the shelf only remembers their
-//! paths, in a text file with one path per line. Pure apart from reading and writing that file, so it is tested
-//! without a window.
+//! Persist one path per line without moving or copying the files.
 
 use std::{
     fs,
     path::{Path, PathBuf},
 };
 
-/// The most characters a placeholder tile's label shows.
 const LABEL_LENGTH: usize = 4;
 
-/// The extension in lower case, without the dot.
 fn extension(path: &Path) -> String {
     path.extension().map(|extension| extension.to_string_lossy().to_lowercase()).unwrap_or_default()
 }
 
-/// The text on a tile that has no preview yet: the extension in capitals, cut to four characters. Empty for a folder.
 pub fn tile_label(path: &Path, is_folder: bool) -> String {
     if is_folder {
         return String::new();
@@ -23,22 +18,18 @@ pub fn tile_label(path: &Path, is_folder: bool) -> String {
     extension(path).to_uppercase().chars().take(LABEL_LENGTH).collect()
 }
 
-/// The file name shown under a tile.
 pub fn file_name(path: &Path) -> String {
     path.file_name().map_or_else(|| path.display().to_string(), |name| name.to_string_lossy().into_owned())
 }
 
-/// "1 file added", "3 files added".
 pub fn added_text(count: usize) -> String {
     format!("{count} file{} added", if count == 1 { "" } else { "s" })
 }
 
-/// "brief.pdf removed".
 pub fn removed_text(name: &str) -> String {
     format!("{name} removed")
 }
 
-/// "Shelf · 4": the shelf's size, shown beside the message in the collapsed pill.
 pub fn count_text(count: usize) -> String {
     format!("Shelf \u{00b7} {count}")
 }
@@ -49,7 +40,6 @@ pub struct Shelf {
 }
 
 impl Shelf {
-    /// The files saved in `storage`, leaving out those that no longer exist.
     pub fn load(storage: &Path) -> Self {
         let text = fs::read_to_string(storage).unwrap_or_default();
         let items =
@@ -73,7 +63,6 @@ impl Shelf {
         self.items.len()
     }
 
-    /// Adds the files that exist and are not on the shelf yet; returns how many were added.
     pub fn add(&mut self, paths: impl IntoIterator<Item = PathBuf>) -> usize {
         let before = self.items.len();
         for path in paths {

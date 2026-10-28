@@ -1,10 +1,4 @@
-//! The contract between the notch host and the activities it shows in the collapsed pill.
-//!
-//! A page is what the notch shows when you open it; an activity is something that happens while it is closed: a
-//! volume change, a charger being plugged in, the microphone turning on. An activity tells the host whether it has
-//! something to show (`presence`) and draws that into the area the host gives it. Everything else (timers, wake-ups
-//! from background threads, system messages) is an optional hook.
-//! See `docs/adding-an-activity.md` for how to add one.
+//! Collapsed activity contracts; see docs/adding-an-activity.md.
 
 use windows::{Win32::UI::WindowsAndMessaging::WM_APP, core::GUID};
 
@@ -13,7 +7,6 @@ use crate::{
     page::{Context, PAGE_TIMER_LIMIT, TimerId},
 };
 
-/// Message an activity's `Notifier` posts to wake the host from another thread.
 pub(crate) const WM_ACTIVITY_NOTIFY: u32 = WM_APP + 3;
 /// Win32 timer ids from here up belong to activities; each activity owns 16 of them, like a page.
 pub(crate) const ACTIVITY_TIMER_BASE: usize = PAGE_TIMER_LIMIT;
@@ -25,14 +18,10 @@ pub enum Presence {
     Transient { width: f32 },
     /// A small mark kept at the right end of the pill while something lasts, like the microphone being in use.
     Badge { width: f32 },
-    /// Opens the pill into a card, higher than the idle pill and smaller than the open notch, for a moment, like a
-    /// notification. It draws into the whole card, and it comes before any transient. While it shows, pointing at the
-    /// notch does not open it, so an activity can hold its banner for as long as the pointer is there
-    /// (`Activity::on_hover_changed`).
+    /// Banners preempt transients and block hover expansion; on_hover_changed can extend their lifetime.
     Banner { width: f32, height: f32 },
 }
 
-/// Something that happened to the system, delivered to every activity.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum SystemMessage {
     /// A Windows power setting the activity listens to changed; the first one after registering is its current value.
@@ -47,8 +36,12 @@ pub trait Activity {
     /// Stable name used in logs and settings keys (`activity.<id>`).
     fn id(&self) -> &'static str;
 
-    /// Name shown in the tray menu, where the activity can be switched on and off.
     fn label(&self) -> &'static str;
+
+    /// Optional activities expose a tray toggle; required activities ignore saved disable settings.
+    fn is_optional(&self) -> bool {
+        false
+    }
 
     /// What this activity shows right now; `None` means nothing. Asked again after every event.
     fn presence(&self) -> Option<Presence>;
@@ -56,8 +49,7 @@ pub trait Activity {
     /// Draws into `area` (device pixels), which is as wide as the width the presence asked for.
     fn draw(&self, canvas: &Canvas, area: Rect, scale: f32, opacity: f32);
 
-    /// The width of a small mark this activity keeps in the open notch's header, beside the time, for as long as
-    /// something lasts (the speakers being muted, Caps Lock being on); `None` when there is nothing to show.
+    /// Header status width in DIP, independent of page selection; None hides it.
     fn header_status_width(&self) -> Option<f32> {
         None
     }
@@ -70,10 +62,8 @@ pub trait Activity {
 
     fn on_timer(&mut self, _timer: TimerId, _context: &mut Context) {}
 
-    /// Called when the pointer enters or leaves the notch.
     fn on_hover_changed(&mut self, _is_hovering: bool, _context: &mut Context) {}
 
-    /// Called after a background thread used this activity's `Notifier`.
     fn on_notify(&mut self, _context: &mut Context) {}
 
     fn on_system_message(&mut self, _message: &SystemMessage, _context: &mut Context) {}
@@ -89,7 +79,6 @@ pub struct Flash {
 }
 
 impl Flash {
-    /// A flash that is showing, for building samples of what a page looks like.
     #[cfg(test)]
     pub fn visible() -> Self {
         Self { is_visible: true }
@@ -117,8 +106,7 @@ impl Flash {
     }
 }
 
-/// Remembers the last value of a setting that reports its current value on registration. Returns true when `value`
-/// is a change worth showing: the first value is only the starting point, and a repeat is not a change.
+/// The initial report and repeated values are not changes worth announcing.
 pub fn is_change(last: &mut Option<u32>, value: u32) -> bool {
     let previous = last.replace(value);
     previous.is_some_and(|previous| previous != value)

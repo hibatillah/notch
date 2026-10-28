@@ -9,23 +9,18 @@ const TICKS_PER_MILLISECOND: i64 = 10_000;
 const MIN_DELAY_MILLISECONDS: i64 = 15;
 const MAX_DELAY_MILLISECONDS: i64 = 30_000;
 
-/// What `LyricFollower::update` found out.
 #[derive(Default)]
 pub struct Update {
-    /// The line being sung changed, so a transition started and the page should animate.
     pub line_changed: bool,
     /// Time until the next line starts, for arming a timer; `None` while paused or after the last line.
     pub next_line_in_milliseconds: Option<u32>,
 }
 
-/// Tracks which lyric line is being sung and animates the change from one line to the next.
 pub struct LyricFollower {
-    /// Address of the lyrics being followed, to notice when a different track's lyrics arrive.
     identity: usize,
     index: Option<usize>,
     current: String,
     previous: String,
-    /// Width of the current line in device-independent pixels.
     width: f32,
     /// 0 while the previous line is shown, 1 once the current line has taken over.
     transition: Spring,
@@ -63,7 +58,6 @@ impl LyricFollower {
         self.transition.position
     }
 
-    /// Moves to the line sung at `position_ticks`; with no lyrics it clears everything.
     pub fn update(
         &mut self,
         lyrics: Option<&Arc<Lyrics>>,
@@ -94,14 +88,12 @@ impl LyricFollower {
             line_changed = true;
         }
 
-        // A paused track keeps its line on screen but needs no timer.
         let next_line_in_milliseconds = is_playing.then(|| lyrics.next_start_after(index)).flatten().map(|start| {
             ((start - position) / TICKS_PER_MILLISECOND).clamp(MIN_DELAY_MILLISECONDS, MAX_DELAY_MILLISECONDS) as u32
         });
         Update { line_changed, next_line_in_milliseconds }
     }
 
-    /// Advances the line transition; returns true while it is still moving.
     pub fn animate(&mut self, elapsed_seconds: f32) -> bool {
         self.transition.step(elapsed_seconds);
         let is_moving = !self.transition.is_settled();
@@ -145,7 +137,6 @@ mod tests {
         let update = follower.update(Some(&lyrics), 0, true, &fonts);
         assert_eq!(follower.index(), None);
         assert!(!update.line_changed);
-        // The line is shown 0.2 s early, so 10 s minus 0.2 s of waiting.
         assert_eq!(update.next_line_in_milliseconds, Some(9_800));
     }
 

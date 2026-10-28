@@ -1,19 +1,14 @@
-//! What the calendar page says about a day: which events to list, which one is next, how to word the times, and the
-//! compact reminder shown before a meeting. Pure, so it is tested without a window. Times are local seconds.
+//! Calendar presentation uses local seconds.
 
 use super::{
     dates::{SECONDS_PER_DAY, SECONDS_PER_MINUTE, clock_text},
     ics::Occurrence,
 };
 
-/// Events listed at once.
 pub const MAX_ROWS: usize = 2;
-/// The compact reminder appears this long before an event starts...
 const REMINDER_LEAD_MINUTES: i64 = 15;
-/// ...and stays this long after it started.
 const REMINDER_TRAIL_MINUTES: i64 = 5;
 
-/// A meeting link found in an event.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Meeting {
     pub url: String,
@@ -29,7 +24,6 @@ const SERVICES: [(&str, &str); 6] = [
     ("whereby.com", "Whereby"),
 ];
 
-/// The addresses in `text`: each starts at `http://` or `https://` and ends at a space or a closing character.
 fn addresses(text: &str) -> Vec<&str> {
     let mut found = Vec::new();
     let mut rest = text;
@@ -65,7 +59,6 @@ pub fn find_meeting(occurrence: &Occurrence) -> Option<Meeting> {
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum State {
     Done,
-    /// The first event that has not finished: next, or happening now.
     Next,
     Later,
 }
@@ -73,11 +66,8 @@ pub enum State {
 pub struct Row {
     pub occurrence: Occurrence,
     pub state: State,
-    /// "09:00", or empty for an all-day event.
     pub time: String,
-    /// Second line under the title, when there is one: "in 12 min · Google Meet".
     pub detail: Option<String>,
-    /// Text at the right end of the row when it has no join button: "Done", "1 h".
     pub trailing: String,
     pub meeting: Option<Meeting>,
 }
@@ -86,7 +76,6 @@ pub struct Agenda {
     pub rows: Vec<Row>,
 }
 
-/// "12 min", "2 h", "1 h 30 min".
 pub fn relative_text(seconds: i64) -> String {
     let minutes = (seconds + SECONDS_PER_MINUTE - 1).div_euclid(SECONDS_PER_MINUTE).max(0);
     match (minutes / 60, minutes % 60) {
@@ -96,7 +85,6 @@ pub fn relative_text(seconds: i64) -> String {
     }
 }
 
-/// "1 h", "45 min", "1 h 30 min".
 pub fn duration_text(seconds: i64) -> String {
     let minutes = seconds.div_euclid(SECONDS_PER_MINUTE).max(0);
     match (minutes / 60, minutes % 60) {
@@ -106,7 +94,6 @@ pub fn duration_text(seconds: i64) -> String {
     }
 }
 
-/// The position of the first timed event that has not finished by `now`.
 fn next_index(occurrences: &[Occurrence], now: i64) -> Option<usize> {
     occurrences.iter().position(|occurrence| !occurrence.is_all_day && occurrence.end.max(occurrence.start + 1) > now)
 }
@@ -120,12 +107,10 @@ fn visible_range(total: usize, next: Option<usize>) -> std::ops::Range<usize> {
     start..start + MAX_ROWS
 }
 
-/// The events of today, with the next one marked and the ones that are over dimmed.
 pub fn build(occurrences: &[Occurrence], now: i64) -> Agenda {
     rows_for(occurrences, now, true)
 }
 
-/// The events of another day, all alike: none is next and none is over.
 pub fn list(occurrences: &[Occurrence]) -> Agenda {
     rows_for(occurrences, 0, false)
 }
@@ -174,11 +159,9 @@ fn rows_for(occurrences: &[Occurrence], now: i64, is_today: bool) -> Agenda {
     Agenda { rows }
 }
 
-/// The reminder shown in the collapsed pill around a meeting.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Reminder {
     pub title: String,
-    /// "in 12m" before it starts, "now" once it has.
     pub text: String,
 }
 
@@ -201,7 +184,6 @@ mod tests {
 
     const HOUR: i64 = 3600;
     const MINUTE: i64 = 60;
-    /// A day far from the epoch, so the times of day below are plain.
     const DAY_START: i64 = 20_000 * SECONDS_PER_DAY;
 
     fn event(start_hour: i64, minutes: i64, summary: &str) -> Occurrence {
@@ -254,7 +236,6 @@ mod tests {
         let day = [event(9, 30, "Standup"), event(13, 60, "Review"), event(16, 60, "Reading")];
         let agenda = build(&day, DAY_START + 13 * HOUR - 12 * MINUTE);
         let states: Vec<State> = agenda.rows.iter().map(|row| row.state).collect();
-        // Two rows fit, so the one before the next event and the next event are listed.
         assert_eq!(states, vec![State::Done, State::Next]);
         assert_eq!(agenda.rows[1].detail.as_deref(), Some("in 12 min"));
         assert_eq!(agenda.rows[0].trailing, "Done");

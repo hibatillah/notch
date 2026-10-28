@@ -31,7 +31,6 @@ impl ImageData {
         Self { version: NEXT_VERSION.fetch_add(1, Ordering::Relaxed), width, height, bgra_premultiplied }
     }
 
-    /// The largest square from the middle of the image, like CSS `object-fit: cover` in a square frame.
     pub fn centered_square(&self) -> ImageData {
         let side = self.width.min(self.height);
         let (left, top) = ((self.width - side) / 2, (self.height - side) / 2);
@@ -44,8 +43,7 @@ impl ImageData {
         ImageData::new(side, side, pixels)
     }
 
-    /// A copy shrunk to `target_width` by averaging every source pixel under each new pixel.
-    /// Drawing a large image into a small area directly skips pixels and looks jagged; shrinking first keeps it smooth.
+    /// Average source pixels before shrinking; renderer downscaling skips pixels and looks jagged.
     pub fn downscaled(&self, target_width: u32) -> ImageData {
         let target_width = target_width.max(1);
         if target_width >= self.width {
@@ -83,7 +81,6 @@ impl ImageData {
     }
 }
 
-/// An image uploaded to the renderer, drawable into any rounded rectangle with `Canvas::image`.
 pub struct ImageBrush {
     brush: ID2D1BitmapBrush,
     pub width: u32,
@@ -99,7 +96,6 @@ impl ImageBrush {
     }
 }
 
-/// Uploads decoded pixels as a brush that can fill any shape, such as a rounded square.
 pub(super) fn upload(target: &ID2D1DCRenderTarget, image: &ImageData) -> Result<ImageBrush> {
     unsafe {
         let properties = D2D1_BITMAP_PROPERTIES {
@@ -122,14 +118,12 @@ pub(super) fn upload(target: &ID2D1DCRenderTarget, image: &ImageData) -> Result<
     }
 }
 
-/// Uploaded images that are drawn again and again, such as icons, found by a key that stands for how they look.
 #[derive(Default)]
 pub struct ImageCache {
     entries: RefCell<HashMap<u64, Rc<ImageBrush>>>,
 }
 
 impl ImageCache {
-    /// The image stored under `key`, uploading the one `build` makes the first time it is asked for.
     pub(super) fn get_or_insert(&self, key: u64, build: impl FnOnce() -> Option<ImageBrush>) -> Option<Rc<ImageBrush>> {
         if let Some(brush) = self.entries.borrow().get(&key) {
             return Some(Rc::clone(brush));
@@ -152,7 +146,6 @@ impl ImageSlot {
         self.brush.as_ref()
     }
 
-    /// Makes the slot match `source`; `upload` runs only when the image differs from the one already uploaded.
     pub fn sync(&mut self, source: Option<&ImageData>, upload: impl FnOnce(&ImageData) -> Option<ImageBrush>) {
         let version = source.map_or(0, |image| image.version);
         if version == self.version {
@@ -173,7 +166,6 @@ mod tests {
 
     #[test]
     fn shrinking_averages_the_pixels_under_each_new_pixel() {
-        // A 2x2 image of black and white pixels becomes one mid-gray pixel.
         let pixels = vec![0, 0, 0, 255, 255, 255, 255, 255, 255, 255, 255, 255, 0, 0, 0, 255];
         let shrunk = ImageData::new(2, 2, pixels).downscaled(1);
         assert_eq!((shrunk.width, shrunk.height), (1, 1));
@@ -233,7 +225,6 @@ mod tests {
 mod square_tests {
     use super::*;
 
-    /// A `width` x `height` image whose pixel (x, y) has blue = x and green = y.
     fn gradient(width: u32, height: u32) -> ImageData {
         let mut pixels = Vec::new();
         for y in 0..height {

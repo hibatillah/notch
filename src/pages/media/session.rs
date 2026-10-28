@@ -46,7 +46,6 @@ pub struct MediaInfo {
     pub artist: String,
     pub album: String,
     pub artwork: Option<Arc<ImageData>>,
-    /// Windows app identifier of the player, such as `Spotify.exe`.
     pub source_app: String,
     pub app_icon: Option<Arc<ImageData>>,
     pub lyrics: LyricsStatus,
@@ -58,7 +57,6 @@ pub struct MediaInfo {
 }
 
 impl MediaInfo {
-    /// Playback position now, extrapolated from the last report while playing.
     pub fn position_ticks_now(&self) -> i64 {
         let elapsed = if self.is_playing { (now_ticks() - self.position_updated_at_ticks).max(0) } else { 0 };
         (self.position_ticks + elapsed).clamp(0, self.duration_ticks.max(0))
@@ -86,7 +84,6 @@ struct Shared {
     notify_changed: Box<dyn Fn() + Send + Sync>,
 }
 
-/// Mirrors the system's current media session into `MediaInfo` and calls `notify_changed` on updates.
 pub struct MediaWatcher {
     manager: GlobalSystemMediaTransportControlsSessionManager,
     shared: Arc<Shared>,
@@ -264,7 +261,6 @@ fn spawn_lyrics_lookup(shared: Arc<Shared>, track_key: String, artist: String, t
                 Ok(found) => {
                     let found = found.map(Arc::new);
                     if let Ok(mut cache) = shared.lyrics_cache.lock() {
-                        // A small cache is plenty: it only has to cover replays and skipping back.
                         if cache.len() >= 64 {
                             cache.clear();
                         }

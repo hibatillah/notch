@@ -1,5 +1,4 @@
-//! Small Windows actions that pages need: opening a file or a link, reading text from the clipboard, the double-click time, dragging a file out of the notch, and getting the picture Explorer shows for a file. Each is
-//! a thin wrapper over one Windows call.
+//! Windows integration shared by pages.
 
 use std::{
     path::{Path, PathBuf},
@@ -35,7 +34,6 @@ use windows::{
 
 use crate::gfx::ImageData;
 
-/// The clipboard format for UTF-16 text.
 const CF_UNICODETEXT: u32 = 13;
 
 /// True while a file dragged out of the notch is being carried, so the notch's own drop target ignores it.
@@ -45,17 +43,14 @@ pub fn is_dragging_out() -> bool {
     IS_DRAGGING_OUT.load(Ordering::Relaxed)
 }
 
-/// Opens a file, folder or web address with the program Windows has for it.
 pub fn open(target: &str) {
     unsafe { ShellExecuteW(None, w!("open"), &HSTRING::from(target), PCWSTR::null(), PCWSTR::null(), SW_SHOWNORMAL) };
 }
 
-/// How long the user allows between the two clicks of a double click.
 pub fn double_click_time() -> Duration {
     Duration::from_millis(u64::from(unsafe { GetDoubleClickTime() }))
 }
 
-/// The text on the clipboard, if there is any.
 pub fn paste_text() -> Option<String> {
     unsafe {
         OpenClipboard(None).ok()?;
@@ -93,8 +88,7 @@ impl Drop for ComApartment {
     }
 }
 
-/// The picture Explorer shows for `path` (a preview of an image, the icon of a program, the icon of a folder), about
-/// `pixels` wide, in premultiplied BGRA. Slow for some files, so call it from a background thread.
+/// Premultiplied BGRA; shell previews can be slow, so call off the UI thread.
 pub fn file_preview(path: &Path, pixels: i32) -> Option<ImageData> {
     let _apartment = ComApartment::enter();
     unsafe {
@@ -142,8 +136,7 @@ pub fn file_preview(path: &Path, pixels: i32) -> Option<ImageData> {
     }
 }
 
-/// Makes BGRA pixels from the shell premultiplied: some come with no alpha at all (a photo), and some with colors that
-/// are not yet multiplied by it.
+/// Shell bitmaps may lack alpha or use straight alpha; Direct2D needs premultiplied BGRA.
 fn premultiplied(bytes: &mut [u8]) {
     let (pixels, _) = bytes.as_chunks_mut::<4>();
     if pixels.iter().all(|pixel| pixel[3] == 0) {
@@ -162,12 +155,9 @@ fn premultiplied(bytes: &mut [u8]) {
     }
 }
 
-/// Drags `path` out of the notch like a file dragged from Explorer, on a thread of its own, because dragging needs a
-/// single-threaded apartment and the notch's thread is not one. `finished` gets the path and true when something took
-/// a copy of the file, false when the drag was cancelled. Returns false when the drag could not
-/// start at all.
+/// Dragging needs its own STA thread. Returns false if it cannot start.
+/// finished receives the path and whether the drop accepted a copy.
 pub fn drag_file_out(path: PathBuf, finished: impl FnOnce(PathBuf, bool) + Send + 'static) -> bool {
-    // A drag follows the button, so with it already up there is nothing to carry.
     if !is_left_button_down() {
         return false;
     }
@@ -188,9 +178,7 @@ fn is_left_button_down() -> bool {
     unsafe { GetAsyncKeyState(i32::from(VK_LBUTTON.0)) < 0 }
 }
 
-/// Shares the input state of `notch_thread` with the current thread until dropped. The button went down in the notch's
-/// window, so only a thread that shares the notch's input sees it go up, which is what ends the drag; without it the
-/// drag never ends and holds the mouse.
+/// The drag thread must share input to see the button release from the notch window.
 struct SharedInput {
     own_thread: u32,
     notch_thread: u32,
@@ -213,14 +201,12 @@ impl Drop for SharedInput {
     }
 }
 
-/// Runs the drag; true when it ended in a drop that took a copy of the file. Only copying is offered, so that a drop on
-/// the desktop, a folder or the Recycle Bin can never move or delete the original.
+/// Offer only copying so a drop can never move or delete the original file.
 fn drag_out(path: &Path, notch_thread: u32) -> bool {
     unsafe {
         if OleInitialize(None).is_err() {
             return false;
         }
-        // Attached once OLE has given this thread its message queue.
         let input = SharedInput::attach(notch_thread);
         let taken = (|| {
             let item: IShellItem =

@@ -1,12 +1,5 @@
-//! Reads an iCalendar (.ics) file, such as the secret address Google Calendar gives for a calendar, and lists what
-//! happens on a day, repeating events included. Pure, so it is tested without a window.
-//!
-//! Times in an event are kept as "wall" seconds in the event's own zone and converted to local time when asked,
-//! so a weekly meeting stays at the same hour of the day when the clocks change.
-//!
-//! Not supported: repeat rules by week number, by year day or by set position, and zone names without a `VTIMEZONE`
-//! block in the file (they are read as local time). A zone is read as its standard offset, so an event in a zone that
-//! observes daylight saving shows an hour off while it is in effect.
+//! Recurrences use wall time. Zone names without VTIMEZONE fall back to local time.
+//! Zone offsets ignore DST; BYWEEKNO, BYYEARDAY and BYSETPOS are unsupported.
 
 use std::collections::HashMap;
 
@@ -15,16 +8,13 @@ use super::dates::{
     seconds_from_civil, week_start, weekday,
 };
 
-/// Stops a repeat rule that never ends from looping for ever.
 const MAX_STEPS: i64 = 200_000;
 const WEEKDAY_CODES: [&str; 7] = ["MO", "TU", "WE", "TH", "FR", "SA", "SU"];
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Zone {
-    /// No zone given: the clock on the wall, whatever it is.
     Floating,
     Utc,
-    /// A fixed offset from UTC in seconds.
     Offset(i64),
 }
 
@@ -83,7 +73,6 @@ pub struct Event {
     pub is_cancelled: bool,
 }
 
-/// One event on one day, in local time.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Occurrence {
     pub start: i64,
@@ -95,9 +84,8 @@ pub struct Occurrence {
     pub url: String,
 }
 
-// Reading
+// Continuation lines begin with whitespace.
 
-/// Joins the lines that continue the one before them.
 fn unfold(text: &str) -> Vec<String> {
     let mut lines: Vec<String> = Vec::new();
     for line in text.lines() {
@@ -139,7 +127,6 @@ impl Property {
     }
 }
 
-/// Undoes the escapes of iCalendar text.
 fn unescape(text: &str) -> String {
     let mut result = String::with_capacity(text.len());
     let mut characters = text.chars();
@@ -157,7 +144,6 @@ fn unescape(text: &str) -> String {
     result
 }
 
-/// A date or date-time value: its seconds, whether it ends in `Z`, and whether it is a date alone.
 fn parse_moment(value: &str) -> Option<(i64, bool, bool)> {
     let value = value.trim();
     let number = |from: usize, to: usize| value.get(from..to)?.parse::<u32>().ok();
@@ -172,7 +158,6 @@ fn parse_moment(value: &str) -> Option<(i64, bool, bool)> {
     Some((seconds, value.ends_with('Z'), false))
 }
 
-/// "+0700" or "-0330" as seconds.
 fn parse_offset(value: &str) -> Option<i64> {
     let value = value.trim();
     let sign = match value.chars().next()? {
@@ -184,7 +169,6 @@ fn parse_offset(value: &str) -> Option<i64> {
     Some(sign * (number(1, 3)? * 3600 + number(3, 5)? * 60 + number(5, 7).unwrap_or(0)))
 }
 
-/// "PT1H30M", "P1D" or "P2W" as seconds.
 fn parse_duration(value: &str) -> Option<i64> {
     let value = value.trim();
     let (negative, value) = match value.strip_prefix('-') {
@@ -222,7 +206,6 @@ fn offset_of(zone: Zone) -> i64 {
     }
 }
 
-/// A moment read from a property, as wall seconds in the zone it was given in.
 struct Moment {
     wall: i64,
     zone: Zone,
@@ -295,7 +278,6 @@ fn parse_rule(value: &str, zone: Zone) -> Option<Rule> {
     has_frequency.then_some(rule)
 }
 
-/// "MO", "2TU" or "-1FR": a weekday and its place in the month.
 fn parse_by_day(text: &str) -> Option<(i32, u32)> {
     let text = text.trim().to_uppercase();
     let split = text.len().checked_sub(2)?;
@@ -308,7 +290,6 @@ fn parse_by_day(text: &str) -> Option<(i32, u32)> {
     Some((ordinal, weekday))
 }
 
-/// A `VTIMEZONE` block being read: its name and the offsets of its standard and daylight parts.
 type ZoneBlock = (String, Option<i64>, Option<i64>);
 
 #[derive(Default)]
@@ -399,7 +380,7 @@ pub fn parse(text: &str) -> Vec<Event> {
     drafts.iter().filter_map(|draft| build_event(draft, &zones)).collect()
 }
 
-// Repeating
+// Recurrences retain wall time across clock changes.
 
 /// The start (wall seconds) of every repeat of `event` from `from` to `to`, the first one included.
 fn repeat_starts(event: &Event, from: i64, to: i64) -> Vec<i64> {
@@ -518,7 +499,6 @@ fn to_local(wall: i64, zone: Zone, clock: &dyn Clock) -> i64 {
     }
 }
 
-/// Everything that happens on `day` (a day number in local time), all-day events first, then by start.
 pub fn occurrences_on(events: &[Event], day: i64, clock: &dyn Clock) -> Vec<Occurrence> {
     let (window_start, window_end) = (day * SECONDS_PER_DAY, (day + 1) * SECONDS_PER_DAY);
     let replaced: Vec<(&str, i64)> =
@@ -559,7 +539,6 @@ pub fn occurrences_on(events: &[Event], day: i64, clock: &dyn Clock) -> Vec<Occu
 mod tests {
     use super::*;
 
-    /// Jakarta, UTC+7, all year.
     const CLOCK: FixedClock = FixedClock(7 * 3600);
 
     fn calendar(body: &str) -> String {
@@ -675,7 +654,6 @@ mod tests {
 
     #[test]
     fn a_weekly_repeat_on_chosen_weekdays_skips_the_others() {
-        // Starts on Monday 19 October 2026; repeats Monday and Wednesday every week.
         let events = parse(&calendar(
             "BEGIN:VEVENT\r\nDTSTART:20261019T020000Z\r\nRRULE:FREQ=WEEKLY;BYDAY=MO,WE\r\nSUMMARY:Class\r\nEND:VEVENT\r\n",
         ));

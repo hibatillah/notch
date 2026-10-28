@@ -2,13 +2,10 @@
 
 use crate::gfx::{Color, ImageData};
 
-/// Every this many pixels along and down are looked at; the whole picture is not needed to find its color.
 const SAMPLE_STEP: u32 = 4;
-/// Pixels whose brightest channel is below this count as black and are left out.
 const BLACK_BELOW: f32 = 0.08;
 /// The color is brightened until its brightest channel is at least this, so a dark cover still gives a visible glow.
 const BRIGHTEST_AT_LEAST: f32 = 0.6;
-/// A saturated pixel counts for more than a gray one by this much; every pixel counts for at least 1.
 const SATURATION_WEIGHT: f32 = 4.0;
 
 /// The color the picture is mostly made of, favoring its vivid parts. `None` for a picture that is black or empty.
@@ -54,7 +51,6 @@ pub fn color_of(image: &ImageData) -> Option<Color> {
 mod tests {
     use super::*;
 
-    /// A square picture of one color, as premultiplied BGRA.
     fn plain(red: u8, green: u8, blue: u8) -> ImageData {
         let pixels = (0..16 * 16).flat_map(|_| [blue, green, red, 255]).collect();
         ImageData::new(16, 16, pixels)
@@ -81,7 +77,6 @@ mod tests {
 
     #[test]
     fn a_vivid_part_of_a_cover_counts_for_more_than_a_gray_part() {
-        // Half gray, half blue: the blue wins.
         let mut pixels = Vec::new();
         for row in 0..16 {
             for _ in 0..16 {

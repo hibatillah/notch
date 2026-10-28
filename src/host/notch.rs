@@ -28,106 +28,73 @@ use crate::{
     },
 };
 
-/// Wide enough for a long lyric line; the window only occupies the pill's area, so this costs no screen space.
 pub const WINDOW_WIDTH: f32 = 1200.0;
 pub const WINDOW_HEIGHT: f32 = 260.0;
-/// How much bigger the open notch gets while files are dragged over it, as if ready to take them.
 const DRAG_GROWTH: Size = Size::new(28.0, 14.0);
 
-/// Corner radius of the collapsed pill, much smaller than the open notch's so the two read as different shapes.
 const RESTING_RADIUS: f32 = 12.0;
-/// The radius of the collapsed pill while it is opened into a banner, and how much taller than the idle pill the
-/// banner must be to have all of it.
 const BANNER_RADIUS: f32 = 18.0;
 const BANNER_RADIUS_RANGE: f32 = 20.0;
-/// Space the collapsed pill keeps under its content row (`RESTING_HEIGHT` high), so the content sits a little high.
 const RESTING_BOTTOM_PADDING: f32 = 3.0;
 const RESTING_PILL_HEIGHT: f32 = RESTING_HEIGHT + RESTING_BOTTOM_PADDING;
 const EXPANDED_RADIUS: f32 = 22.0;
-/// The open notch's soft shadow: this many rounded rectangles, each `SHADOW_STEP` larger than the one inside it and
-/// each a little dark, stack up to a shadow that fades out. It is shifted down by `SHADOW_OFFSET`.
 const SHADOW_LAYERS: usize = 10;
 const SHADOW_STEP: f32 = 2.0;
 const SHADOW_OFFSET: f32 = 4.0;
 const SHADOW_LAYER_ALPHA: f32 = 0.028;
-/// Radius of the outward curve joining the pill's sides to the top of the screen, as on a MacBook notch.
 const RESTING_FLARE: f32 = 8.0;
 const EXPANDED_FLARE: f32 = 14.0;
 const ANIMATION_TIMER_ID: usize = 1;
 /// Safety net while the notch is open: the leave notification can be lost when the window resizes under the pointer.
 const HOVER_WATCH_TIMER_ID: usize = 2;
 const HOVER_WATCH_INTERVAL_MILLISECONDS: u32 = 120;
-/// While the notch hides when idle: after the pointer enters the strip it waits this long, then the small pill shows...
 const REVEAL_TIMER_ID: usize = 3;
 const REVEAL_DELAY_MILLISECONDS: u32 = 150;
 /// Over a maximized window the pointer must stay longer at the top, which is where its tabs and title bar are.
 const REVEAL_DELAY_OVER_WINDOW_MILLISECONDS: u32 = 350;
-/// ...and if the pointer stays, the notch opens this long after that.
 const EXPAND_TIMER_ID: usize = 4;
 const EXPAND_DELAY_MILLISECONDS: u32 = 450;
-/// The strip at the top of the screen that wakes a hidden notch, in device-independent pixels.
 const HIDDEN_WIDTH: f32 = 240.0;
 const HIDDEN_HEIGHT: f32 = 6.0;
-/// Over a maximized window the strip is thinner, so it is only the very top edge of the screen.
 const HIDDEN_HEIGHT_OVER_WINDOW: f32 = 3.0;
-/// How opaque the strip is: just enough for the pointer to find it.
 const HIDDEN_ALPHA: f32 = 0.006;
 const HIDE_WHEN_IDLE_SETTING: &str = "notch.hide_when_idle";
 const HIDE_FOR_APPS_SETTING: &str = "notch.hide_for_fullscreen";
 const LYRICS_OVER_WINDOWS_SETTING: &str = "notch.lyrics_over_maximized";
-/// The notch opens and closes in two legs with a stop between them: collapsed, then a pill that holds only the header
-/// (the page dots, the time and the settings button), then the whole page. `expansion` is 0 collapsed, `HEADER_STAGE`
-/// at the header pill and 1 open.
+const NOTCH_OVER_WINDOWS_SETTING: &str = "notch.show_over_maximized";
+/// Expansion stages: 0 collapsed, HEADER_STAGE header-only, 1 fully open.
 const HEADER_STAGE: f32 = 0.5;
-/// The size of the header pill, which never gets smaller than the collapsed pill or larger than the open notch.
 const HEADER_STAGE_WIDTH: f32 = 240.0;
 const HEADER_STAGE_HEIGHT: f32 = 52.0;
-/// Space between the time and a status mark beside it, and between two marks.
 const STATUS_GAP: f32 = 8.0;
-/// The collapsed content is gone by this expansion.
 const RESTING_FADE_END: f32 = 0.25;
-/// The header fades in over this range of expansion, and the page content over the next.
 const HEADER_FADE: (f32, f32) = (0.2, 0.45);
 const CONTENT_FADE: (f32, f32) = (0.62, 0.9);
-/// A swipe ends, and the pages settle on the nearest one, when no scroll arrives for this long.
 const CLOCK_TIMER_ID: usize = 6;
 const STAGE_TIMER_ID: usize = 7;
 const CLOSE_TIMER_ID: usize = 8;
-/// How long the notch stays open after the pointer leaves it, so a slip of the pointer does not close it.
 const CLOSE_DELAY_MILLISECONDS: u32 = 200;
-/// How long the pointer must rest on the notch before it starts to open.
 const HOVER_OPEN_DELAY_MILLISECONDS: u32 = 100;
-/// How long the first leg of the opening and of the closing runs before the second one starts. The opening holds a
-/// moment at the header pill; the closing runs on through it.
 const OPEN_STAGE_MILLISECONDS: u32 = 165;
 const CLOSE_STAGE_MILLISECONDS: u32 = 110;
-/// How stiff and how damped the spring is while the notch opens, and while it closes, which is slower.
 const OPEN_RESPONSE: (f32, f32) = (480.0, 29.0);
-const CLOSE_RESPONSE: (f32, f32) = (330.0, 25.0);
+const CLOSE_RESPONSE: (f32, f32) = (330.0, 22.0);
 const SWIPE_END_TIMER_ID: usize = 5;
-const SWIPE_END_DELAY_MILLISECONDS: u32 = 140;
-/// How far a page is faded for each page-width it is from the middle of the notch.
 const PAGE_FADE_PER_PAGE: f32 = 0.5;
-/// The empty space between neighbouring pages in the row, so one pushes the other along and they never overlap.
 const PAGE_GAP: f32 = 24.0;
-/// The setting that remembers the page that was open last.
 /// The page area of the open notch while no page has anything to show: only the header remains.
 const EMPTY_PAGE_SIZE: Size = Size::new(220.0, 0.0);
 const LAST_PAGE_SETTING: &str = "navigation.page";
 const PAGE_ORDER_SETTING: &str = "navigation.order";
-/// Width of the "Edit pages" view's content, in device-independent pixels.
 const EDITOR_WIDTH: f32 = 428.0;
 const PAGES_OFF_SETTING: &str = "navigation.disabled";
 
-/// Who is showing something in the collapsed pill: an activity, or a page that also has something to say while closed.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum Source {
     Activity(usize),
     Page(usize),
 }
 
-/// An activity and whether the user has it switched on; it only runs once it has been started.
-/// A status mark in the header and the page or activity that draws it.
 #[derive(Clone, Copy)]
 enum HeaderMark {
     Page(usize),
@@ -140,7 +107,6 @@ struct ActivitySlot {
     is_started: bool,
 }
 
-/// Owns the window's state: it animates the pill, tracks the pointer and decides which page is shown.
 pub struct Notch {
     window: HWND,
     scale: f32,
@@ -150,72 +116,48 @@ pub struct Notch {
     settings: Settings,
     pages: Vec<Box<dyn Page>>,
     activities: Vec<ActivitySlot>,
-    /// The order in which the transients now on screen appeared; the newest ones are shown.
     transient_order: Vec<Source>,
-    /// The activities drawn in place of the page while collapsed, and the badges drawn beside it, with their widths.
     shown_transients: Vec<(Source, f32)>,
-    /// The banner that has opened the collapsed pill: who draws it, its width and its height.
     shown_banner: Option<(Source, f32, f32)>,
     shown_badges: Vec<(Source, f32)>,
-    /// The page drawn while collapsed and the page drawn while open; they can differ. `None` while no page wants to
-    /// be shown: the collapsed pill then shows the time, and the open notch has an empty page area.
     resting_index: Option<usize>,
     expanded_index: Option<usize>,
-    /// The page the user moved to last; it stays open until they move again.
     selected_page: Option<usize>,
-    /// The page that is on screen right now: the notch is open and shows it.
     shown_page: Option<usize>,
-    /// The user's page order and which pages are switched on.
     page_list: PageList,
-    /// The "Edit pages" view, while it is open.
     editor: Option<PageEditor>,
-    /// The pages that can be opened right now, in order; the dots show them.
     navigable: Vec<usize>,
     is_settings_hovered: bool,
-    /// While switching pages: the page being left, the direction (1 toward the next page) and the progress.
-    /// Where the row of pages is, as a position among the navigable pages; between two numbers mid-swipe.
     track: Spring,
-    /// While fingers swipe on a touchpad: where they have taken the pages, which is not yet a whole page.
-    swipe_position: Option<f32>,
-    /// Requests collected from page hooks, applied by `flush`.
+    swipe: Option<navigation::Swipe>,
+    /// Finger input owns the fractional row position until its quiet period ends.
+    holds_page_position: bool,
     pending: Requests,
     expansion: Spring,
     resting_width: Spring,
-    /// Height of the collapsed pill: the page height normally, a thin strip while the notch hides.
     resting_height: Spring,
     expanded_width: Spring,
     expanded_height: Spring,
-    /// 0 while the page shows in the collapsed pill, 1 while transient activities take its place.
     activity_blend: Spring,
-    /// Room kept at the right end of the collapsed pill for badges.
     badge_width: Spring,
-    /// Whether the notch hides itself when nothing is happening (a choice in the tray menu).
     hides_when_idle: bool,
-    /// The notch steps out of the way of the window in front: hidden to a strip over a maximized one, gone over a
-    /// full-screen one (a choice in the tray menu).
     hides_for_apps: bool,
-    /// Over a maximized window the pill stays while it shows the lyric line being sung (a choice in the tray menu).
     keeps_lyrics_over_windows: bool,
+    keeps_notch_over_windows: bool,
     screen_mode: ScreenMode,
-    /// While hidden, the pointer has waited on the strip and the small pill is showing.
     is_revealed: bool,
-    /// A page has something to show in the collapsed pill beyond the time.
     has_resting_content: bool,
     is_hovering: bool,
-    /// The pointer left the open notch and `CLOSE_TIMER_ID` is counting down to closing it.
     is_close_pending: bool,
     is_animating: bool,
     pointer_captured: bool,
-    /// True while a file is dragged over the notch.
     is_dragging_files: bool,
     last_tick: i64,
     ticks_per_second: i64,
     frame_interval_milliseconds: u32,
-    /// Top-left of the window within the surface as of the last paint.
     region_origin: Cell<(i32, i32)>,
 }
 
-/// Everything an `Notch` is built from.
 pub struct NotchParts {
     pub window: HWND,
     pub scale: f32,
@@ -244,10 +186,15 @@ impl Notch {
         let activities = activities
             .into_iter()
             .map(|activity| {
-                let is_enabled = settings.get_bool(&activity_setting_key(activity.id()), true);
+                let is_enabled =
+                    !activity.is_optional() || settings.get_bool(&activity_setting_key(activity.id()), true);
                 ActivitySlot { activity, is_enabled, is_started: false }
             })
             .collect();
+        let hides_when_idle = settings.get_bool(HIDE_WHEN_IDLE_SETTING, false);
+        let hides_for_apps = settings.get_bool(HIDE_FOR_APPS_SETTING, true);
+        let keeps_lyrics_over_windows = settings.get_bool(LYRICS_OVER_WINDOWS_SETTING, true);
+        let keeps_notch_over_windows = settings.get_bool(NOTCH_OVER_WINDOWS_SETTING, false);
         Self {
             window,
             scale,
@@ -269,9 +216,9 @@ impl Notch {
             editor: None,
             navigable: Vec::new(),
             is_settings_hovered: false,
-            // Critically damped, so the row never overshoots and shows a third page beside the one it is settling on.
-            track: Spring::new(0.0, 260.0, 32.3),
-            swipe_position: None,
+            track: navigation::page_transition(0.0),
+            swipe: None,
+            holds_page_position: false,
             pending: Requests::default(),
             expansion: Spring::new(0.0, OPEN_RESPONSE.0, OPEN_RESPONSE.1).with_rebound_damping(1.4),
             resting_width: Spring::new(0.0, 220.0, 26.0),
@@ -280,9 +227,10 @@ impl Notch {
             expanded_height: Spring::new(0.0, 220.0, 26.0),
             activity_blend: Spring::new(0.0, 300.0, 28.0),
             badge_width: Spring::new(0.0, 220.0, 26.0),
-            hides_when_idle: false,
-            hides_for_apps: true,
-            keeps_lyrics_over_windows: false,
+            hides_when_idle,
+            hides_for_apps,
+            keeps_lyrics_over_windows,
+            keeps_notch_over_windows,
             screen_mode: ScreenMode::Normal,
             is_revealed: false,
             has_resting_content: false,
@@ -298,7 +246,6 @@ impl Notch {
         }
     }
 
-    /// Starts every page and shows the first frame at the right size, without animating into it.
     pub fn start(&mut self) {
         for (index, page) in self.pages.iter().enumerate() {
             log::debug(&format!("page {index}: {}", page.id()));
@@ -307,9 +254,6 @@ impl Notch {
             .settings
             .get_string(LAST_PAGE_SETTING)
             .and_then(|id| self.pages.iter().position(|page| page.id() == id));
-        self.hides_when_idle = self.settings.get_bool(HIDE_WHEN_IDLE_SETTING, false);
-        self.hides_for_apps = self.settings.get_bool(HIDE_FOR_APPS_SETTING, true);
-        self.keeps_lyrics_over_windows = self.settings.get_bool(LYRICS_OVER_WINDOWS_SETTING, false);
         let ids = self.page_ids();
         let opt_in: Vec<bool> = self.pages.iter().map(|page| page.is_opt_in()).collect();
         self.page_list = PageList::load(
@@ -335,20 +279,16 @@ impl Notch {
         self.paint();
     }
 
-    /// Wakes the notch just after the next minute starts, so the time it shows never lags.
     fn arm_clock_timer(&self) {
         unsafe { SetTimer(Some(self.window), CLOCK_TIMER_ID, clock::milliseconds_until_next_minute(), None) };
     }
-
-    // Input from the window
 
     pub fn pointer_moved(&mut self, window_x: i32, window_y: i32) {
         let point = self.to_surface_space(window_x, window_y);
         if !self.is_hovering {
             log::debug(&format!("enter move window=({window_x},{window_y}) surface=({:.0},{:.0})", point.x, point.y));
         }
-        // The shadow is part of the window but not of the notch, and it lingers while the notch closes: a pointer on it
-        // is not on the notch, so it neither keeps the notch open nor opens it again.
+        // The shadow remains during closing but must never count as hovering the pill.
         if !self.pointer_captured && !self.is_dragging_files && !self.pointer_is_over_window() {
             if self.is_hovering {
                 self.pointer_left();
@@ -391,19 +331,16 @@ impl Notch {
         self.flush();
     }
 
-    /// The first enabled page that takes dropped files.
     fn drop_page(&self) -> Option<usize> {
         (0..self.pages.len()).find(|&index| self.page_list.is_enabled(index) && self.pages[index].accepts_drops())
     }
 
-    /// Shows the page that takes dropped files, if the notch is open.
     fn show_drop_page(&mut self, index: usize) {
         if self.is_hovering && self.editor.is_none() {
             self.go_to_page(index);
         }
     }
 
-    /// A file drag reached the notch: open it at the page that takes the files, without the usual hover delay.
     pub fn drag_entered(&mut self) {
         let Some(index) = self.drop_page() else { return };
         self.is_dragging_files = true;
@@ -416,7 +353,6 @@ impl Notch {
         self.flush();
     }
 
-    /// The file drag left without dropping: close the notch unless the pointer is on it.
     pub fn drag_left(&mut self) {
         self.is_dragging_files = false;
         if let Some(index) = self.drop_page() {
@@ -428,7 +364,6 @@ impl Notch {
         self.flush();
     }
 
-    /// Files were dropped on the notch: the first page that takes drops gets them, and is shown if the notch is open.
     pub fn files_dropped(&mut self, paths: Vec<std::path::PathBuf>) {
         self.is_dragging_files = false;
         let Some(index) = self.drop_page() else { return };
@@ -443,7 +378,6 @@ impl Notch {
         self.flush();
     }
 
-    /// A right click: inside the open page it goes to the page, and anywhere else it does nothing.
     pub fn right_clicked(&mut self, window_x: i32, window_y: i32) {
         let point = self.to_surface_space(window_x, window_y);
         let frame = self.frame();
@@ -455,50 +389,55 @@ impl Notch {
         self.flush();
     }
 
-    /// Scrolling the wheel or swiping a touchpad moves between pages while the notch is open.
-    pub fn scrolled(&mut self, amount: i32, is_horizontal: bool) {
+    pub fn scrolled(&mut self, amount: i32, is_horizontal: bool, is_touchpad: bool) {
         if !self.is_hovering || self.editor.is_some() {
             return;
         }
-        // Scrolling down, or to the right, goes to the next page.
         let toward_next = if is_horizontal { amount } else { -amount };
-        match navigation::classify_scroll(toward_next) {
+        match navigation::classify_scroll(toward_next, is_touchpad || is_horizontal || self.swipe.is_some()) {
             navigation::Scroll::Pages(steps) => {
                 self.end_swipe();
-                self.navigate(
-                    steps.clamp(-(navigation::MAX_PAGES_PER_SWIPE as i32), navigation::MAX_PAGES_PER_SWIPE as i32),
-                );
+                self.navigate(steps.clamp(-(navigation::MAX_WHEEL_TRAVEL as i32), navigation::MAX_WHEEL_TRAVEL as i32));
             }
             navigation::Scroll::Drag(pages) => self.drag_pages(pages),
         }
         self.flush();
     }
 
-    /// Moves the row of pages by a fraction of a page and settles on the nearest page once the fingers stop.
     fn drag_pages(&mut self, pages: f32) {
         if self.navigable.len() < 2 {
             return;
         }
         self.wrap_track();
-        let position = self.swipe_position.unwrap_or(self.track.target) + pages;
-        // The fingers can take the row at most two pages away from the page that was on screen.
-        let position = navigation::limit_travel(self.track.position.round(), position);
-        self.swipe_position = Some(position);
+        self.holds_page_position = true;
+        let position = self.swipe.get_or_insert_with(|| navigation::Swipe::new(self.track.position)).drag_by(pages);
+        // Smooth discrete wheel-message deltas without restarting the visible position or velocity.
+        self.track.set_response(navigation::PAGE_DRAG_RESPONSE.0, navigation::PAGE_DRAG_RESPONSE.1);
         self.track.target = position;
-        self.select_page(self.page_at(position));
-        unsafe {
-            SetTimer(Some(self.window), SWIPE_END_TIMER_ID, SWIPE_END_DELAY_MILLISECONDS, None);
-        }
+        self.arm_swipe_end();
         self.start_animation();
     }
 
-    /// Stops following the fingers: the row settles on the nearest whole page.
+    fn arm_swipe_end(&self) {
+        if let Some(swipe) = &self.swipe {
+            let remaining_milliseconds = swipe.quiet_remaining().as_millis().max(1) as u32;
+            unsafe {
+                SetTimer(Some(self.window), SWIPE_END_TIMER_ID, remaining_milliseconds, None);
+            }
+        }
+    }
+
     fn end_swipe(&mut self) {
         unsafe {
             let _ = KillTimer(Some(self.window), SWIPE_END_TIMER_ID);
         }
-        if self.swipe_position.take().is_some() {
-            self.track.target = self.track.target.round();
+        if let Some(swipe) = self.swipe.take() {
+            self.holds_page_position = false;
+            self.track.set_response(navigation::TOUCHPAD_SNAP_RESPONSE.0, navigation::TOUCHPAD_SNAP_RESPONSE.1);
+            self.track.target = swipe.destination();
+            if !self.navigable.is_empty() {
+                self.select_page(self.page_at(self.track.target));
+            }
             self.start_animation();
         }
     }
@@ -527,7 +466,6 @@ impl Notch {
 
     /// Handles `WM_MOUSELEAVE`; returns false when the leave was not real and tracking must be re-armed.
     pub fn pointer_left_window(&mut self) -> bool {
-        // While dragging, the pointer may leave the pill; the drag keeps the notch open.
         if self.pointer_captured || self.is_dragging_files {
             return true;
         }
@@ -553,14 +491,18 @@ impl Notch {
             ANIMATION_TIMER_ID => self.advance_animation(),
             CLOCK_TIMER_ID => {
                 self.arm_clock_timer();
-                // The time is on screen in the collapsed pill only while no page fills it, and in the header when open.
                 if self.resting_index.is_none() || self.expansion.position > 0.001 {
                     self.paint();
                 }
             }
             SWIPE_END_TIMER_ID => {
-                self.end_swipe();
-                self.flush();
+                if self.swipe.as_ref().is_some_and(|swipe| !swipe.quiet_remaining().is_zero()) {
+                    // A WM_TIMER may already be queued when fresh scroll input resets its deadline.
+                    self.arm_swipe_end();
+                } else {
+                    self.end_swipe();
+                    self.flush();
+                }
             }
             REVEAL_TIMER_ID => {
                 unsafe {
@@ -576,7 +518,6 @@ impl Notch {
                 unsafe {
                     let _ = KillTimer(Some(self.window), EXPAND_TIMER_ID);
                 }
-                // Pointing at a banner keeps it, with its buttons, instead of opening the notch.
                 if self.is_hovering && self.shown_banner.is_none() {
                     self.begin_opening();
                     self.start_animation();
@@ -587,7 +528,6 @@ impl Notch {
                 unsafe {
                     let _ = KillTimer(Some(self.window), STAGE_TIMER_ID);
                 }
-                // The second leg: on to the open page while the pointer is there, on to the collapsed pill otherwise.
                 self.expansion.target = if self.is_hovering { 1.0 } else { 0.0 };
                 self.start_animation();
             }
@@ -654,7 +594,6 @@ impl Notch {
         }
     }
 
-    /// Hands a system message to every activity that is running, whether or not it is switched on right now.
     pub fn system_message(&mut self, message: SystemMessage) {
         for index in 0..self.activities.len() {
             if self.activities[index].is_started {
@@ -664,12 +603,15 @@ impl Notch {
         self.flush();
     }
 
-    /// The name and on/off state of every activity, for the tray menu.
-    pub fn activity_menu(&self) -> Vec<(&'static str, bool)> {
-        self.activities.iter().map(|slot| (slot.activity.label(), slot.is_enabled)).collect()
+    pub fn activity_menu(&self) -> Vec<(usize, &'static str, bool)> {
+        self.activities
+            .iter()
+            .enumerate()
+            .filter(|(_, slot)| slot.activity.is_optional())
+            .map(|(index, slot)| (index, slot.activity.label(), slot.is_enabled))
+            .collect()
     }
 
-    /// The items pages add to the tray menu: page index, item index and label.
     pub fn page_menu(&self) -> Vec<(usize, usize, String)> {
         let mut items = Vec::new();
         for (page, entry) in self.pages.iter().enumerate().filter(|(index, _)| self.page_list.is_enabled(*index)) {
@@ -685,9 +627,11 @@ impl Notch {
         }
     }
 
-    /// Switches an activity on or off and remembers the choice; switching on starts it the first time.
     pub fn toggle_activity(&mut self, index: usize) {
         let Some(slot) = self.activities.get_mut(index) else { return };
+        if !slot.activity.is_optional() {
+            return;
+        }
         slot.is_enabled = !slot.is_enabled;
         let (key, is_enabled) = (activity_setting_key(slot.activity.id()), slot.is_enabled);
         self.settings.set_bool(&key, is_enabled);
@@ -706,9 +650,6 @@ impl Notch {
         self.with_activity(index, |activity, context| activity.on_start(context));
     }
 
-    // Page plumbing
-
-    /// Runs an activity hook with a `Context`; whatever the activity requests is applied by the next `flush`.
     fn with_activity<R>(&mut self, index: usize, hook: impl FnOnce(&mut dyn Activity, &mut Context) -> R) -> R {
         let mut context = Context::for_activity(
             self.window,
@@ -721,55 +662,53 @@ impl Notch {
         hook(self.activities[index].activity.as_mut(), &mut context)
     }
 
-    /// Runs a page hook with a `Context`; whatever the page requests is applied by the next `flush`.
     fn with_page<R>(&mut self, index: usize, hook: impl FnOnce(&mut dyn Page, &mut Context) -> R) -> R {
         let mut context =
             Context::new(self.window, index, &self.surface, &self.fonts, &mut self.pending, &mut self.settings);
         hook(self.pages[index].as_mut(), &mut context)
     }
 
-    /// Moves `step` pages along (negative goes back); past the last page the row comes round to the first.
     fn navigate(&mut self, step: i32) {
         if self.navigable.len() < 2 {
             return;
         }
         self.wrap_track();
-        // However fast the wheel spins, the row goes at most two pages past the page that is on screen.
-        let target = navigation::limit_travel(self.track.position.round(), self.track.target.round() + step as f32);
+        self.holds_page_position = false;
+        self.track.set_response(navigation::PAGE_SNAP_RESPONSE.0, navigation::PAGE_SNAP_RESPONSE.1);
+        let target =
+            navigation::limit_wheel_travel(self.track.position.round(), self.track.target.round() + step as f32);
         self.track.target = target;
         self.select_page(self.page_at(target));
         self.start_animation();
     }
 
-    /// The page at `position` in the loop of navigable pages.
     fn page_at(&self, position: f32) -> usize {
         self.navigable[(position.round() as i64).rem_euclid(self.navigable.len() as i64) as usize]
     }
 
-    /// Brings a row that has come to rest back into 0..count, so it does not keep growing as the pages go round.
     fn wrap_track(&mut self) {
         let count = self.navigable.len() as f32;
-        if self.swipe_position.is_none() && self.track.is_settled() && count > 0.0 {
+        if self.swipe.is_none() && self.track.is_settled() && count > 0.0 {
             self.track.jump_to(self.track.target.rem_euclid(count));
         }
     }
 
-    /// Makes `target` the open page; the row of pages slides to it the next time the layout is refreshed.
     fn go_to_page(&mut self, target: usize) {
-        if Some(target) != self.expanded_index {
+        if Some(target) != self.expanded_index || self.holds_page_position {
+            self.end_swipe();
+            self.holds_page_position = false;
+            self.track.set_response(navigation::PAGE_SNAP_RESPONSE.0, navigation::PAGE_SNAP_RESPONSE.1);
             self.select_page(target);
             self.start_animation();
         }
     }
 
-    /// Remembers `target` as the open page.
     fn select_page(&mut self, target: usize) {
         self.selected_page = Some(target);
         let id = self.pages[target].id();
         self.settings.set_string(LAST_PAGE_SETTING, id);
     }
 
-    /// Presses in the header: a page dot opens that page. Returns true when the press was in the header.
     fn press_header(&mut self, point: Point) -> bool {
         let frame = self.frame();
         if !frame.is_open() {
@@ -788,9 +727,6 @@ impl Notch {
         false
     }
 
-    // Editing the page list
-
-    /// The pages as the editor lists them: the ones that are on in the user's order, then the ones that are off.
     fn editor_entries(&self) -> Vec<Entry> {
         let chip_width =
             |page: usize| page_editor::chip_width(self.fonts.measure(&page_editor::CHIP, self.pages[page].name()));
@@ -811,7 +747,6 @@ impl Notch {
         )
     }
 
-    /// The size of the editor's content, which decides how big the open notch is while it is shown.
     fn editor_size(&self) -> Size {
         let bounds = Rect::new(0.0, 0.0, EDITOR_WIDTH, 0.0);
         let layout = page_editor::layout(&self.editor_entries(), bounds, Rect::new(0.0, 0.0, EDITOR_WIDTH, 16.0), 1.0);
@@ -860,7 +795,6 @@ impl Notch {
             }
             Outcome::Remove(page) => {
                 let on_count = (0..self.pages.len()).filter(|&index| self.page_list.is_enabled(index)).count();
-                // The notch always keeps at least one page.
                 if on_count > 1 {
                     self.page_list.set_enabled(page, false);
                 }
@@ -873,7 +807,6 @@ impl Notch {
         self.settings.set_string(PAGES_OFF_SETTING, &disabled);
     }
 
-    /// Draws the "Edit pages" view in place of the page dots and the page.
     fn draw_editor(&self, canvas: &Canvas, frame: &Frame, opacity: f32) {
         let layout = self.editor_layout(frame);
         canvas.text(&page_editor::TITLE, "Edit pages", layout.title, Color::WHITE.faded(opacity));
@@ -898,26 +831,82 @@ impl Notch {
         }
     }
 
-    /// The ids of the pages in registration order.
     fn page_ids(&self) -> Vec<&'static str> {
         self.pages.iter().map(|page| page.id()).collect()
     }
 
-    /// The frame a page draws and receives pointer events in: the open notch without its padding and header.
     fn page_frame(&self, frame: &Frame) -> Frame {
         Frame { bounds: chrome::content_rect(frame.bounds, self.scale), ..*frame }
+    }
+
+    fn natural_page_frame(&self, index: usize, viewport: &Frame, center_offset: f32) -> Frame {
+        let mut frame = self.page_frame(viewport);
+        let width = self.pages[index].sizes().expanded.width;
+        let center = frame.bounds.center_x() + center_offset * self.scale;
+        frame.bounds.left = center - width * self.scale / 2.0;
+        frame.bounds.right = center + width * self.scale / 2.0;
+        frame.expanded.width = width;
+        frame
+    }
+
+    fn page_blend(&self) -> Option<(usize, usize, f32)> {
+        let count = self.navigable.len();
+        if count < 2 {
+            return None;
+        }
+        let position = self.track.position.rem_euclid(count as f32);
+        let first = position.floor() as usize;
+        Some((self.navigable[first], self.navigable[(first + 1) % count], position.fract()))
+    }
+
+    fn blended_page_layout(&self) -> Option<navigation::PageLayout> {
+        let (first, next, progress) = self.page_blend()?;
+        Some(navigation::page_layout(
+            self.pages[first].sizes().expanded.width,
+            self.pages[next].sizes().expanded.width,
+            progress,
+            PAGE_GAP,
+        ))
+    }
+
+    fn visible_page_frames(&self, viewport: &Frame) -> Option<[(usize, Frame, f32); 2]> {
+        let (first, next, progress) = self.page_blend()?;
+        if progress < 0.001 || 1.0 - progress < 0.001 {
+            return None;
+        }
+        let layout = self.blended_page_layout()?;
+        Some([
+            (first, self.natural_page_frame(first, viewport, layout.center_offsets[0]), progress),
+            (next, self.natural_page_frame(next, viewport, layout.center_offsets[1]), 1.0 - progress),
+        ])
+    }
+
+    fn follow_page_width(&mut self) {
+        if self.editor.is_none()
+            && let Some(layout) = self.blended_page_layout()
+        {
+            let growth = if self.is_dragging_files { DRAG_GROWTH.width } else { 0.0 };
+            self.expanded_width.jump_to(layout.viewport_width + chrome::WIDTH_EXTRA + growth);
+        }
     }
 
     fn route_pointer(&mut self, event: PointerEvent) {
         if self.editor.is_some() {
             return;
         }
-        let frame = self.page_frame(&self.frame());
+        let viewport = self.frame();
+        if let Some(pages) = self.visible_page_frames(&viewport) {
+            for (index, frame, _) in pages {
+                self.with_page(index, |page, context| page.on_pointer(event, &frame, context));
+            }
+            return;
+        }
         let Some(index) = self.expanded_index else { return };
+        let index = if self.navigable.len() < 2 { index } else { self.page_at(self.track.position) };
+        let frame = self.natural_page_frame(index, &viewport, 0.0);
         self.with_page(index, |page, context| page.on_pointer(event, &frame, context));
     }
 
-    /// Applies what pages asked for, re-selects the shown pages and repaints if anything changed.
     fn flush(&mut self) {
         let requests = std::mem::take(&mut self.pending);
         let layout_changed = self.refresh_layout();
@@ -933,7 +922,6 @@ impl Notch {
         }
     }
 
-    /// Tells the pages that started or stopped being on screen; returns true when that was any.
     fn sync_shown_page(&mut self) -> bool {
         let shown = (self.is_hovering && self.editor.is_none()).then_some(self.expanded_index).flatten();
         if shown == self.shown_page {
@@ -949,7 +937,6 @@ impl Notch {
         true
     }
 
-    /// Picks the page to show in each mode and animates toward its sizes; returns true if the selection changed.
     fn refresh_layout(&mut self) -> bool {
         let resting_index = self.best_page(Mode::Resting);
         let expanded_priorities: Vec<Option<Priority>> =
@@ -965,6 +952,11 @@ impl Notch {
 
         let resting_width = resting_index.map_or(clock::RESTING_WIDTH, |index| self.pages[index].sizes().resting_width);
         let mut expanded = expanded_index.map_or(EMPTY_PAGE_SIZE, |index| self.pages[index].sizes().expanded);
+        if (self.holds_page_position || !self.track.is_settled())
+            && let Some(layout) = self.blended_page_layout()
+        {
+            expanded.width = layout.viewport_width;
+        }
         if self.editor.is_some() {
             expanded = self.editor_size();
         }
@@ -1004,17 +996,21 @@ impl Notch {
         selection_changed
     }
 
-    /// Points the row of pages at the open page: the row slides there while the notch is open (also when a page takes
-    /// over, such as a new notification) and jumps there otherwise. A swipe in progress steers the row itself.
+    /// Follow selection only when finger input does not own the row; jump while closed.
     fn follow_open_page(&mut self) {
-        if self.swipe_position.is_some() {
+        if self.swipe.is_some() {
             return;
+        }
+        if self.holds_page_position {
+            if self.expanded_index == self.selected_page && self.navigable.len() > 1 {
+                return;
+            }
+            self.holds_page_position = false;
         }
         let Some(position) = self.navigable.iter().position(|&index| Some(index) == self.expanded_index) else {
             return;
         };
         let count = self.navigable.len() as f32;
-        // How far the row has to go to reach the open page, the short way round.
         let mut gap = (position as f32 - self.track.target).rem_euclid(count);
         if gap > count / 2.0 {
             gap -= count;
@@ -1030,8 +1026,6 @@ impl Notch {
         }
     }
 
-    /// Collects what the running activities and the pages want to show in the collapsed pill; returns true if the
-    /// transients or badges changed.
     fn refresh_activities(&mut self) -> bool {
         let mut transients = Vec::new();
         let mut badges = Vec::new();
@@ -1058,7 +1052,6 @@ impl Notch {
         }
         let active: Vec<Source> = transients.iter().map(|&(source, _)| source).collect();
         activity_layout::track_order(&mut self.transient_order, &active);
-        // A banner has the pill to itself; the transients wait behind it.
         let banner = banners.last().copied();
         let shown: Vec<(Source, f32)> = if banner.is_some() {
             Vec::new()
@@ -1075,7 +1068,6 @@ impl Notch {
         changed
     }
 
-    /// The springs that decide the size of the pill.
     fn layout_springs(&mut self) -> [&mut Spring; 7] {
         [
             &mut self.resting_width,
@@ -1088,23 +1080,21 @@ impl Notch {
         ]
     }
 
-    /// The page with the highest priority in `mode`; the earliest registered page wins ties.
     fn best_page(&self, mode: Mode) -> Option<usize> {
         highest_priority(self.pages.iter().map(|page| page.priority(mode)))
     }
 
-    // Hover
-
-    /// True while the notch is only the thin strip: it hides when idle, nothing is going on, and nobody is pointing at it.
     fn is_hidden(&self) -> bool {
         let is_over_window = self.is_over_maximized_window();
-        // Something in the collapsed pill keeps it up, except over a window: there only lyrics being sung can, and
-        // only when the user asked for that.
-        let resting_content_stays = if self.hides_when_idle {
-            self.has_resting_content
-        } else {
+        if is_over_window && self.keeps_notch_over_windows {
+            return false;
+        }
+        // Over maximized windows, only active lyrics with the user setting can keep the pill visible.
+        let resting_content_stays = if is_over_window {
             self.keeps_lyrics_over_windows
                 && self.resting_index.is_some_and(|index| self.pages[index].shows_live_text())
+        } else {
+            self.has_resting_content
         };
         (self.hides_when_idle || is_over_window)
             && !self.is_revealed
@@ -1116,28 +1106,26 @@ impl Notch {
             && !resting_content_stays
     }
 
-    /// A maximized window is in front and the notch is set to keep out of its way.
     fn is_over_maximized_window(&self) -> bool {
-        self.hides_for_apps && self.screen_mode == ScreenMode::Maximized
+        self.screen_mode == ScreenMode::Maximized
     }
 
-    /// A full-screen window is in front and the notch is set to keep out of its way: it is not on screen at all.
     fn is_suppressed(&self) -> bool {
         self.hides_for_apps && self.screen_mode == ScreenMode::Fullscreen
     }
 
-    /// How tall the strip of a hidden notch is.
     fn hidden_height(&self) -> f32 {
         if self.hides_when_idle { HIDDEN_HEIGHT } else { HIDDEN_HEIGHT_OVER_WINDOW }
     }
 
-    /// How long the pointer must wait on the strip of a hidden notch before the small pill shows.
     fn reveal_delay(&self) -> u32 {
         if self.hides_when_idle { REVEAL_DELAY_MILLISECONDS } else { REVEAL_DELAY_OVER_WINDOW_MILLISECONDS }
     }
 
-    /// The window in front changed how much of the screen it takes.
     pub fn set_screen_mode(&mut self, mode: ScreenMode) {
+        if mode != ScreenMode::Fullscreen || !self.hides_for_apps {
+            super::window::restore_topmost(self.window);
+        }
         if mode == self.screen_mode {
             return;
         }
@@ -1147,7 +1135,29 @@ impl Notch {
         self.flush();
     }
 
-    /// Takes the notch off the screen, or puts it back, when `is_suppressed` changed from `was_suppressed`.
+    pub fn reset_session_interaction(&mut self) {
+        if self.pointer_captured {
+            unsafe {
+                let _ = ReleaseCapture();
+            }
+            self.pointer_captured = false;
+        }
+        self.is_dragging_files = false;
+        self.set_hovering(false);
+        self.is_revealed = false;
+        self.cancel_close();
+        self.end_swipe();
+        for timer_key in [REVEAL_TIMER_ID, EXPAND_TIMER_ID, STAGE_TIMER_ID, HOVER_WATCH_TIMER_ID] {
+            unsafe {
+                let _ = KillTimer(Some(self.window), timer_key);
+            }
+        }
+        self.route_pointer(PointerEvent::CaptureLost);
+        self.expansion.jump_to(0.0);
+        super::drop_target::reset_interaction();
+        self.flush();
+    }
+
     fn apply_suppression(&mut self, was_suppressed: bool) {
         let is_suppressed = self.is_suppressed();
         if is_suppressed == was_suppressed {
@@ -1170,7 +1180,6 @@ impl Notch {
         }
     }
 
-    /// Switches keeping out of the way of maximized and full-screen windows on or off and remembers the choice.
     pub fn toggle_hide_for_apps(&mut self) {
         let was_suppressed = self.is_suppressed();
         self.hides_for_apps = !self.hides_for_apps;
@@ -1183,7 +1192,6 @@ impl Notch {
         self.hides_for_apps
     }
 
-    /// Switches keeping the lyric line over maximized windows on or off and remembers the choice.
     pub fn toggle_lyrics_over_maximized(&mut self) {
         self.keeps_lyrics_over_windows = !self.keeps_lyrics_over_windows;
         self.settings.set_bool(LYRICS_OVER_WINDOWS_SETTING, self.keeps_lyrics_over_windows);
@@ -1194,7 +1202,16 @@ impl Notch {
         self.keeps_lyrics_over_windows
     }
 
-    /// Switches hiding when idle on or off and remembers the choice.
+    pub fn toggle_notch_over_maximized(&mut self) {
+        self.keeps_notch_over_windows = !self.keeps_notch_over_windows;
+        self.settings.set_bool(NOTCH_OVER_WINDOWS_SETTING, self.keeps_notch_over_windows);
+        self.flush();
+    }
+
+    pub fn keeps_notch_over_windows(&self) -> bool {
+        self.keeps_notch_over_windows
+    }
+
     pub fn toggle_hide_when_idle(&mut self) {
         self.hides_when_idle = !self.hides_when_idle;
         self.settings.set_bool(HIDE_WHEN_IDLE_SETTING, self.hides_when_idle);
@@ -1205,8 +1222,6 @@ impl Notch {
         self.hides_when_idle
     }
 
-    /// The pointer left the notch: its hover highlights end at once, and the notch itself closes after a delay unless
-    /// the pointer comes back.
     fn pointer_left(&mut self) {
         if self.is_close_pending {
             return;
@@ -1222,7 +1237,6 @@ impl Notch {
         }
     }
 
-    /// The pointer is back on the notch, so it stays open.
     fn cancel_close(&mut self) {
         if self.is_close_pending {
             self.is_close_pending = false;
@@ -1232,8 +1246,6 @@ impl Notch {
         }
     }
 
-    /// Starts the notch opening. From the collapsed pill it opens to the header pill first, and
-    /// `STAGE_TIMER_ID` starts the second leg to the open page.
     fn begin_opening(&mut self) {
         self.expansion.set_response(OPEN_RESPONSE.0, OPEN_RESPONSE.1);
         if self.expansion.position < HEADER_STAGE - 0.05 {
@@ -1249,8 +1261,6 @@ impl Notch {
         }
     }
 
-    /// Starts the notch closing. From the open page it closes to the header pill first, and `STAGE_TIMER_ID` starts the
-    /// second leg to the collapsed pill.
     fn begin_closing(&mut self) {
         self.expansion.set_response(CLOSE_RESPONSE.0, CLOSE_RESPONSE.1);
         if self.expansion.position > HEADER_STAGE + 0.05 {
@@ -1267,6 +1277,9 @@ impl Notch {
     }
 
     fn set_hovering(&mut self, is_hovering: bool) {
+        if is_hovering && !self.is_suppressed() {
+            super::window::restore_topmost(self.window);
+        }
         if self.is_hovering == is_hovering {
             return;
         }
@@ -1278,7 +1291,6 @@ impl Notch {
         }
         log::debug(&format!("hovering={is_hovering}"));
         super::drop_target::set_hovering(is_hovering);
-        // A hidden notch first shows its small pill, and opens only if the pointer stays.
         let waits_to_reveal = is_hovering && self.is_hidden();
         if waits_to_reveal {
             unsafe {
@@ -1286,7 +1298,6 @@ impl Notch {
             }
         } else {
             if is_hovering {
-                // The same timer opens a hidden notch after its reveal; `EXPAND_TIMER_ID` starts the opening.
                 unsafe {
                     SetTimer(Some(self.window), EXPAND_TIMER_ID, HOVER_OPEN_DELAY_MILLISECONDS, None);
                 }
@@ -1332,7 +1343,6 @@ impl Notch {
         unsafe {
             let _ = GetCursorPos(&mut cursor);
         }
-        // The pill and its flares, without the shadow, which the pointer can be on without being on the notch.
         let region = self.pill_region(&self.frame(), false);
         let bounds = RECT {
             left: self.screen_position.x + region.left,
@@ -1348,8 +1358,6 @@ impl Notch {
         let (origin_x, origin_y) = self.region_origin.get();
         Point::new((window_x + origin_x) as f32, (window_y + origin_y) as f32)
     }
-
-    // Animation
 
     fn start_animation(&mut self) {
         if self.is_animating {
@@ -1379,13 +1387,15 @@ impl Notch {
         let elapsed_seconds = ((now - self.last_tick) as f32 / self.ticks_per_second as f32).clamp(0.0, 0.05);
         self.last_tick = now;
 
-        let mut is_settled = true;
+        let follows_page_width = self.holds_page_position || !self.track.is_settled();
         self.expansion.step(elapsed_seconds);
-        is_settled &= self.expansion.is_settled();
         for spring in self.layout_springs() {
             spring.step(elapsed_seconds);
-            is_settled &= spring.is_settled();
         }
+        if follows_page_width {
+            self.follow_page_width();
+        }
+        let is_settled = self.expansion.is_settled() && self.layout_springs().iter().all(|spring| spring.is_settled());
         let mut pages_busy = false;
         for page in &mut self.pages {
             pages_busy |= page.animate(elapsed_seconds);
@@ -1396,12 +1406,13 @@ impl Notch {
             for spring in self.layout_springs() {
                 spring.snap_to_target();
             }
+            if follows_page_width {
+                self.follow_page_width();
+            }
             self.stop_animation();
         }
         self.paint();
     }
-
-    // Painting
 
     fn frame(&self) -> Frame {
         let amount = self.expansion.position.clamp(-0.08, 1.1);
@@ -1423,20 +1434,16 @@ impl Notch {
         }
     }
 
-    /// Radius of the outward-curving fillets where the pill's sides meet the top of the screen, in device pixels.
     fn flare_size(&self, frame: &Frame) -> f32 {
         lerp(RESTING_FLARE, EXPANDED_FLARE, frame.expansion.clamp(0.0, 1.0)) * self.scale * self.visibility()
     }
 
-    /// 0 while the notch is only a thin strip, 1 once it is a full pill.
     fn visibility(&self) -> f32 {
         ((self.resting_height.position - self.hidden_height()) / (RESTING_PILL_HEIGHT - self.hidden_height()))
             .clamp(0.0, 1.0)
             .max(self.expansion.position.clamp(0.0, 1.0))
     }
 
-    /// Smallest surface rectangle that holds the pill and its flares, with a margin for anti-aliased edges.
-    /// With `include_shadow` it also holds the shadow, which only the open notch has.
     fn pill_region(&self, frame: &Frame, include_shadow: bool) -> RECT {
         const MARGIN: i32 = 2;
         let (surface_width, surface_height) = (self.surface.width, self.surface.height);
@@ -1451,7 +1458,6 @@ impl Notch {
     }
 
     pub fn paint(&self) {
-        // A full-screen app is in front: nothing is drawn for a window that is not shown.
         if self.is_suppressed() {
             return;
         }
@@ -1467,7 +1473,6 @@ impl Notch {
         let header_opacity = ramp(frame.expansion, HEADER_FADE);
         let expanded_opacity = ramp(frame.expansion, CONTENT_FADE);
 
-        // The drop target covers the collapsed pill, wherever it is now.
         if !self.is_hovering && frame.expansion <= 0.001 {
             super::drop_target::set_resting_area(RECT {
                 left: self.screen_position.x + region.left,
@@ -1484,7 +1489,6 @@ impl Notch {
             self.scale,
             |canvas| {
                 let bounds = frame.bounds;
-                // The collapsed pill rounds more as a banner opens it.
                 let banner_amount =
                     ((self.resting_height.position - RESTING_PILL_HEIGHT) / BANNER_RADIUS_RANGE).clamp(0.0, 1.0);
                 let resting_radius = lerp(RESTING_RADIUS, BANNER_RADIUS, banner_amount);
@@ -1505,7 +1509,6 @@ impl Notch {
                         self.draw_backdrops(canvas, &frame, radius, expanded_opacity);
                     }
                     if page_opacity > 0.01 {
-                        // Badges take the right end of the pill, so the page draws in what is left of it.
                         let badge_room = self.badge_width.position.max(0.0) * self.scale;
                         let page_frame = Frame { bounds: Rect { right: bounds.right - badge_room, ..bounds }, ..frame };
                         if let Some(index) = self.resting_index {
@@ -1543,59 +1546,40 @@ impl Notch {
         }
     }
 
-    /// Draws the backdrops of the open pages, behind everything else. Unlike the pages they do not slide: while the row
-    /// moves, the backdrops of the two pages in view fade into each other.
+    /// Backdrops crossfade in place while page content slides.
     fn draw_backdrops(&self, canvas: &Canvas, frame: &Frame, radius: f32, opacity: f32) {
         let Some(expanded_index) = self.expanded_index else { return };
-        let page_frame = self.page_frame(frame);
-        let count = self.navigable.len();
-        let track = if count > 0 { self.track.position.rem_euclid(count as f32) } else { 0.0 };
-        if count < 2 || (track - track.round()).abs() < 0.001 {
-            self.pages[expanded_index].draw_backdrop(canvas, &page_frame, frame.bounds, radius, opacity);
+        if let Some(pages) = self.visible_page_frames(frame) {
+            for (index, _, distance) in pages {
+                let page_frame = self.natural_page_frame(index, frame, 0.0);
+                self.pages[index].draw_backdrop(canvas, &page_frame, frame.bounds, radius, opacity * (1.0 - distance));
+            }
             return;
         }
-        let before = track.floor();
-        for step in 0..2 {
-            let position = before + step as f32;
-            let fade = (1.0 - (position - track).abs()).clamp(0.0, 1.0);
-            let page = self.navigable[position as usize % count];
-            self.pages[page].draw_backdrop(canvas, &page_frame, frame.bounds, radius, opacity * fade);
-        }
+        let index = if self.navigable.len() < 2 { expanded_index } else { self.page_at(self.track.position) };
+        let page_frame = self.natural_page_frame(index, frame, 0.0);
+        self.pages[index].draw_backdrop(canvas, &page_frame, frame.bounds, radius, opacity);
     }
 
-    /// Draws the open pages as a loop that slides sideways: mid-swipe the two pages next to the middle show together,
-    /// and past the last page comes the first.
     fn draw_open_pages(&self, canvas: &Canvas, frame: &Frame, opacity: f32) {
         let Some(expanded_index) = self.expanded_index else { return };
-        let page_frame = self.page_frame(frame);
-        let count = self.navigable.len();
-        let track = if count > 0 { self.track.position.rem_euclid(count as f32) } else { 0.0 };
-        if count < 2 || (track - track.round()).abs() < 0.001 {
-            self.pages[expanded_index].draw_expanded(canvas, &page_frame, opacity);
+        if let Some(pages) = self.visible_page_frames(frame) {
+            for (index, page_frame, distance) in pages {
+                let fade = (1.0 - distance * PAGE_FADE_PER_PAGE).clamp(0.0, 1.0);
+                self.pages[index].draw_expanded(canvas, &page_frame, opacity * fade);
+            }
             return;
         }
-        let pitch = page_frame.bounds.width() + PAGE_GAP * self.scale;
-        let before = track.floor();
-        for step in 0..2 {
-            let position = before + step as f32;
-            let offset = (position - track) * pitch;
-            let mut shifted = page_frame;
-            shifted.bounds.left += offset;
-            shifted.bounds.right += offset;
-            let fade = (1.0 - (position - track).abs() * PAGE_FADE_PER_PAGE).clamp(0.0, 1.0);
-            let page = self.navigable[position as usize % count];
-            self.pages[page].draw_expanded(canvas, &shifted, opacity * fade);
-        }
+        let index = if self.navigable.len() < 2 { expanded_index } else { self.page_at(self.track.position) };
+        let page_frame = self.natural_page_frame(index, frame, 0.0);
+        self.pages[index].draw_expanded(canvas, &page_frame, opacity);
     }
 
-    /// Draws the time as one element that glides between its place in the collapsed pill (left of any badges) and its
-    /// place in the middle of the header, following how far open the notch is.
     fn draw_clock(&self, canvas: &Canvas, frame: &Frame, opacity: f32, header_opacity: f32) {
         let (bounds, scale) = (frame.bounds, self.scale);
         let badge_room = self.badge_width.position.max(0.0) * scale;
         let collapsed =
             Point::new((bounds.left + bounds.right - badge_room) / 2.0, bounds.top + RESTING_HEIGHT * scale / 2.0);
-        // In the header the time sits at the right end, where the settings button used to be.
         let time_width = clock::text_width(canvas) * scale;
         let header = chrome::header_rect(bounds, scale);
         let open = Point::new(header.right - time_width / 2.0, header.center_y());
@@ -1607,8 +1591,6 @@ impl Notch {
         }
     }
 
-    /// Draws the status marks the pages and activities keep in the header, from `right` toward the left, around height
-    /// `center_y`. The mark with the lowest rank is nearest the time; within a rank, pages come before activities.
     fn draw_header_statuses(&self, canvas: &Canvas, right: f32, center_y: f32, opacity: f32) {
         let scale = self.scale;
         let mut entries: Vec<(u8, f32, HeaderMark)> = Vec::new();
@@ -1643,7 +1625,6 @@ impl Notch {
         }
     }
 
-    /// A soft shadow around the open notch, darker close to it and gone `SHADOW_LAYERS * SHADOW_STEP` away.
     fn draw_shadow(&self, canvas: &Canvas, bounds: Rect, radius: f32, strength: f32) {
         if strength <= 0.01 {
             return;
@@ -1661,7 +1642,6 @@ impl Notch {
         }
     }
 
-    /// Draws the page dots and the settings button along the top of the open notch.
     fn draw_header(&self, canvas: &Canvas, frame: &Frame, opacity: f32) {
         if self.navigable.len() >= 2 {
             let dots = chrome::dot_rects(self.navigable.len(), self.track.position, frame.bounds, self.scale);
@@ -1672,7 +1652,6 @@ impl Notch {
         }
     }
 
-    /// Draws the transient activities side by side, centered in the pill, with a thin line between them.
     fn draw_transients(&self, canvas: &Canvas, frame: &Frame, opacity: f32) {
         let scale = self.scale;
         let widths: Vec<f32> = self.shown_transients.iter().map(|&(_, width)| width).collect();
@@ -1691,17 +1670,14 @@ impl Notch {
         }
     }
 
-    /// Draws the banner into the whole collapsed pill, above the space the pill keeps under its content.
     fn draw_banner(&self, canvas: &Canvas, frame: &Frame, opacity: f32) {
         let Some((source, _, _)) = self.shown_banner else { return };
-        // The whole collapsed pill above the space it keeps under its content.
         let bounds = frame.bounds;
         let area =
             Rect::new(bounds.left, bounds.top, bounds.right, bounds.bottom - RESTING_BOTTOM_PADDING * self.scale);
         self.draw_source(source, canvas, area, opacity);
     }
 
-    /// Draws the badges from the right end of the pill inward.
     fn draw_badges(&self, canvas: &Canvas, frame: &Frame, opacity: f32) {
         let scale = self.scale;
         let (top, bottom) = (frame.bounds.top, frame.bounds.top + RESTING_HEIGHT * scale);
@@ -1721,8 +1697,7 @@ impl Notch {
     }
 }
 
-/// A size at `expansion`: collapsed at 0, the header pill at `HEADER_STAGE` and open at 1. Past those ends it carries
-/// on in the same direction, so a spring that overshoots makes the notch a little bigger or smaller than either.
+/// Interpolate through the header stage and extrapolate past the endpoints for spring overshoot.
 fn staged(resting: f32, header: f32, full: f32, expansion: f32) -> f32 {
     if expansion <= HEADER_STAGE {
         lerp(resting, header, expansion / HEADER_STAGE)
@@ -1731,22 +1706,18 @@ fn staged(resting: f32, header: f32, full: f32, expansion: f32) -> f32 {
     }
 }
 
-/// 0 until `expansion` reaches the start of `range`, 1 from its end, and a straight line between.
 fn ramp(expansion: f32, range: (f32, f32)) -> f32 {
     ((expansion - range.0) / (range.1 - range.0)).clamp(0.0, 1.0)
 }
 
-/// The settings key that switches an activity on or off.
 fn activity_setting_key(id: &str) -> String {
     format!("activity.{id}")
 }
 
-/// Room the collapsed pill keeps for these badges, in device-independent pixels.
 fn badge_space(badges: &[(Source, f32)]) -> f32 {
     if badges.is_empty() { 0.0 } else { badges.iter().map(|&(_, width)| width).sum::<f32>() + BADGE_EDGE_PADDING }
 }
 
-/// Index of the highest priority; `None` entries are skipped and the earliest entry wins ties.
 fn highest_priority(priorities: impl IntoIterator<Item = Option<Priority>>) -> Option<usize> {
     let mut best: Option<(usize, Priority)> = None;
     for (index, priority) in priorities.into_iter().enumerate() {

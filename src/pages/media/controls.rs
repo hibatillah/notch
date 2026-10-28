@@ -4,7 +4,6 @@ use crate::{
     ui::{Icon, IconButton},
 };
 
-/// The color of the lyrics button while lyrics are on.
 const ACCENT: Color = Color::rgb(0.118, 0.843, 0.376);
 const INACTIVE: Color = Color::rgb(0.431, 0.431, 0.478);
 const INACTIVE_HOVERED: Color = Color::gray(0.85);
@@ -20,7 +19,6 @@ pub enum Control {
 impl Control {
     pub const ALL: [Control; 4] = [Control::Previous, Control::PlayPause, Control::Next, Control::Lyrics];
 
-    /// Position in the row, counting from the first button.
     pub fn slot(self) -> f32 {
         match self {
             Control::Previous => 0.0,
@@ -31,8 +29,6 @@ impl Control {
     }
 }
 
-/// The lyrics button is green while lyrics are on, white when they are off but the song has some, and gray when the
-/// song has none.
 fn lyrics_color(is_on: bool, has_lyrics: bool, is_hovered: bool) -> Color {
     match (is_on, has_lyrics) {
         (true, _) => ACCENT,
@@ -55,7 +51,6 @@ pub fn draw(page: &MediaPage, canvas: &Canvas, layout: &Layout, opacity: f32) {
             Control::Lyrics => (Icon::Lyrics, Some(page.is_lyric_panel_visible())),
         };
         let is_hovered = page.hovered_control == Some(control);
-        // With nothing playing there is nothing to control, so every button is gray.
         let color = match is_on {
             _ if !page.info.available => INACTIVE,
             Some(is_on) => lyrics_color(is_on, page.has_lyrics(), is_hovered),

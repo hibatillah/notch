@@ -12,13 +12,11 @@ use windows::{
     core::{HSTRING, Interface, Result, w},
 };
 
-/// The font the whole interface is set in. It ships inside the executable (SIL Open Font License, see
-/// `assets/fonts/Geist-LICENSE.txt`), so it looks the same on every machine.
+/// Bundled under the SIL Open Font License; see assets/fonts/Geist-LICENSE.txt.
 pub const UI_FONT: &str = "Geist";
 /// Used when the bundled font cannot be loaded (Windows older than 10 version 1803).
 const FALLBACK_FONT: &str = "Segoe UI";
 
-/// Geist, cut down to Latin, Greek and Cyrillic letters and common punctuation.
 const BUNDLED_FONT_FILES: [&[u8]; 2] =
     [include_bytes!("../../assets/fonts/Geist-Regular.ttf"), include_bytes!("../../assets/fonts/Geist-Medium.ttf")];
 
@@ -66,7 +64,6 @@ type StyleKey = (&'static str, u32, Weight, Align, bool);
 /// Builds text formats on demand and measures text. Single-threaded, like the rest of the drawing code.
 pub struct Fonts {
     factory: IDWriteFactory,
-    /// The bundled fonts; `None` when they could not be loaded, which falls back to the system font.
     bundled: Option<IDWriteFontCollection1>,
     scale: f32,
     cache: RefCell<HashMap<StyleKey, IDWriteTextFormat>>,
@@ -89,7 +86,7 @@ impl Fonts {
         Some(format)
     }
 
-    /// Width of `text` in device-independent pixels when drawn with `style` on one line.
+    /// Single-line width in device-independent pixels.
     pub fn measure(&self, style: &FontStyle, text: &str) -> f32 {
         let Some(format) = self.format(style) else { return 0.0 };
         let wide_text: Vec<u16> = text.encode_utf16().collect();
@@ -144,7 +141,6 @@ impl Fonts {
     }
 }
 
-/// Loads the fonts compiled into the executable as a font collection of their own.
 fn load_bundled_fonts(factory: &IDWriteFactory) -> Result<IDWriteFontCollection1> {
     let factory: IDWriteFactory5 = factory.cast()?;
     unsafe {

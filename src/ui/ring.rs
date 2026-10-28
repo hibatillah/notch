@@ -1,19 +1,14 @@
 use crate::gfx::{Canvas, Color, Mask, Path, Point, Rect};
 
 const LINE_WIDTH: f32 = 2.0;
-/// Empty pixels around the ring inside its image, so soft edges are never cut off.
 const MARGIN: u32 = 1;
-/// The arc is drawn in this many steps, so a handful of cached images cover every fraction.
 const STEPS: u32 = 48;
-/// Points per full turn when tracing the arc.
 const POINTS_PER_TURN: f32 = 96.0;
 const TRACK_ALPHA: f32 = 0.22;
 
-/// A circular progress indicator: a faint full ring with a brighter arc that grows clockwise from the top.
-/// Each ring is drawn once into a small image and reused, so drawing it again costs almost nothing.
+/// Progress arcs are cached; center and diameter are device pixels.
 pub struct Ring {
     pub center: Point,
-    /// Outer diameter in device pixels.
     pub diameter: f32,
 }
 
@@ -49,12 +44,10 @@ impl Ring {
     }
 }
 
-/// Which of the cached arcs shows `fraction`, from 0 (nothing) to `STEPS` (a full ring).
 fn step_for(fraction: f32) -> u32 {
     (fraction.clamp(0.0, 1.0) * STEPS as f32).round() as u32
 }
 
-/// Points along the arc that starts at the top and runs clockwise for `fraction` of a turn.
 fn arc_points(center: Point, radius: f32, fraction: f32) -> Vec<Point> {
     let fraction = fraction.clamp(0.0, 1.0);
     let count = ((POINTS_PER_TURN * fraction).ceil() as usize).max(1);

@@ -13,7 +13,6 @@ const DOT_RADIUS: f32 = 4.0;
 /// Width of a dot's slot in the pill: the dot and the space before the next badge.
 const DOT_SLOT_WIDTH: f32 = 14.0;
 
-/// What differs between devices.
 pub struct Device {
     pub name: &'static str,
     pub icon: Icon,
@@ -38,7 +37,6 @@ impl Privacy {
         self.is_active = is_active;
     }
 
-    /// Announces a change of state; the same state again does nothing.
     pub fn update(&mut self, is_active: bool, context: &mut Context) {
         if is_active == self.is_active {
             return;
@@ -53,7 +51,6 @@ impl Privacy {
         self.flash.on_timer(timer, context);
     }
 
-    /// The message while it is fresh, then the dot while the device stays in use.
     pub fn presence(&self) -> Option<Presence> {
         if self.flash.is_visible() {
             Some(Presence::Transient { width: self.message_width })

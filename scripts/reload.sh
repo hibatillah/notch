@@ -1,9 +1,5 @@
 #!/usr/bin/env bash
-# Builds the notch and swaps the running copy for the new build without killing it from outside.
-#
-#   scripts/reload.sh           release build
-#   scripts/reload.sh --debug   debug build, about ten times quicker to build (used by scripts/watch.sh)
-# The new copy shows its window first, then asks the previous copy to close itself.
+# Show the new window before asking the previous instance to close.
 set -euo pipefail
 cd "$(dirname "$0")/.."
 

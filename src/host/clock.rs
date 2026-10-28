@@ -1,6 +1,4 @@
-//! The time the host shows by itself: in the collapsed pill when no page or activity has anything to say, and centered
-//! in the header of the open notch, gliding between the two as the notch opens. It is part of the frame, so no page
-//! provides it.
+//! The clock belongs to the host and moves between the collapsed pill and the open header.
 
 use windows::Win32::System::SystemInformation::GetLocalTime;
 
@@ -15,34 +13,28 @@ fn time_text(hour: u16, minute: u16) -> String {
     format!("{hour:02}:{minute:02}")
 }
 
-/// Half the width of the area the time is drawn in; it only has to be wider than the text, which is centered in it.
 pub const HALF_WIDTH: f32 = 50.0;
 
-/// How visible the time is. It stays fully visible through the move between the collapsed pill and the header, so it
-/// never fades out and back in; when a page fills the collapsed pill it appears with the open notch's content instead.
+/// Keep the clock visible through its move; fade it only when page content occupies the collapsed pill.
 pub fn opacity(is_shown_collapsed: bool, collapsed_visibility: f32, expanded_opacity: f32) -> f32 {
     let collapsed = if is_shown_collapsed { collapsed_visibility } else { 0.0 };
     collapsed.max(expanded_opacity)
 }
 
-/// Where the time is centered while the notch is `amount` of the way open (0 collapsed, 1 open).
 pub fn center(collapsed: Point, open: Point, amount: f32) -> Point {
     Point::new(lerp(collapsed.x, open.x, amount), lerp(collapsed.y, open.y, amount))
 }
 
-/// Width of the time as it is written now, in device-independent pixels.
 pub fn text_width(canvas: &Canvas) -> f32 {
     let time = unsafe { GetLocalTime() };
     canvas.measure(&TIME, &time_text(time.wHour, time.wMinute))
 }
 
-/// Draws the current time centered in `area`.
 pub fn draw_time(canvas: &Canvas, area: Rect, opacity: f32) {
     let time = unsafe { GetLocalTime() };
     canvas.text(&TIME, &time_text(time.wHour, time.wMinute), area, Color::WHITE.faded(opacity));
 }
 
-/// How long until just after the next minute starts, so the shown time never lags.
 pub fn milliseconds_until_next_minute() -> u32 {
     let time = unsafe { GetLocalTime() };
     until_next_minute(time.wSecond, time.wMilliseconds)

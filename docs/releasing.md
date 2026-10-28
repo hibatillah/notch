@@ -41,6 +41,10 @@ versions or uses the network for it. Never change the `AppId`, or the installer 
 
 ## Notes
 
+- The orange folded-tab icon comes from `assets/branding/logo.png`. Regenerate `logo.ico` with
+  `scripts/export-icon.sh` after changing it. Cargo embeds it in the executable; Inno Setup uses the same export for
+  the setup executable and the master PNG for the wizard header. The Start menu shortcut and installed-app entry use
+  the icon embedded in `notch.exe`.
 - The installer is not code-signed, so Windows SmartScreen may warn people who download it. Free signing for open
   source projects exists (SignPath Foundation); it needs an application from the project owner, and signing is then one
   more step in `release.yml`.

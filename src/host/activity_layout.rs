@@ -1,11 +1,8 @@
-//! Where activities go in the collapsed pill: which transients are shown and where each one starts. Pure functions,
-//! so the rules can be tested without a window.
+//! Newer transients take priority; older ones wait for space.
 
 /// Transients on screen at once; older ones wait until a newer one ends.
 pub const MAX_TRANSIENTS: usize = 2;
-/// Width of the thin line between two transients, in device-independent pixels.
 pub const DIVIDER_WIDTH: f32 = 1.0;
-/// Space between a badge and the right end of the pill.
 pub const BADGE_EDGE_PADDING: f32 = 10.0;
 
 /// Keeps `order` as the activation order of the activities in `active`: ended ones leave, new ones join at the end.
@@ -23,12 +20,10 @@ pub fn newest<T>(order: &[T]) -> &[T] {
     &order[order.len().saturating_sub(MAX_TRANSIENTS)..]
 }
 
-/// Total width of transients with these widths, dividers included.
 pub fn total_width(widths: &[f32]) -> f32 {
     widths.iter().sum::<f32>() + DIVIDER_WIDTH * widths.len().saturating_sub(1) as f32
 }
 
-/// Distance of each transient's left edge from the left edge of the first one.
 pub fn offsets(widths: &[f32]) -> Vec<f32> {
     let mut left = 0.0;
     widths

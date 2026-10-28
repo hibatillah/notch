@@ -1,7 +1,4 @@
-//! The media player page: what is playing, with previous, play or pause, next and synced lyrics.
-//!
-//! `session` mirrors the system media session into plain data; the other modules draw it or react to input. There is
-//! no progress bar, so nothing in the open notch redraws every second.
+//! Media state comes from session; no progress bar means no per-second redraw while open.
 
 mod app_icon;
 mod artwork;
@@ -32,21 +29,16 @@ use crate::{
 };
 
 const SETTING_LYRICS: &str = "media.lyrics";
-/// Fires when the next lyric line starts.
 const LYRIC_TIMER: TimerId = TimerId(1);
-/// Ends the moment after a track change in which the collapsed pill shows the title and the artist.
 const TITLE_TIMER: TimerId = TimerId(2);
-/// Redraws the wave while it moves.
 const WAVE_TIMER: TimerId = TimerId(3);
 const WAVE_FRAME_MILLISECONDS: u32 = 100;
 const TITLE_SHOWN_MILLISECONDS: u32 = 3000;
 const UNKNOWN_TITLE: &str = "Unknown title";
-/// What the open player says while nothing is playing.
 const NOTHING_PLAYING_TITLE: &str = "Play a song";
 const NOTHING_PLAYING_DETAIL: &str = "Nothing is playing";
 /// Title lines are fitted a little narrower than their rectangle, so rounding never trims a line that fits.
 const TITLE_FIT_MARGIN: f32 = 1.0;
-/// Lyric lines are fitted a little narrower than the panel, for the same reason.
 const LYRIC_FIT_MARGIN: f32 = 2.0;
 
 pub struct MediaPage {
@@ -55,33 +47,22 @@ pub struct MediaPage {
     artwork: ImageSlot,
     app_icon: ImageSlot,
     follower: LyricFollower,
-    /// Whether the user wants lyrics shown; saved so it survives restarts.
     lyrics_enabled: bool,
-    /// Measured widths in device-independent pixels, so the collapsed pill can size itself to the text.
     measured_title: String,
     title_width: f32,
     measured_artist: String,
     artist_width: f32,
     hovered_control: Option<Control>,
-    /// The pointer is on the notch.
     is_hovered: bool,
-    /// The color of the cover, which is behind the player while the lyrics are on, and the version of the cover it was
-    /// taken from.
     theme_color: Option<Color>,
     theme_version: u64,
-    /// How much of the glow shows: 1 while the lyric panel is open, 0 otherwise, moving between them.
     backdrop: Spring,
-    /// True for a few seconds after the track changes, while the collapsed pill names it.
     is_title_shown: bool,
-    /// The title as the open player shows it (at most two lines), and what it was made from, so it is only made again
-    /// when the title, the artist or the width of the text column changes.
+    /// Rebuild title lines only when the title, artist, or text-column width changes.
     title_lines: Vec<String>,
     title_lines_source: (String, String, bool),
-    /// Every lyric line broken into at most two lines of text for the lyric panel, and which lyrics that was made for.
     lyric_wraps: Vec<Vec<String>>,
     lyric_wraps_source: usize,
-    /// Width of the text column without lyrics: as wide as the widest of the title lines and the artist,
-    /// between `TEXT_MIN_WIDTH` and `TEXT_MAX_WIDTH`.
     text_width: f32,
 }
 
@@ -112,7 +93,6 @@ impl MediaPage {
         }
     }
 
-    /// A page with nothing playing, as it is when the notch opens with no music, for rendering the page off-screen.
     #[cfg(test)]
     pub fn sample_idle(fonts: &crate::gfx::Fonts) -> Self {
         let mut page = Self::new();
@@ -120,8 +100,6 @@ impl MediaPage {
         page
     }
 
-    /// A page with a track and lyrics playing, for rendering the page off-screen. `view` picks what the collapsed pill
-    /// shows and `lyrics_on` whether the open player has the lyrics.
     #[cfg(test)]
     pub fn sample(fonts: &crate::gfx::Fonts, lyrics_on: bool, show_title: bool) -> Self {
         let mut page = Self::new();
@@ -163,18 +141,14 @@ impl MediaPage {
         page
     }
 
-    /// The wave shows in the header of the open notch whenever music plays, whatever the lyrics do.
     fn is_wave_shown(&self) -> bool {
         self.is_track_playing()
     }
 
-    /// Where the wave is on screen: in the header while the pointer is on the notch, and in the collapsed pill when that
-    /// shows the art and the wave (music playing with the lyrics off).
     fn is_wave_visible(&self) -> bool {
         self.is_wave_shown() && (self.is_hovered || self.resting_view() == resting::View::Wave)
     }
 
-    /// Fades the glow in while the lyric panel is open and out otherwise.
     fn sync_backdrop(&mut self, context: &mut Context) {
         let wanted = if self.is_lyric_panel_visible() && self.theme_color.is_some() { 1.0 } else { 0.0 };
         if self.backdrop.target != wanted {
@@ -183,7 +157,6 @@ impl MediaPage {
         }
     }
 
-    /// Redraws the notch ten times a second while a wave is on screen, and not at all otherwise.
     fn sync_wave_timer(&self, context: &mut Context) {
         if self.is_wave_visible() {
             context.set_timer(WAVE_TIMER, WAVE_FRAME_MILLISECONDS);
@@ -196,7 +169,6 @@ impl MediaPage {
         self.info.is_playing && !self.info.title.is_empty()
     }
 
-    /// The current track has synced lyrics, regardless of the user's on/off choice.
     fn has_lyrics(&self) -> bool {
         matches!(self.info.lyrics, LyricsStatus::Found(_))
     }
@@ -205,13 +177,10 @@ impl MediaPage {
         self.lyrics_enabled && self.has_lyrics()
     }
 
-    /// The collapsed pill shows the current lyric line only while a track plays and the user wants lyrics.
     fn is_lyric_mode(&self) -> bool {
         self.info.is_playing && self.is_lyric_panel_visible()
     }
 
-    /// What the collapsed pill shows: the title for a moment after a track change, else the lyric line being sung
-    /// when there is one, else the art with still bars.
     fn resting_view(&self) -> resting::View {
         if self.is_title_shown {
             resting::View::TrackChange
@@ -230,7 +199,6 @@ impl MediaPage {
         }
     }
 
-    /// Takes the latest state from the media session and brings everything derived from it up to date.
     fn apply_snapshot(&mut self, context: &mut Context) {
         let previous_title = std::mem::take(&mut self.measured_title);
         if let Some(watcher) = &self.watcher {
@@ -255,7 +223,6 @@ impl MediaPage {
         context.request_repaint();
     }
 
-    /// The title line of the open player: the track's, or a hint while nothing is playing.
     fn displayed_title(&self) -> &str {
         if !self.info.available {
             NOTHING_PLAYING_TITLE
@@ -266,13 +233,10 @@ impl MediaPage {
         }
     }
 
-    /// The line under the title: the artist, or a note while nothing is playing.
     fn displayed_detail(&self) -> &str {
         if self.info.available { &self.info.artist } else { NOTHING_PLAYING_DETAIL }
     }
 
-    /// Breaks the title into the lines of the open player: it wraps, and what does not fit in two lines is cut with an
-    /// ellipsis.
     fn refresh_title_lines(&mut self, fonts: &Fonts) {
         let source =
             (self.displayed_title().to_owned(), self.displayed_detail().to_owned(), self.is_lyric_panel_visible());
@@ -292,7 +256,6 @@ impl MediaPage {
         self.title_lines_source = source;
     }
 
-    /// Breaks each lyric line to fit the lyric panel in at most two lines, once for each set of lyrics.
     fn refresh_lyric_wraps(&mut self, lyrics: Option<&std::sync::Arc<lyrics::Lyrics>>, fonts: &Fonts) {
         let Some(lyrics) = lyrics else {
             self.lyric_wraps.clear();
@@ -327,7 +290,6 @@ impl MediaPage {
         }
     }
 
-    /// Follows the song: shows the line being sung and arms a timer for exactly when the next line starts.
     fn update_lyrics(&mut self, context: &mut Context) {
         let lyrics = match &self.info.lyrics {
             LyricsStatus::Found(lyrics) if self.lyrics_enabled => Some(lyrics.clone()),
@@ -393,8 +355,7 @@ impl Page for MediaPage {
     }
 
     fn priority(&self, mode: Mode) -> Option<Priority> {
-        // Collapsed it only shows music that is playing. Open it stays up while paused, so playback can resume, and with
-        // nothing playing it is still a page, which only asks the user to play a song.
+        // Collapsed requires playback; expanded remains available while paused or empty.
         match mode {
             Mode::Resting => self.is_track_playing().then_some(Priority::NORMAL),
             Mode::Expanded if self.info.available => Some(Priority::NORMAL),

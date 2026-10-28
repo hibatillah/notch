@@ -1,11 +1,11 @@
-//! The notch itself: the window, the animation, hover and input handling, the tray icon and page selection.
-//! Nothing in here knows what any particular page shows.
+//! Window orchestration stays independent of individual page implementations.
 
 mod activity_layout;
 mod chrome;
 mod clock;
 mod display;
 mod drop_target;
+mod icon;
 mod navigation;
 mod notch;
 mod page_editor;

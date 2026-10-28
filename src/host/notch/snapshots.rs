@@ -1,12 +1,4 @@
-//! Renders the notch off-screen, page by page and state by state, into image files, so its look can be reviewed against
-//! the design without a screen (the screen may be locked) or a running notch. Nothing here runs with `cargo test`;
-//! run it with
-//!
-//! ```text
-//! cargo test snapshots -- --ignored --nocapture
-//! ```
-//!
-//! The images are written to `target/snapshots`, drawn over the same orange gradient as the design boards.
+//! Offscreen images go to target/snapshots; run cargo test snapshots -- --ignored --nocapture.
 
 use std::{fs, path::PathBuf};
 
@@ -26,7 +18,6 @@ use crate::{
 };
 
 const SCALE: f32 = 1.25;
-/// How wide a slice of the screen the images show, in device-independent pixels.
 const IMAGE_WIDTH: f32 = 700.0;
 
 fn output_directory() -> PathBuf {
@@ -55,7 +46,6 @@ fn test_window() -> HWND {
     }
 }
 
-/// The design boards' background, from left to right.
 fn background(fraction: f32) -> [f32; 3] {
     let stops = [(0.0, [214.0, 164.0, 230.0]), (0.6, [240.0, 138.0, 75.0]), (1.0, [239.0, 106.0, 42.0])];
     let (low, high) = if fraction < stops[1].0 { (stops[0], stops[1]) } else { (stops[1], stops[2]) };
@@ -63,8 +53,7 @@ fn background(fraction: f32) -> [f32; 3] {
     std::array::from_fn(|channel| low.1[channel] + (high.1[channel] - low.1[channel]) * amount)
 }
 
-/// Writes premultiplied BGRA pixels, cropped to the middle `width` columns and the top `height` rows and laid over the
-/// background, as a 24-bit bitmap.
+/// Composite cropped premultiplied BGRA over the background and write a 24-bit bitmap.
 fn write_image(name: &str, pixels: &[u8], surface_width: usize, width: usize, height: usize) {
     let left = (surface_width - width) / 2;
     let row_bytes = (width * 3).div_ceil(4) * 4;
@@ -96,8 +85,11 @@ fn write_image(name: &str, pixels: &[u8], surface_width: usize, width: usize, he
     fs::write(output_directory().join(format!("{name}.bmp")), file).unwrap();
 }
 
-/// A notch with every page, filled in as `options` says.
 fn rig(options: SampleOptions) -> Notch {
+    configured_rig(options, Settings::at(None), Vec::new())
+}
+
+fn configured_rig(options: SampleOptions, settings: Settings, activities: Vec<Box<dyn Activity>>) -> Notch {
     let fonts = Fonts::new(SCALE).unwrap();
     let directory = std::env::temp_dir().join(format!("notch-snapshots-{}", std::process::id()));
     fs::create_dir_all(&directory).unwrap();
@@ -111,16 +103,15 @@ fn rig(options: SampleOptions) -> Notch {
         screen_position: POINT { x: 0, y: 0 },
         surface: Surface::new(width, height).unwrap(),
         fonts: Fonts::new(SCALE).unwrap(),
-        settings: Settings::at(None),
+        settings,
         pages,
-        activities: Vec::new(),
+        activities,
         ticks_per_second: 10_000_000,
     });
     notch.page_list = PageList::new(count);
     notch
 }
 
-/// Jumps every spring to where it is heading, so the picture shows the finished layout and not a frame of the motion.
 fn settle(notch: &mut Notch) {
     for _ in 0..3 {
         notch.refresh_layout();
@@ -131,7 +122,6 @@ fn settle(notch: &mut Notch) {
     }
 }
 
-/// Wipes the whole surface, so what an earlier, larger picture left outside the next one's region does not show.
 fn clear(notch: &Notch) {
     let surface = &notch.surface;
     let region = RECT { left: 0, top: 0, right: surface.width, bottom: surface.height };
@@ -148,6 +138,8 @@ fn save(notch: &Notch, name: &str, height_dip: f32) {
 
 fn open(notch: &mut Notch, page_id: &str) {
     let index = notch.pages.iter().position(|page| page.id() == page_id).unwrap();
+    notch.swipe = None;
+    notch.holds_page_position = false;
     notch.selected_page = Some(index);
     notch.is_hovering = true;
     notch.expansion.target = 1.0;
@@ -161,6 +153,163 @@ fn close(notch: &mut Notch) {
 }
 
 #[test]
+fn touchpad_only_centers_after_release_and_can_be_interrupted_from_the_visible_position() {
+    let mut notch = rig(SampleOptions { media: Some((true, false)), timer: true, ..SampleOptions::default() });
+    open(&mut notch, "media");
+    notch.drag_pages(0.35);
+    notch.flush();
+    for _ in 0..10 {
+        notch.refresh_layout();
+    }
+    assert!((notch.track.target - 0.35).abs() < 0.001, "input must stay fractional until the quiet period ends");
+    notch.track.step(1.0 / 60.0);
+    let visible_position = notch.track.position;
+    notch.end_swipe();
+    assert_eq!(notch.track.target, 0.0);
+    assert_eq!(notch.track.position, visible_position, "release must not jump the rendered position");
+    notch.drag_pages(0.1);
+    assert!((notch.track.target - visible_position - 0.1).abs() < 0.001);
+}
+
+#[test]
+fn touchpad_progress_interpolates_between_the_pages_real_widths() {
+    let mut notch = rig(SampleOptions { media: Some((true, false)), timer: true, ..SampleOptions::default() });
+    open(&mut notch, "media");
+    let first_width = notch.pages[notch.navigable[0]].sizes().expanded.width;
+    let next_width = notch.pages[notch.navigable[1]].sizes().expanded.width;
+    assert!(first_width > next_width);
+    notch.drag_pages(0.25);
+    for progress in [0.25, 0.5, 0.75] {
+        notch.track.jump_to(progress);
+        notch.refresh_layout();
+        let expected = lerp(first_width, next_width, progress) + chrome::WIDTH_EXTRA;
+        assert!((notch.expanded_width.target - expected).abs() < 0.01, "width must follow swipe progress {progress}");
+    }
+}
+
+#[test]
+fn visible_page_frames_keep_natural_widths_and_the_shorter_page_enters_early() {
+    let mut notch = rig(SampleOptions { media: Some((true, false)), timer: true, ..SampleOptions::default() });
+    open(&mut notch, "media");
+    let first_width = notch.pages[notch.navigable[0]].sizes().expanded.width;
+    let next_width = notch.pages[notch.navigable[1]].sizes().expanded.width;
+    notch.holds_page_position = true;
+    for progress in [0.25, 0.5, 0.75] {
+        notch.track.jump_to(progress);
+        notch.refresh_layout();
+        notch.follow_page_width();
+        let viewport = notch.frame();
+        let [(first, first_frame, _), (next, next_frame, _)] = notch.visible_page_frames(&viewport).unwrap();
+        assert_eq!((first, next), (notch.navigable[0], notch.navigable[1]));
+        assert!((first_frame.bounds.width() / SCALE - first_width).abs() < 0.01);
+        assert!((next_frame.bounds.width() / SCALE - next_width).abs() < 0.01);
+        assert_eq!(next_frame.expanded.width, next_width);
+        assert!((next_frame.bounds.left - first_frame.bounds.right - PAGE_GAP * SCALE).abs() < 0.01);
+        assert!(next_frame.bounds.left < chrome::content_rect(viewport.bounds, SCALE).right);
+        assert!(
+            (notch.expanded_width.position - chrome::WIDTH_EXTRA - lerp(first_width, next_width, progress)).abs()
+                < 0.01
+        );
+    }
+}
+
+#[test]
+fn explicit_page_controls_keep_mouse_and_dot_navigation_centered() {
+    let mut notch = rig(SampleOptions { media: Some((true, false)), timer: true, ..SampleOptions::default() });
+    open(&mut notch, "media");
+    let first_page = notch.selected_page.unwrap();
+    notch.drag_pages(0.35);
+    notch.track.snap_to_target();
+    notch.flush();
+    notch.go_to_page(first_page);
+    notch.flush();
+    assert!(!notch.holds_page_position);
+    assert!(notch.track.target.abs() < 0.001);
+    notch.track.snap_to_target();
+    notch.drag_pages(0.35);
+    notch.end_swipe();
+    notch.track.snap_to_target();
+    notch.scrolled(-120, false, false);
+    assert!(!notch.holds_page_position);
+    assert!((notch.track.target - 1.0).abs() < 0.001);
+}
+
+#[test]
+fn touchpad_scroll_keeps_large_deltas_in_the_same_gesture() {
+    let mut notch = rig(SampleOptions { media: Some((false, false)), timer: true, ..SampleOptions::default() });
+    open(&mut notch, "media");
+    notch.scrolled(-30, false, false);
+    notch.scrolled(-120, false, false);
+    assert!(notch.swipe.is_some(), "a large touchpad delta must not turn into a mouse-wheel snap");
+    assert!((notch.track.target - 0.375).abs() < 0.001);
+}
+
+#[test]
+fn a_tagged_touchpad_starts_smoothly_even_with_a_full_wheel_sized_delta() {
+    let mut notch = rig(SampleOptions { media: Some((false, false)), timer: true, ..SampleOptions::default() });
+    open(&mut notch, "media");
+    notch.scrolled(-120, false, true);
+    assert!(notch.swipe.is_some());
+    assert!((notch.track.target - 0.3).abs() < 0.001);
+    assert_eq!(notch.track.position, 0.0);
+}
+
+#[test]
+fn touchpad_scroll_does_not_change_logical_selection_at_the_midpoint() {
+    let mut notch = rig(SampleOptions { media: Some((false, false)), timer: true, ..SampleOptions::default() });
+    open(&mut notch, "media");
+    let selection = notch.selected_page;
+    for delta in [0.45, 0.1, -0.1, 0.1] {
+        notch.drag_pages(delta);
+        notch.flush();
+        assert_eq!(notch.selected_page, selection);
+    }
+    notch.end_swipe();
+    notch.flush();
+    assert_ne!(notch.selected_page, selection);
+}
+
+#[test]
+fn touchpad_scroll_ignores_a_snap_timer_queued_before_the_latest_input() {
+    let mut notch = rig(SampleOptions { media: Some((false, false)), timer: true, ..SampleOptions::default() });
+    open(&mut notch, "media");
+    notch.drag_pages(0.25);
+    notch.timer_fired(SWIPE_END_TIMER_ID);
+    assert!(notch.swipe.is_some(), "fresh input must win over a previously queued timer");
+    assert_eq!(notch.track.target, 0.25);
+}
+
+#[test]
+fn a_touchpad_drag_follows_smoothly_and_can_continue_across_pages() {
+    let mut notch = rig(SampleOptions { media: Some((false, false)), timer: true, ..SampleOptions::default() });
+    open(&mut notch, "media");
+    let origin = notch.track.position;
+    notch.drag_pages(0.25);
+    assert_eq!(notch.track.position, origin, "input must not teleport the rendered page");
+    assert_eq!(notch.track.target, origin + 0.25);
+    notch.track.step(1.0 / 60.0);
+    assert!(notch.track.position > origin && notch.track.position < notch.track.target);
+    notch.end_swipe();
+    assert_eq!(notch.track.target, origin);
+    for _ in 0..60 {
+        notch.track.step(1.0 / 120.0);
+    }
+    assert!(notch.track.is_settled());
+
+    for _ in 0..30 {
+        notch.drag_pages(0.125);
+        notch.track.step(1.0 / 60.0);
+    }
+    assert_eq!(notch.track.target, origin + 3.75);
+    notch.end_swipe();
+    assert_eq!(notch.track.target, origin + 4.0);
+    for _ in 0..90 {
+        notch.track.step(1.0 / 120.0);
+    }
+    assert!(notch.track.is_settled());
+}
+
+#[test]
 #[ignore = "writes images to target/snapshots; run on purpose"]
 fn snapshots_of_every_open_page() {
     let options = SampleOptions { media: Some((true, false)), timer: true, calendar: true, ..SampleOptions::default() };
@@ -169,30 +318,37 @@ fn snapshots_of_every_open_page() {
         open(&mut notch, id);
         save(&notch, &format!("open-{id}"), 260.0);
     }
-    // Half way between two pages, as in the middle of a swipe.
     open(&mut notch, "media");
-    notch.track.position = 0.45;
+    notch.holds_page_position = true;
+    for (name, progress) in [("swipe-long-short-25", 0.25), ("swipe-long-short-50", 0.5), ("swipe-long-short-75", 0.75)]
+    {
+        notch.track.jump_to(progress);
+        notch.refresh_layout();
+        notch.follow_page_width();
+        save(&notch, name, 260.0);
+    }
+    notch.track.jump_to(0.5);
+    notch.follow_page_width();
     save(&notch, "open-swipe", 260.0);
-    // The media player without lyrics is narrower and taller.
+    notch.drag_pages(0.0);
+    notch.end_swipe();
+    notch.refresh_layout();
+    save(&notch, "open-swipe-release", 260.0);
     let mut plain = rig(SampleOptions { media: Some((false, false)), ..options });
     open(&mut plain, "media");
     save(&plain, "open-media-plain", 260.0);
-    // The stops of the opening: the header pill, and the page half way through its second leg.
     open(&mut notch, "media");
     for (name, expansion) in [("stage-header", HEADER_STAGE), ("stage-halfway", 0.75)] {
         notch.expansion.jump_to(expansion);
         notch.refresh_layout();
         save(&notch, name, 260.0);
     }
-    // The media player with nothing playing.
     let mut idle = rig(SampleOptions::default());
     open(&mut idle, "media");
     save(&idle, "open-media-empty", 260.0);
-    // The shelf while files are dragged over the notch.
     let mut dragged_over = rig(SampleOptions { file_drag: true, ..options });
     open(&mut dragged_over, "shelf");
     save(&dragged_over, "open-shelf-drag", 260.0);
-    // The page editor.
     open(&mut notch, "timer");
     notch.page_list.set_enabled(4, false);
     notch.editor = Some(PageEditor::default());
@@ -222,7 +378,6 @@ fn snapshots_of_the_collapsed_pill() {
     }
 }
 
-/// Draws a short-lived message the way the notch does: in a pill 30 px tall.
 fn pill(notch: &Notch, name: &str, width: f32, content: impl FnOnce(&Canvas, Rect)) {
     let surface = &notch.surface;
     let scale = SCALE;
@@ -329,8 +484,179 @@ mod screen_mode_tests {
     use super::*;
     use crate::host::screen_mode::ScreenMode;
 
+    struct SettingsFile(PathBuf);
+
+    impl SettingsFile {
+        fn new(name: &str) -> Self {
+            let path = std::env::temp_dir().join(format!("notch-settings-{}-{name}.txt", std::process::id()));
+            fs::write(&path, "").unwrap();
+            Self(path)
+        }
+
+        fn load(&self) -> Settings {
+            Settings::at(Some(self.0.clone()))
+        }
+    }
+
+    impl Drop for SettingsFile {
+        fn drop(&mut self) {
+            if let Err(error) = fs::remove_file(&self.0) {
+                eprintln!("could not remove test settings {}: {error}", self.0.display());
+            }
+        }
+    }
+
     fn playing(lyrics_on: bool) -> Notch {
         rig(SampleOptions { media: Some((lyrics_on, false)), ..SampleOptions::default() })
+    }
+
+    #[test]
+    fn an_unchanged_screen_mode_restores_a_demoted_notch_without_activating_it() {
+        use windows::Win32::UI::WindowsAndMessaging::{
+            GWL_EXSTYLE, GetForegroundWindow, GetWindowLongW, HWND_NOTOPMOST, SWP_NOACTIVATE, SWP_NOMOVE, SWP_NOSIZE,
+            SetWindowPos, WS_EX_TOPMOST,
+        };
+        let mut notch = rig(SampleOptions::default());
+        notch.screen_mode = ScreenMode::Maximized;
+        let foreground = unsafe { GetForegroundWindow() };
+        unsafe {
+            SetWindowPos(notch.window, Some(HWND_NOTOPMOST), 0, 0, 0, 0, SWP_NOACTIVATE | SWP_NOMOVE | SWP_NOSIZE)
+                .unwrap();
+        }
+        notch.set_screen_mode(ScreenMode::Maximized);
+        assert_ne!(unsafe { GetWindowLongW(notch.window, GWL_EXSTYLE) } as u32 & WS_EX_TOPMOST.0, 0);
+        assert_eq!(unsafe { GetForegroundWindow() }, foreground);
+    }
+
+    #[test]
+    fn hover_restores_topmost_before_the_drop_target_hands_off_input() {
+        use windows::Win32::UI::WindowsAndMessaging::{GWL_EXSTYLE, GetWindowLongW, WS_EX_TOPMOST};
+        let mut notch = rig(SampleOptions::default());
+        notch.hides_when_idle = true;
+        assert_eq!(unsafe { GetWindowLongW(notch.window, GWL_EXSTYLE) } as u32 & WS_EX_TOPMOST.0, 0);
+        notch.set_hovering(true);
+        assert_ne!(unsafe { GetWindowLongW(notch.window, GWL_EXSTYLE) } as u32 & WS_EX_TOPMOST.0, 0);
+    }
+
+    #[test]
+    fn session_recovery_clears_stale_hover_and_allows_a_hidden_notch_to_open_again() {
+        let mut notch = rig(SampleOptions::default());
+        notch.screen_mode = ScreenMode::Maximized;
+        notch.hides_when_idle = true;
+        notch.is_hovering = true;
+        notch.is_revealed = true;
+        notch.is_dragging_files = true;
+        notch.is_close_pending = true;
+        notch.expansion.jump_to(1.0);
+        notch.reset_session_interaction();
+        assert!(!notch.is_hovering);
+        assert!(!notch.is_revealed);
+        assert!(!notch.is_dragging_files);
+        assert!(!notch.is_close_pending);
+        assert_eq!(notch.expansion.target, 0.0);
+        assert!(notch.is_hidden());
+        notch.set_hovering(true);
+        notch.timer_fired(REVEAL_TIMER_ID);
+        assert!(notch.is_revealed);
+        notch.timer_fired(EXPAND_TIMER_ID);
+        notch.timer_fired(STAGE_TIMER_ID);
+        assert_eq!(notch.expansion.target, 1.0);
+    }
+
+    #[test]
+    fn fresh_settings_use_the_requested_visibility_defaults() {
+        let settings_file = SettingsFile::new("defaults");
+        let notch = configured_rig(SampleOptions::default(), settings_file.load(), Vec::new());
+        assert!(!notch.hides_when_idle);
+        assert!(notch.hides_for_apps);
+        assert!(notch.keeps_lyrics_over_windows);
+        assert!(!notch.keeps_notch_over_windows);
+    }
+
+    #[test]
+    fn the_maximized_override_shows_even_an_empty_notch_with_hide_when_idle_enabled() {
+        let settings_file = SettingsFile::new("maximized");
+        let mut settings = settings_file.load();
+        settings.set_bool("notch.show_over_maximized", true);
+        settings.set_bool(HIDE_WHEN_IDLE_SETTING, true);
+        let mut notch = configured_rig(SampleOptions::default(), settings, Vec::new());
+        notch.screen_mode = ScreenMode::Maximized;
+        notch.refresh_layout();
+        assert!(!notch.is_hidden());
+        notch.screen_mode = ScreenMode::Fullscreen;
+        assert!(notch.is_suppressed(), "the maximized override must not override fullscreen hiding");
+    }
+
+    #[test]
+    fn disabling_fullscreen_hiding_does_not_show_the_notch_over_maximized_windows() {
+        let mut notch = rig(SampleOptions::default());
+        notch.hides_for_apps = false;
+        notch.screen_mode = ScreenMode::Maximized;
+        assert!(notch.is_hidden());
+    }
+
+    #[test]
+    fn the_maximized_override_remembers_its_choice_without_changing_the_lyrics_preference() {
+        let settings_file = SettingsFile::new("remember-maximized");
+        let mut notch = configured_rig(SampleOptions::default(), settings_file.load(), Vec::new());
+        notch.toggle_notch_over_maximized();
+        assert!(settings_file.load().get_bool(NOTCH_OVER_WINDOWS_SETTING, false));
+        assert!(notch.keeps_lyrics_over_windows);
+        notch.toggle_notch_over_maximized();
+        assert!(!settings_file.load().get_bool(NOTCH_OVER_WINDOWS_SETTING, true));
+    }
+
+    #[test]
+    fn saved_visibility_choices_override_the_new_defaults() {
+        let settings_file = SettingsFile::new("saved-visibility");
+        let mut settings = settings_file.load();
+        settings.set_bool(HIDE_WHEN_IDLE_SETTING, true);
+        settings.set_bool(HIDE_FOR_APPS_SETTING, false);
+        settings.set_bool(LYRICS_OVER_WINDOWS_SETTING, false);
+        let notch = configured_rig(SampleOptions::default(), settings_file.load(), Vec::new());
+        assert!(notch.hides_when_idle);
+        assert!(!notch.hides_for_apps);
+        assert!(!notch.keeps_lyrics_over_windows);
+    }
+
+    #[test]
+    fn only_notifications_appear_in_the_activity_menu() {
+        let settings_file = SettingsFile::new("activity-menu");
+        let notch = configured_rig(SampleOptions::default(), settings_file.load(), crate::activities::all());
+        assert_eq!(notch.activity_menu().len(), 1);
+        assert!(notch.activities.iter().all(|slot| slot.is_enabled));
+        let notifications_index =
+            notch.activities.iter().position(|slot| slot.activity.id() == "notifications").unwrap();
+        assert_eq!(notch.activity_menu(), vec![(notifications_index, "Notifications", true)]);
+    }
+
+    #[test]
+    fn notifications_can_still_be_switched_off() {
+        let settings_file = SettingsFile::new("notifications");
+        let mut notch = configured_rig(SampleOptions::default(), settings_file.load(), crate::activities::all());
+        let notifications_index = notch.activity_menu()[0].0;
+        notch.toggle_activity(notifications_index);
+        assert_eq!(notch.activity_menu(), vec![(notifications_index, "Notifications", false)]);
+        assert!(!settings_file.load().get_bool("activity.notifications", true));
+        assert!(
+            notch.activities.iter().filter(|slot| slot.activity.id() != "notifications").all(|slot| slot.is_enabled)
+        );
+    }
+
+    #[test]
+    fn required_activities_ignore_saved_disables_and_cannot_be_toggled_off() {
+        let settings_file = SettingsFile::new("required-activities");
+        let mut settings = settings_file.load();
+        settings.set_bool("activity.volume", false);
+        settings.set_bool("activity.notifications", false);
+        let mut notch = configured_rig(SampleOptions::default(), settings, crate::activities::all());
+        let volume_index = notch.activities.iter().position(|slot| slot.activity.id() == "volume").unwrap();
+        let notifications_index =
+            notch.activities.iter().position(|slot| slot.activity.id() == "notifications").unwrap();
+        assert!(notch.activities[volume_index].is_enabled);
+        assert!(!notch.activities[notifications_index].is_enabled);
+        notch.toggle_activity(volume_index);
+        assert!(notch.activities[volume_index].is_enabled);
     }
 
     #[test]
@@ -339,7 +665,7 @@ mod screen_mode_tests {
         assert!(!notch.is_hidden());
         notch.screen_mode = ScreenMode::Maximized;
         assert!(notch.is_hidden());
-        notch.hides_for_apps = false;
+        notch.keeps_notch_over_windows = true;
         assert!(!notch.is_hidden(), "the choice in the tray menu turns it off");
     }
 
@@ -355,17 +681,64 @@ mod screen_mode_tests {
     #[test]
     fn lyrics_stay_over_a_maximized_window_only_when_the_user_asked() {
         let mut notch = playing(true);
+        notch.keeps_lyrics_over_windows = false;
         notch.refresh_layout();
         notch.screen_mode = ScreenMode::Maximized;
         assert!(notch.is_hidden());
         notch.keeps_lyrics_over_windows = true;
         assert!(!notch.is_hidden());
-        // Without lyrics being sung the option keeps nothing.
         let mut without_lyrics = playing(false);
         without_lyrics.refresh_layout();
         without_lyrics.screen_mode = ScreenMode::Maximized;
         without_lyrics.keeps_lyrics_over_windows = true;
         assert!(without_lyrics.is_hidden());
+    }
+
+    #[test]
+    fn maximized_window_hiding_takes_precedence_over_hide_when_idle() {
+        for lyrics_enabled in [false, true] {
+            for hides_when_idle in [false, true] {
+                for keeps_lyrics_over_windows in [false, true] {
+                    let mut notch = playing(lyrics_enabled);
+                    notch.hides_when_idle = hides_when_idle;
+                    notch.keeps_lyrics_over_windows = keeps_lyrics_over_windows;
+                    notch.screen_mode = ScreenMode::Maximized;
+                    notch.refresh_layout();
+                    let should_hide = !(lyrics_enabled && keeps_lyrics_over_windows);
+                    assert_eq!(
+                        notch.is_hidden(),
+                        should_hide,
+                        "lyrics={lyrics_enabled}, hide_idle={hides_when_idle}, keep_lyrics={keeps_lyrics_over_windows}"
+                    );
+                    if should_hide {
+                        assert_eq!(notch.resting_width.target, HIDDEN_WIDTH);
+                        assert_eq!(notch.resting_height.target, notch.hidden_height());
+                    }
+                    notch.screen_mode = ScreenMode::Normal;
+                    notch.refresh_layout();
+                    assert!(!notch.is_hidden(), "music remains visible outside maximized windows");
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn the_maximized_override_keeps_music_visible_regardless_of_lyrics_and_idle_settings() {
+        for lyrics_enabled in [false, true] {
+            for hides_when_idle in [false, true] {
+                for keeps_lyrics_over_windows in [false, true] {
+                    let mut notch = playing(lyrics_enabled);
+                    notch.hides_when_idle = hides_when_idle;
+                    notch.keeps_lyrics_over_windows = keeps_lyrics_over_windows;
+                    notch.keeps_notch_over_windows = true;
+                    notch.screen_mode = ScreenMode::Maximized;
+                    notch.refresh_layout();
+                    assert!(!notch.is_hidden());
+                    notch.screen_mode = ScreenMode::Fullscreen;
+                    assert!(notch.is_suppressed());
+                }
+            }
+        }
     }
 
     #[test]

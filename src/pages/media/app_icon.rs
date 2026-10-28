@@ -25,10 +25,8 @@ use windows::{
 
 use crate::gfx::ImageData;
 
-/// Asked of the shell: its largest icon, which has the most detail to shrink from.
 const REQUESTED_PIXELS: i32 = 256;
-/// Kept for drawing: about twice the largest size it is drawn at (the badge on the artwork), so a smooth shrink to the
-/// screen stays exact.
+/// Retain roughly twice the drawn size for smooth downscaling.
 const STORED_PIXELS: u32 = 64;
 
 /// Loads the icon of the app that owns a media session, from its Windows app identifier.
@@ -58,7 +56,6 @@ unsafe fn image_for(parsing_name: &str) -> Option<HBITMAP> {
     }
 }
 
-/// Finds the executable of a running process by file name, e.g. `Spotify.exe`.
 unsafe fn executable_path(file_name: &str) -> Option<String> {
     unsafe {
         let snapshot = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0).ok()?;
@@ -89,7 +86,6 @@ unsafe fn process_image_path(process_id: u32) -> Option<String> {
     }
 }
 
-/// Copies the shell bitmap into premultiplied BGRA bytes, which is what Direct2D expects.
 unsafe fn read_pixels(bitmap: HBITMAP) -> Option<ImageData> {
     unsafe {
         let mut header = BITMAP::default();

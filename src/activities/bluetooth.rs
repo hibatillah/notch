@@ -1,9 +1,5 @@
-//! A Bluetooth device connecting or disconnecting, with its battery level when Windows has one. Windows tells a
-//! program when a paired device's connection changes, so nothing polls; the subscriptions live on a thread of their
-//! own, which wakes the UI thread through the activity's `Notifier`.
-//!
-//! The battery level is read after a connection, from the Windows device node of the device that reports it. Not every
-//! device reports one, and Windows may take a few seconds to learn it, so it is shown when it is there.
+//! Keep device subscriptions on a worker thread; initial reports are not connection changes.
+//! Battery reports are optional and may arrive seconds after connection.
 
 use std::{
     collections::VecDeque,
@@ -33,13 +29,10 @@ use crate::{
 };
 
 const SHOW_MILLISECONDS: u32 = 3000;
-/// Windows reports a device that is already connected when the subscriptions start; changes in this time are that.
 const SETTLE_TIME: Duration = Duration::from_secs(4);
-/// How long after a connection Windows is given to learn the battery level.
 const BATTERY_DELAY: Duration = Duration::from_secs(2);
 const MAX_NAME_CHARACTERS: usize = 22;
 const CONNECTED_BLUE: Color = Color::rgb(0.302, 0.671, 0.969);
-/// The Windows property that holds the battery percentage of a device node.
 const BATTERY_PROPERTY: &str = "{104EA319-6EE2-4701-BD47-8DDBF425BBE5} 2";
 const BATTERY_NODES_FILTER: &str = "System.Devices.DeviceInstanceId:~<\"BTHENUM\" OR System.Devices.DeviceInstanceId:~<\"BTHHFENUM\" OR System.Devices.DeviceInstanceId:~<\"BTHLE\"";
 
@@ -50,7 +43,6 @@ struct Change {
     battery_percent: Option<u8>,
 }
 
-/// A name short enough for the pill: long ones are cut and end in an ellipsis.
 fn short_name(name: &str) -> String {
     if name.chars().count() <= MAX_NAME_CHARACTERS {
         return name.to_owned();
@@ -67,8 +59,6 @@ fn battery_text(change: &Change) -> Option<String> {
     change.battery_percent.filter(|_| change.is_connected).map(|percent| format!("{percent}%"))
 }
 
-/// The battery percentage Windows knows for a paired device named `name`, found among the device nodes that begin
-/// with the device's name.
 fn read_battery(name: &str) -> Option<u8> {
     let properties = windows_collections::IIterable::<HSTRING>::from(vec![HSTRING::from(BATTERY_PROPERTY)]);
     let nodes = DeviceInformation::FindAllAsyncAqsFilterAndAdditionalProperties(
@@ -87,7 +77,6 @@ fn read_battery(name: &str) -> Option<u8> {
         })
 }
 
-/// What the subscriptions share with the activity.
 struct Shared {
     changes: Mutex<VecDeque<Change>>,
     notifier: Notifier,
@@ -96,7 +85,6 @@ struct Shared {
 
 impl Shared {
     fn report(self: &Arc<Self>, name: String, is_connected: bool) {
-        // What Windows reports while the subscriptions are starting is the state before they started, not a change.
         if self.started_at.elapsed() < SETTLE_TIME {
             return;
         }
@@ -116,7 +104,6 @@ impl Shared {
     }
 }
 
-/// Subscribes to every paired device, classic and low energy, and then keeps them alive for as long as the notch runs.
 fn watch(shared: Arc<Shared>) -> Result<()> {
     let mut classic = Vec::new();
     let mut low_energy = Vec::new();

@@ -2,7 +2,7 @@
 
 An activity is something that happens while the notch is closed: a volume change, a charger being plugged in, the
 microphone turning on. A page is what you see when you open the notch; an activity is what you see in the collapsed
-pill. To switch activities on or off without recompiling, see [configuration.md](configuration.md).
+pill. Activities are required unless their implementation opts into a user toggle; see [configuration.md](configuration.md).
 
 ## What an activity can show
 
@@ -37,7 +37,8 @@ listens to one Windows power setting and flashes a level bar when it changes.
 | Method | Job |
 | --- | --- |
 | `id()` | stable name; the settings key is `activity.<id>` |
-| `label()` | the name in the tray menu |
+| `label()` | the name in the tray menu for an optional activity |
+| `is_optional()` | false by default: required activities are always enabled; return true to expose a saved tray toggle |
 | `presence()` | what to show right now |
 | `draw()` | draw into the area the host gives |
 | `header_status_width()`, `draw_header_status()` | optional: a small mark kept in the open notch's header beside the time while something lasts (muted speakers, Caps Lock on); `None` for no mark |
@@ -69,14 +70,15 @@ The notch must use no CPU while nothing happens, so an activity never polls. Pic
 
 ### 4. Register it
 
-Add the module and an entry to `all()` in `src/activities/mod.rs`. The order is the order in the tray menu and the
-order of badges.
+Add the module and an entry to `all()` in `src/activities/mod.rs`. Registration order controls badges and optional
+tray entries; filtering the tray must preserve the registered activity indices.
 
 ## Switch it on or off
 
-Right-click the tray icon: every activity is a checkable item. The choice is stored as
-`activity.<id>=off` or `on` in `%APPDATA%\notch\settings.txt`. An activity that is off at start is never started;
-switching one off while the notch runs hides it but keeps what it already listens to until the notch quits.
+Only **Notifications** is optional among the built-in activities. Right-click the tray icon to switch it on or off.
+The choice is stored as `activity.notifications=off` or `on` in `%APPDATA%\notch\settings.txt`, defaulting to on.
+An optional activity that is off at start is never started; switching it off while running hides it but retains its
+listeners until exit. Required activities ignore saved disable settings and reject toggle requests.
 
 ## Remove an activity
 

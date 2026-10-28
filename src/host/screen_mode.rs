@@ -1,8 +1,4 @@
-//! Tells whether the window in front covers the screen, so the notch can step out of its way: hide to a thin strip over a
-//! maximized window, and hide completely over a full-screen one (a game, a video, F11 in a browser).
-//!
-//! Nothing polls. Windows reports a change of the window in front, and, for as long as one window is in front, the
-//! moves and resizes of that window's own thread; each report is one cheap comparison of its size with the monitor's.
+//! Follow foreground changes and only that window thread's moves/resizes; no polling.
 
 use std::sync::{
     OnceLock,
@@ -26,17 +22,13 @@ use windows::Win32::{
     },
 };
 
-/// How much of the screen the window in front takes.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum ScreenMode {
     Normal,
-    /// Maximized: the window fills the screen but for the taskbar, and keeps its title bar.
     Maximized,
-    /// Full screen: the window covers the whole monitor, taskbar included, with no title bar.
     Fullscreen,
 }
 
-/// A rectangle in screen pixels.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Bounds {
     pub left: i32,
@@ -46,16 +38,13 @@ pub struct Bounds {
 }
 
 impl Bounds {
-    /// True when this rectangle reaches every edge of `other`.
     fn covers(&self, other: &Bounds) -> bool {
         self.left <= other.left && self.top <= other.top && self.right >= other.right && self.bottom >= other.bottom
     }
 }
 
-/// What is known about the window in front.
 pub struct Facts {
     pub window: Bounds,
-    /// The primary monitor, which is where the notch is.
     pub monitor: Bounds,
     pub is_zoomed: bool,
     pub has_caption: bool,
@@ -63,8 +52,7 @@ pub struct Facts {
     pub is_ignored: bool,
 }
 
-/// A window that covers the whole monitor is full screen, unless it is maximized and still has its title bar (a
-/// maximized window can cover the whole monitor when the taskbar hides itself).
+/// A maximized window with an auto-hidden taskbar can cover the monitor without being full screen.
 pub fn classify(facts: &Facts) -> ScreenMode {
     if facts.is_ignored {
         return ScreenMode::Normal;
@@ -78,13 +66,11 @@ pub fn classify(facts: &Facts) -> ScreenMode {
     }
 }
 
-/// Windows that cover the screen without being an app in front of it.
 const IGNORED_CLASSES: [&str; 6] =
     ["Progman", "WorkerW", "Shell_TrayWnd", "Shell_SecondaryTrayWnd", "NotchWindow", "NotchDropTarget"];
 
 static ON_CHANGE: OnceLock<fn(ScreenMode)> = OnceLock::new();
 static LAST_MODE: AtomicU8 = AtomicU8::new(0);
-/// The hook that follows the window in front, replaced whenever another window comes to the front.
 static LOCATION_HOOK: AtomicIsize = AtomicIsize::new(0);
 
 fn class_name(window: HWND) -> String {
@@ -93,7 +79,6 @@ fn class_name(window: HWND) -> String {
     String::from_utf16_lossy(&buffer[..usize::try_from(length).unwrap_or(0)])
 }
 
-/// Reads the window in front now.
 fn read() -> ScreenMode {
     unsafe {
         let window = GetForegroundWindow();
@@ -127,18 +112,21 @@ fn read() -> ScreenMode {
     }
 }
 
-/// Reads the window in front and tells the notch if that changed the mode.
-fn refresh() {
+fn refresh(notify_when_unchanged: bool) {
     let mode = read();
-    if LAST_MODE.swap(mode as u8, Ordering::Relaxed) != mode as u8
+    if (LAST_MODE.swap(mode as u8, Ordering::Relaxed) != mode as u8 || notify_when_unchanged)
         && let Some(on_change) = ON_CHANGE.get()
     {
         on_change(mode);
     }
 }
 
-/// Follows the moves and resizes of the thread that owns the window in front, and nothing else: asking for every
-/// window's would wake the notch on every mouse move.
+pub fn refresh_foreground() {
+    follow_foreground_thread();
+    refresh(true);
+}
+
+/// Watching every window would wake the notch on every mouse move.
 fn follow_foreground_thread() {
     unsafe {
         let previous = LOCATION_HOOK.swap(0, Ordering::Relaxed);
@@ -174,20 +162,19 @@ unsafe extern "system" fn on_event(
 ) {
     match event {
         EVENT_SYSTEM_FOREGROUND => {
-            follow_foreground_thread();
-            refresh();
+            refresh_foreground();
         }
         // The caret and other parts of the window report moves too; only the window itself counts.
         EVENT_OBJECT_LOCATIONCHANGE => {
             if object == OBJID_WINDOW.0 && window == unsafe { GetForegroundWindow() } {
-                refresh();
+                refresh(false);
             }
         }
-        _ => refresh(),
+        _ => refresh(false),
     }
 }
 
-/// Starts watching; `on_change` is called on the notch's thread whenever the mode changes. Call it once.
+/// Called on the notch thread for mode changes and foreground switches. Register once.
 pub fn start(on_change: fn(ScreenMode)) {
     let _ = ON_CHANGE.set(on_change);
     for event in [EVENT_SYSTEM_FOREGROUND, EVENT_SYSTEM_MINIMIZESTART, EVENT_SYSTEM_MINIMIZEEND] {
@@ -195,8 +182,7 @@ pub fn start(on_change: fn(ScreenMode)) {
             SetWinEventHook(event, event, None, Some(on_event), 0, 0, WINEVENT_OUTOFCONTEXT | WINEVENT_SKIPOWNPROCESS)
         };
     }
-    follow_foreground_thread();
-    refresh();
+    refresh_foreground();
 }
 
 #[cfg(test)]
@@ -212,7 +198,6 @@ mod tests {
     #[test]
     fn a_window_over_the_whole_monitor_with_no_title_bar_is_full_screen() {
         assert_eq!(classify(&facts(MONITOR, false, false)), ScreenMode::Fullscreen);
-        // A game that sits a little outside the monitor.
         let outside = Bounds { left: -1, top: -1, right: 1921, bottom: 1081 };
         assert_eq!(classify(&facts(outside, false, false)), ScreenMode::Fullscreen);
     }
@@ -242,8 +227,7 @@ mod tests {
         assert_eq!(classify(&desktop), ScreenMode::Normal);
     }
 
-    /// Opens a plain window of the given shape in front and reads the mode back, so what the notch sees on a real
-    /// screen is checked, not only the sizes in the tests above.
+    /// Check classification against a real foreground window, beyond the pure geometry tests.
     #[cfg(test)]
     fn mode_seen_with_window(style: windows::Win32::UI::WindowsAndMessaging::WINDOW_STYLE, show: i32) -> ScreenMode {
         use windows::{

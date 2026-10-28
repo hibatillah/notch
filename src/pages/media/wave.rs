@@ -1,27 +1,21 @@
-//! A small wave of bars that rise and fall while music plays and the lyrics are off, so there is something moving to
-//! say that sound is playing.
+//! Animated playback indicator used when lyrics are hidden.
 
 use windows::Win32::System::SystemInformation::GetTickCount64;
 
 use crate::gfx::{Canvas, Color, Rect};
 
-/// Size of the wave in device-independent pixels.
 pub const WIDTH: f32 = 16.0;
 pub const HEIGHT: f32 = 12.0;
 const BARS: usize = 5;
 const BAR_WIDTH: f32 = 2.0;
-/// The lowest a bar gets, as a share of the full height.
 const LOWEST: f32 = 0.25;
 const CYCLES_PER_SECOND: f32 = 1.0;
-/// How far each bar is along its cycle from the one before it, in radians.
 const PHASE_STEP: f32 = 1.1;
 
-/// Seconds on a clock that runs on, to move the wave by.
 pub fn now_seconds() -> f32 {
     (unsafe { GetTickCount64() } % 3_600_000) as f32 / 1000.0
 }
 
-/// The height of each bar at `seconds`, as a share of `HEIGHT` between `LOWEST` and 1.
 fn bar_fractions(seconds: f32) -> [f32; BARS] {
     std::array::from_fn(|index| {
         let angle = seconds * CYCLES_PER_SECOND * std::f32::consts::TAU + index as f32 * PHASE_STEP;
@@ -29,7 +23,6 @@ fn bar_fractions(seconds: f32) -> [f32; BARS] {
     })
 }
 
-/// Draws the wave in white, centered vertically in `area`.
 pub fn draw(canvas: &Canvas, area: Rect, scale: f32, seconds: f32, opacity: f32) {
     let gap = (WIDTH - BARS as f32 * BAR_WIDTH) / (BARS - 1) as f32;
     for (index, fraction) in bar_fractions(seconds).into_iter().enumerate() {

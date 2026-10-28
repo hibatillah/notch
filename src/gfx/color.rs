@@ -19,17 +19,14 @@ impl Color {
         Self::rgb(level, level, level)
     }
 
-    /// The same color with its alpha replaced.
     pub const fn with_alpha(self, a: f32) -> Self {
         Self { a, ..self }
     }
 
-    /// The same color with its alpha multiplied, used to fade content in and out.
     pub fn faded(self, factor: f32) -> Self {
         Self { a: self.a * factor, ..self }
     }
 
-    /// Red, green and blue as bytes, for keys that must tell colors apart.
     pub fn rgb_bytes(self) -> [u8; 3] {
         [self.r, self.g, self.b].map(|channel| (channel.clamp(0.0, 1.0) * 255.0).round() as u8)
     }

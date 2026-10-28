@@ -1,10 +1,5 @@
-//! Reads the notifications Windows shows, as they arrive. A program that is not a packaged app can read them with
-//! `UserNotificationListener`, but its own "something changed" event cannot be subscribed to, so this waits for the
-//! notification database folder to change (which happens when a toast arrives) and then reads the list.
-//!
-//! The list is read on a thread of its own: one read takes a few seconds when many notifications are waiting in the
-//! Windows notification center, so a notification shows up in the notch a few seconds after Windows shows its banner.
-//! Our own reads change the folder too, so changes right after a read are ignored.
+//! Unpackaged apps cannot subscribe to notification events; watch the database directory instead.
+//! Reads run off-thread and may take seconds; ignore the directory changes caused by those reads.
 
 use std::{
     collections::{HashMap, HashSet},
@@ -46,7 +41,6 @@ const QUIET_TIME_MILLISECONDS: u32 = 300;
 /// Changes in this long after a read are the read's own.
 const OWN_CHANGES_TIME: Duration = Duration::from_millis(1500);
 
-/// Whether Windows lets the notch read notifications.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Access {
     Unknown = 0,
@@ -64,14 +58,12 @@ impl Access {
     }
 }
 
-/// What the watching thread shares with the page.
 pub struct Shared {
     arrived: Mutex<Vec<Item>>,
     access: AtomicU8,
 }
 
 impl Shared {
-    /// The notifications that arrived since the last call, oldest first.
     pub fn take_arrived(&self) -> Vec<Item> {
         self.arrived.lock().map(|mut arrived| std::mem::take(&mut *arrived)).unwrap_or_default()
     }
@@ -81,10 +73,8 @@ impl Shared {
     }
 }
 
-/// Side length in pixels of the decoded logo; it is drawn smaller, so Direct2D shrinks it smoothly.
 const LOGO_PIXELS: u32 = 64;
 
-/// The logo of an app, decoded to premultiplied BGRA.
 fn read_logo(app_info: &AppInfo) -> Result<ImageData> {
     let stream = app_info
         .DisplayInfo()?
@@ -108,10 +98,8 @@ fn read_logo(app_info: &AppInfo) -> Result<ImageData> {
     Ok(ImageData::new(LOGO_PIXELS, LOGO_PIXELS, pixels.to_vec()))
 }
 
-/// The logos found so far, by app; an app with no logo is remembered too, so it is asked once.
 type Logos = HashMap<String, Option<Arc<ImageData>>>;
 
-/// The notifications now in the Windows notification center, with their ids.
 fn read_all(listener: &UserNotificationListener, logos: &mut Logos) -> Result<Vec<Item>> {
     let list = listener.GetNotificationsAsync(NotificationKinds::Toast)?.join()?;
     let mut items = Vec::new();
@@ -153,7 +141,6 @@ fn run(shared: &Shared, notifier: Notifier) -> Result<()> {
         return Ok(());
     }
 
-    // What is already there is not new.
     let mut logos = Logos::new();
     let mut seen: HashSet<u32> = read_all(&listener, &mut logos)?.into_iter().map(|item| item.id).collect();
     let directory = format!(r"{}\Microsoft\Windows\Notifications", std::env::var("LOCALAPPDATA").unwrap_or_default());
@@ -166,7 +153,6 @@ fn run(shared: &Shared, notifier: Notifier) -> Result<()> {
     };
     loop {
         unsafe { WaitForSingleObject(changes, INFINITE) };
-        // Wait for the changes to stop, so one toast is read once.
         loop {
             let _ = unsafe { FindNextChangeNotification(changes) };
             if unsafe { WaitForSingleObject(changes, QUIET_TIME_MILLISECONDS) } != WAIT_OBJECT_0 {
@@ -188,7 +174,6 @@ fn run(shared: &Shared, notifier: Notifier) -> Result<()> {
             }
             notifier.notify();
         }
-        // The read changed the folder too; let those changes pass without reading again.
         thread::sleep(OWN_CHANGES_TIME);
         loop {
             let _ = unsafe { FindNextChangeNotification(changes) };
@@ -199,7 +184,6 @@ fn run(shared: &Shared, notifier: Notifier) -> Result<()> {
     }
 }
 
-/// Starts watching on a thread of its own.
 pub fn start(notifier: Notifier) -> Arc<Shared> {
     let shared = Arc::new(Shared { arrived: Mutex::new(Vec::new()), access: AtomicU8::new(Access::Unknown as u8) });
     let worker = shared.clone();

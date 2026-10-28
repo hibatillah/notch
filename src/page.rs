@@ -1,9 +1,4 @@
-//! The contract between the notch host and the pages it shows.
-//!
-//! A page is one self-contained feature of the notch, such as the media player or the shelf. It tells the host
-//! when it wants to be shown (`priority`), how big it wants to be (`sizes`) and how to draw itself collapsed and
-//! expanded. Everything else (input, timers, wake-ups from background threads) is an optional hook.
-//! See `ARCHITECTURE.md` for how to add a page.
+//! Host/page contracts; see docs/adding-a-page.md.
 
 use windows::{
     Win32::{
@@ -21,15 +16,13 @@ use crate::{
     ui::Icon,
 };
 
-/// Height of the collapsed pill in device-independent pixels; pages center their resting content in it.
+/// Device-independent pixels; resting content is centered within this height.
 pub const RESTING_HEIGHT: f32 = 30.0;
 
-/// Message a `Notifier` posts to wake the host from another thread.
 pub(crate) const WM_PAGE_NOTIFY: u32 = WM_APP + 1;
 /// Win32 timer ids from this up to `PAGE_TIMER_LIMIT` belong to pages; each page owns `TIMERS_PER_PAGE` of them.
 pub(crate) const PAGE_TIMER_BASE: usize = 100;
 pub(crate) const TIMERS_PER_PAGE: usize = 16;
-/// Timer ids from here up belong to activities.
 pub(crate) const PAGE_TIMER_LIMIT: usize = 1000;
 
 /// How much a page wants to be shown right now; when several pages want to, the highest priority wins.
@@ -45,52 +38,44 @@ impl Priority {
     pub const URGENT: Priority = Priority(20);
 }
 
-/// Whether the notch is collapsed or open under the pointer. A page can be a different answer in each mode.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Mode {
     Resting,
     Expanded,
 }
 
-/// Sizes a page wants, in device-independent pixels. The host follows the requested widths, but fixes open content
-/// to 82 pixels high. `expanded` describes content only; the host adds padding and the header around it.
+/// Content sizes in DIP; the host fixes expanded height to 82 and adds padding and a header.
 #[derive(Clone, Copy, Debug)]
 pub struct PageSizes {
     pub resting_width: f32,
     pub expanded: Size,
 }
 
-/// Where the pill is right now, passed to drawing and pointer hooks.
 #[derive(Clone, Copy, Debug)]
 pub struct Frame {
     pub scale: f32,
-    /// Where the page draws, in device pixels, in the same space as pointer positions. Collapsed, this is the pill;
-    /// open, it is the pill without the padding and the header.
+    /// Device pixels, shared with pointer input; visible pages keep their natural width during swipes.
     pub bounds: Rect,
     /// 0 collapsed, 1 fully open; the spring can overshoot a little past 1.
     pub expansion: f32,
-    /// The animated size of the page's content when open, in device-independent pixels.
+    /// The content size in device-independent pixels; visible pages retain their own width during navigation.
     pub expanded: Size,
 }
 
 impl Frame {
-    /// True once the notch is open far enough for its controls to be usable.
     pub fn is_open(&self) -> bool {
         self.expansion >= 0.8
     }
 }
 
-/// Pointer input, delivered to the page that is shown while the notch is open. Positions are device pixels.
+/// Pointer input, delivered to visible open pages in their own shifted frames. Positions are device pixels.
 #[derive(Clone, Copy, Debug)]
 pub enum PointerEvent {
     Moved(Point),
     Pressed(Point),
     Released(Point),
-    /// The pointer left the notch.
     Left,
-    /// The pointer was captured for a drag in the notch itself, and the capture ended.
     CaptureLost,
-    /// The secondary (right) button was released.
     SecondaryReleased(Point),
 }
 
@@ -102,11 +87,10 @@ pub trait Page {
     /// Stable name used in logs and settings keys.
     fn id(&self) -> &'static str;
 
-    /// How much this page wants to be shown in `mode`; `None` means it has nothing to show.
-    /// Asked again after every event, so it can follow the page's state.
+    /// Re-evaluated after every event; None means unavailable in this mode.
     fn priority(&self, mode: Mode) -> Option<Priority>;
 
-    /// The sizes this page wants. Asked again after every event, so it can follow the page's content.
+    /// Re-evaluated after every event; sizes describe content without host chrome.
     fn sizes(&self) -> PageSizes;
 
     /// Draws the collapsed pill content. `opacity` fades it out while the notch opens.
@@ -118,15 +102,13 @@ pub trait Page {
     /// Called once after the window exists: start background work and timers here.
     fn on_start(&mut self, _context: &mut Context) {}
 
-    /// Called on every page when the pointer enters or leaves the notch.
+    /// All pages receive hover changes, including those not currently selected.
     fn on_hover_changed(&mut self, _is_hovering: bool, _context: &mut Context) {}
 
-    /// Items this page adds to the tray menu, such as "Use calendar link from clipboard".
     fn menu_items(&self) -> Vec<String> {
         Vec::new()
     }
 
-    /// Called when the user picks the item at `index` of `menu_items`.
     fn on_menu_item(&mut self, _index: usize, _context: &mut Context) {}
 
     /// True for a page that takes files dropped on the notch; the first such page that is switched on gets them.
@@ -134,26 +116,21 @@ pub trait Page {
         false
     }
 
-    /// Called with the files dropped on the notch, when `accepts_drops` is true.
     fn on_drop(&mut self, _paths: Vec<std::path::PathBuf>, _context: &mut Context) {}
 
-    /// Called on the page that takes drops when files are dragged over the notch (`true`), and when they leave or are
-    /// dropped (`false`), so it can show that it is ready to receive them.
+    /// Only the drop-accepting page receives this; false means the drag left or was dropped.
     fn on_file_drag_changed(&mut self, _is_over: bool, _context: &mut Context) {}
 
-    /// Called when this page starts or stops being the one on screen: the notch is open and showing it. A page that
-    /// measures something only while it is looked at starts and stops its work here.
+    /// Start or stop work that is needed only while this page is visible in the open notch.
     fn on_shown_changed(&mut self, _is_shown: bool, _context: &mut Context) {}
 
     fn on_pointer(&mut self, _event: PointerEvent, _frame: &Frame, _context: &mut Context) {}
 
     fn on_timer(&mut self, _timer: TimerId, _context: &mut Context) {}
 
-    /// Called after a background thread used this page's `Notifier`.
     fn on_notify(&mut self, _context: &mut Context) {}
 
-    /// What this page shows in the collapsed pill while it is not the page on show, as an activity does: a moment
-    /// of its own (`Transient`) or a small mark kept beside the page that is on show (`Badge`). Asked after every event.
+    /// Collapsed activity content, independent of page selection; re-evaluated after every event.
     fn presence(&self) -> Option<Presence> {
         None
     }
@@ -161,25 +138,21 @@ pub trait Page {
     /// Draws what `presence` asked for into `area` (device pixels), faded by `opacity`.
     fn draw_presence(&self, _canvas: &Canvas, _area: Rect, _scale: f32, _opacity: f32) {}
 
-    /// Draws behind everything in the open notch, header included, while this page is open: a glow or a tint over its
-    /// black. `pill` is the whole notch in device pixels, with its bottom corners rounded by `radius`; `frame` is the
-    /// page's own frame. Pages that have no backdrop leave this alone.
+    /// Draws behind the header and content; pill is the whole notch, frame is this page's content.
+    /// Bounds and radius are device pixels.
     fn draw_backdrop(&self, _canvas: &Canvas, _frame: &Frame, _pill: Rect, _radius: f32, _opacity: f32) {}
 
-    /// True while this page's collapsed pill shows text the user is reading as it changes (the lyric line being sung).
-    /// Over a maximized window the notch hides, unless the user asked for such a page to stay.
+    /// Changing text the user is reading may keep the pill visible over a maximized window.
     fn shows_live_text(&self) -> bool {
         false
     }
 
-    /// The width of a small status mark (an animated wave while music plays, say) that the open notch keeps in its
-    /// header beside the time, whichever page is open; `None` when there is nothing to show. Asked on every paint.
+    /// Status width in DIP, independent of the selected page; None hides it. Asked on every paint.
     fn header_status_width(&self) -> Option<f32> {
         None
     }
 
-    /// Where the mark sits among the others: marks are placed from the time toward the left, lowest rank first, so a
-    /// page that wants its mark at the far left answers a higher number. Marks of the same rank keep the page order.
+    /// Lower ranks sit nearer the time; equal ranks retain page order.
     fn header_status_rank(&self) -> u8 {
         0
     }
@@ -187,38 +160,32 @@ pub trait Page {
     /// Draws the status mark into `area` (device pixels, as high as the header), faded by `opacity`.
     fn draw_header_status(&self, _canvas: &Canvas, _area: Rect, _scale: f32, _opacity: f32) {}
 
-    /// The name shown for the page when the user edits the page list.
     fn name(&self) -> &'static str {
         self.id()
     }
 
-    /// The glyph shown beside the name when the user edits the page list.
     fn icon(&self) -> Icon {
         Icon::Clock
     }
 
-    /// True for a page that starts switched off until the user adds it.
     fn is_opt_in(&self) -> bool {
         false
     }
 
-    /// Advances the page's own animations; return true while any is still moving. Only called while animating.
+    /// Called only while animating; return true to keep the frame timer running.
     fn animate(&mut self, _elapsed_seconds: f32) -> bool {
         false
     }
 }
 
-/// Things a page asked for during one hook; the host applies them afterwards.
 #[derive(Default)]
 pub(crate) struct Requests {
     pub repaint: bool,
     pub animate: bool,
 }
 
-/// The page's way to ask the host for things. Created by the host for each hook call.
 pub struct Context<'a> {
     window: HWND,
-    /// Index of the owning page or activity, which selects its timers and its wake-up messages.
     owner_index: usize,
     timer_base: usize,
     notify_message: u32,
@@ -250,7 +217,6 @@ impl<'a> Context<'a> {
         }
     }
 
-    /// The same context for an activity: its timers and wake-ups are kept apart from the pages'.
     pub(crate) fn for_activity(
         window: HWND,
         activity_index: usize,
@@ -275,7 +241,6 @@ impl<'a> Context<'a> {
         self.fonts
     }
 
-    /// Draw the notch again after this hook returns.
     pub fn request_repaint(&mut self) {
         self.requests.repaint = true;
     }
@@ -296,24 +261,20 @@ impl<'a> Context<'a> {
         }
     }
 
-    /// A handle that background threads use to wake this page through `Page::on_notify`.
     pub fn notifier(&self) -> Notifier {
         Notifier { window_address: self.window.0 as isize, owner_index: self.owner_index, message: self.notify_message }
     }
 
-    /// Delivers changes of a Windows power setting as `SystemMessage::PowerSettingChanged`, starting with its
-    /// current value. The registration lives as long as the notch.
+    /// First delivers the current value, then changes; registration lasts until the notch exits.
     pub fn listen_to_power_setting(&self, setting: &GUID) {
         let flags = REGISTER_NOTIFICATION_FLAGS(0);
         let _ = unsafe { RegisterPowerSettingNotification(HANDLE(self.window.0), setting, flags) };
     }
 
-    /// Delivers clipboard changes as `SystemMessage::ClipboardChanged`.
     pub fn listen_to_clipboard(&self) {
         let _ = unsafe { AddClipboardFormatListener(self.window) };
     }
 
-    /// Uploads an image so `Canvas::image` can draw it. Usually called through `ImageSlot::sync`.
     pub fn upload_image(&self, image: &ImageData) -> Option<ImageBrush> {
         self.surface.create_image_brush(image).ok()
     }
@@ -323,24 +284,20 @@ impl<'a> Context<'a> {
     }
 }
 
-/// The Win32 timer key for one of a page's timers.
 #[cfg(test)]
 pub(crate) fn timer_key(page_index: usize, timer: TimerId) -> usize {
     owned_timer_key(PAGE_TIMER_BASE, page_index, timer)
 }
 
-/// The Win32 timer key for a timer of the page or activity at `owner_index`, with timers starting at `timer_base`.
 pub(crate) fn owned_timer_key(timer_base: usize, owner_index: usize, timer: TimerId) -> usize {
     debug_assert!(usize::from(timer.0) < TIMERS_PER_PAGE, "timer ids must be below {TIMERS_PER_PAGE}");
     timer_base + owner_index * TIMERS_PER_PAGE + usize::from(timer.0)
 }
 
-/// The page and timer a Win32 timer key belongs to; `None` for keys that are not page timers.
 pub(crate) fn split_timer_key(key: usize) -> Option<(usize, TimerId)> {
     split_owned_timer_key(PAGE_TIMER_BASE, PAGE_TIMER_LIMIT, key)
 }
 
-/// The owner and timer of a key in `timer_base..limit`.
 pub(crate) fn split_owned_timer_key(timer_base: usize, limit: usize, key: usize) -> Option<(usize, TimerId)> {
     if key >= limit {
         return None;

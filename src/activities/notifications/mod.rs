@@ -1,12 +1,5 @@
-//! Windows notifications: each new one opens the collapsed pill into a banner for four seconds, with the app's logo,
-//! who it is from and what it says. The banner sits between the idle pill and the open notch in size. Pointing at it
-//! keeps it open until the pointer leaves. In private mode the text of a message is left out
-//! (`notifications.show_text=off` in the settings file).
-//!
-//! The banner only shows the message: it has no buttons, because Windows lets a program that is not a packaged app
-//! read the text and the app of a notification, but not its buttons, so nothing could take the user to what it is
-//! about. The notch shows a notification a few seconds after Windows shows its own banner (see `listener`), and it adds
-//! to the Windows notification center and does not replace it.
+//! Hover keeps banners visible; notifications.show_text=off hides message text.
+//! Unpackaged apps cannot read notification buttons, so banners cannot open their source.
 
 mod items;
 mod listener;
@@ -37,7 +30,6 @@ const TILE_GAP: f32 = 12.0;
 const HEADING_HEIGHT: f32 = 18.0;
 const BODY_LINE_HEIGHT: f32 = 15.0;
 const BODY_LINES: usize = 2;
-/// Even a notification with no text is as high as its tile and padding need.
 const MIN_HEIGHT: f32 = 48.0;
 const TEXT_WIDTH: f32 = WIDTH - 2.0 * PADDING - TILE_SIZE - TILE_GAP;
 
@@ -47,12 +39,10 @@ const TILE_LETTER: FontStyle = FontStyle::new(UI_FONT, 12.0, Weight::Medium, Ali
 
 const BODY_COLOR: Color = Color::rgb(0.68, 0.68, 0.72);
 
-/// How high the banner is for a message of `body_lines` lines.
 fn banner_height(body_lines: usize) -> f32 {
     (TOP_PADDING + HEADING_HEIGHT + body_lines as f32 * BODY_LINE_HEIGHT + BOTTOM_PADDING).max(MIN_HEIGHT)
 }
 
-/// What the banner says: the heading and up to two lines of the message.
 struct Words {
     heading: String,
     body: Vec<String>,
@@ -71,7 +61,6 @@ pub struct NotificationsActivity {
     flash: Flash,
     item: Option<Item>,
     words: Option<Words>,
-    /// The pointer is on the notch: the banner stays until it leaves.
     is_hovered: bool,
 }
 
@@ -80,7 +69,6 @@ impl NotificationsActivity {
         Self { shared: None, shows_text: true, flash: Flash::default(), item: None, words: None, is_hovered: false }
     }
 
-    /// An activity showing an example notification, for rendering the banner off-screen.
     #[cfg(test)]
     pub fn sample(fonts: &Fonts) -> Self {
         let mut activity = Self::new();
@@ -102,13 +90,11 @@ impl NotificationsActivity {
         self.words = Some(words(&item, self.shows_text, context.fonts()));
         self.item = Some(item);
         self.flash.show(context, SHOW_MILLISECONDS);
-        // While the pointer is on the notch the banner waits for it to leave.
         if self.is_hovered {
             context.kill_timer(FLASH_TIMER);
         }
     }
 
-    /// Draws the app's logo in the tile, or its first letter on the app's color when Windows has no logo.
     fn draw_tile(&self, canvas: &Canvas, item: &Item, tile: Rect, scale: f32, opacity: f32) {
         let logo = item.icon.as_deref().and_then(|icon| {
             let key = ("notification-logo", item.app_id.as_str());
@@ -131,6 +117,10 @@ impl Activity for NotificationsActivity {
 
     fn label(&self) -> &'static str {
         "Notifications"
+    }
+
+    fn is_optional(&self) -> bool {
+        true
     }
 
     fn presence(&self) -> Option<Presence> {

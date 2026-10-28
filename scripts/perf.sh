@@ -1,11 +1,12 @@
 #!/usr/bin/env bash
-# Measures how much memory and CPU the notch uses, and fails if it uses more than it should.
+# Measures memory and CPU; moves the pointer while checking the limits in scripts/perf.rs.
 #
-#   scripts/perf.sh                 build, then run the checks (about two minutes)
-#   scripts/perf.sh --no-build      reuse the existing release build
-#   scripts/perf.sh --with-media    also print numbers with every page on (play music first); no pass/fail
+#   scripts/perf.sh                 build and check (about two minutes)
+#   scripts/perf.sh --no-build      reuse the release build
+#   scripts/perf.sh --with-media    also sample normal pages with music playing
+#   scripts/perf.sh --extended      also sample hover, swipes and recovery
+#   scripts/perf.sh --lyrics-only   compare live synced lyrics on/off
 #
-# The measuring is scripts/perf.rs, which holds the limits. This file only builds and starts it.
 # Hands off the mouse while it runs: it moves the pointer to open and close the notch.
 # The test starts its own notch, which asks a running notch to close; start yours again with scripts/reload.sh.
 set -euo pipefail
@@ -17,6 +18,8 @@ for argument in "$@"; do
     case "$argument" in
         --no-build) build=0 ;;
         --with-media) extra_arguments+=(--with-media) ;;
+        --extended) extra_arguments+=(--extended) ;;
+        --lyrics-only) extra_arguments+=(--lyrics-only) ;;
         -h | --help) sed -n '2,9p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
         *) echo "unknown option: $argument" >&2; exit 2 ;;
     esac

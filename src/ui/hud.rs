@@ -1,29 +1,24 @@
-//! The two shapes a short-lived message takes in the collapsed pill: an icon with a level bar and a value (volume,
-//! brightness), and an icon with a message and an optional value (charger, microphone, copied).
+//! Collapsed activity layouts for level bars and short messages.
 
 use super::Icon;
 use crate::gfx::{Align, Canvas, Color, FontStyle, Fonts, Rect, UI_FONT, Weight};
 
-/// Width of a level message, in device-independent pixels.
 pub const LEVEL_WIDTH: f32 = 176.0;
 
 const PADDING: f32 = 14.0;
 const ICON_SIZE: f32 = 18.0;
 const GAP: f32 = 10.0;
-/// Room for the longest value shown next to a level bar, "100"; the bar runs right up to it.
 const LEVEL_VALUE_WIDTH: f32 = 24.0;
 const BAR_THICKNESS: f32 = 4.0;
 const TRACK_ALPHA: f32 = 0.22;
 const MESSAGE: FontStyle = FontStyle::new(UI_FONT, 13.0, Weight::Medium, Align::Leading);
 const VALUE: FontStyle = FontStyle::new(UI_FONT, 13.0, Weight::Regular, Align::Trailing);
 
-/// Width of a message with an optional value, in device-independent pixels.
 pub fn message_width(fonts: &Fonts, message: &str, value: Option<&str>) -> f32 {
     let value_span = value.map_or(0.0, |value| GAP + fonts.measure(&VALUE, value).ceil());
     PADDING + ICON_SIZE + GAP + fonts.measure(&MESSAGE, message).ceil() + value_span + PADDING
 }
 
-/// Icon, message and value, vertically centered in `area`.
 pub fn draw_message(
     canvas: &Canvas,
     area: Rect,
@@ -53,7 +48,6 @@ pub fn draw_message(
     }
 }
 
-/// Icon, a bar filled to `fraction` and the value, vertically centered in `area`.
 pub fn draw_level(canvas: &Canvas, area: Rect, opacity: f32, icon: Icon, fraction: f32, value: &str) {
     let scale = canvas.scale();
     draw_icon(canvas, area, opacity, icon, Color::WHITE);

@@ -1,24 +1,17 @@
-//! The glow behind the open player while the lyrics are on: the song's color at the bottom, fading to nothing toward the
-//! top, over the black of the notch.
+//! Album-art glow fades upward over the open player.
 
 use crate::gfx::{Canvas, Color, Rect};
 
-/// How opaque the color is at the bottom edge.
 const BOTTOM_ALPHA: f32 = 0.55;
-/// Above 1 keeps the color down at the bottom and clears the top quicker.
 const FALLOFF: f32 = 1.6;
-/// Height of each strip the glow is drawn in, in device-independent pixels.
 const STRIP: f32 = 2.0;
 /// Keeps the glow off the antialiased edge of the notch.
 const EDGE_INSET: f32 = 0.25;
 
-/// How opaque the glow is `from_top` of the way down the notch, 0 at the top and 1 at the bottom.
 fn alpha_at(from_top: f32) -> f32 {
     BOTTOM_ALPHA * from_top.clamp(0.0, 1.0).powf(FALLOFF)
 }
 
-/// How far a strip centered `y` must be pulled in from the sides of a notch whose rounded bottom corners have `radius`
-/// and which ends at `bottom`, so it stays inside the corner.
 fn corner_inset(y: f32, bottom: f32, radius: f32) -> f32 {
     let into_corner = y - (bottom - radius);
     if into_corner <= 0.0 || radius <= 0.0 {
@@ -27,13 +20,10 @@ fn corner_inset(y: f32, bottom: f32, radius: f32) -> f32 {
     radius - (radius * radius - into_corner * into_corner).max(0.0).sqrt()
 }
 
-/// The pieces a row between `left` and `right` is drawn in so its ends are antialiased like the notch's own edge: a
-/// whole-pixel middle at full strength, and a pixel at each end weighted by how much of it the row covers. Each piece is
-/// `(from, to, weight)`; a weight of 0 means there is nothing to draw.
+/// Split a row into (from, to, weight) spans with weighted end pixels; zero weight skips drawing.
 fn row_pieces(left: f32, right: f32) -> [(f32, f32, f32); 3] {
     let (inner_left, inner_right) = (left.ceil(), right.floor());
     if inner_left > inner_right {
-        // Narrower than a pixel and straddling a pixel line: one faint piece.
         return [(left, right, 1.0), (0.0, 0.0, 0.0), (0.0, 0.0, 0.0)];
     }
     [
@@ -43,15 +33,12 @@ fn row_pieces(left: f32, right: f32) -> [(f32, f32, f32); 3] {
     ]
 }
 
-/// Draws the glow inside `pill` (the whole open notch), with its bottom corners rounded by `radius`, at `amount` of its
-/// strength from 0 to 1.
 pub fn draw(canvas: &Canvas, pill: Rect, radius: f32, scale: f32, color: Color, amount: f32) {
     if amount <= 0.01 || pill.height() <= 0.0 {
         return;
     }
     // Whole device pixels, so no strip has a blurred edge that would show as a line between two of them.
     let strip = (STRIP * scale).round().max(1.0);
-    // In the rounded corners every row is its own strip, so the curve is not stepped.
     let corner_top = (pill.bottom - radius).round();
     let mut top = pill.top.round();
     while top < pill.bottom {
@@ -85,7 +72,6 @@ mod tests {
 
     #[test]
     fn the_glow_stays_bottom_heavy() {
-        // Half way down it is less than half as strong as at the bottom.
         assert!(alpha_at(0.5) < BOTTOM_ALPHA / 2.0);
     }
 
