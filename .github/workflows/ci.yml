@@ -21,21 +21,22 @@ jobs:
       - name: Install Rust
         shell: bash
         run: |
-          rustup toolchain install stable --profile minimal --component rustfmt --component clippy
-          rustup default stable
+          # The settings crate (GPUI) builds only with the MSVC host toolchain.
+          rustup toolchain install stable-x86_64-pc-windows-msvc --profile minimal --component rustfmt --component clippy
+          rustup default stable-x86_64-pc-windows-msvc
 
       - name: Format
         shell: bash
-        run: cargo fmt --check
+        run: cargo fmt --all --check
 
       - name: Lint
         shell: bash
-        run: cargo clippy --all-targets -- -D warnings
+        run: cargo clippy --workspace --all-targets -- -D warnings
 
       - name: Test
         shell: bash
-        run: cargo test
+        run: cargo test --workspace
 
       - name: Build
         shell: bash
-        run: cargo build --release
+        run: cargo build --release --workspace

@@ -8,6 +8,12 @@
 #ifndef SourceExe
   #error Pass the built executable with /DSourceExe=path
 #endif
+#ifndef SettingsExeName
+  #error Pass the name of the settings executable with /DSettingsExeName=name.exe
+#endif
+#ifndef SourceSettingsExe
+  #error Pass the built settings executable with /DSourceSettingsExe=path
+#endif
 
 ; Keep this ID stable so upgrades find the existing installation.
 #define AppGuid "{B4D1E7A2-5C3F-4F68-9A0E-2D7C61B8E4F3}"
@@ -38,6 +44,9 @@ Name: "startup"; Description: "Start Notch when Windows starts"; GroupDescriptio
 
 [Files]
 Source: "{#SourceExe}"; DestDir: "{app}"; DestName: "{#ExeName}"; Flags: ignoreversion
+; The tray menu starts the settings program from the folder of the notch.
+Source: "{#SourceSettingsExe}"; DestDir: "{app}"; DestName: "{#SettingsExeName}"; Flags: ignoreversion
+Source: "..\THIRD-PARTY-LICENSES.txt"; DestDir: "{app}"; Flags: ignoreversion
 Source: "..\LICENSE"; DestDir: "{app}"; DestName: "LICENSE.txt"; Flags: ignoreversion
 Source: "..\assets\fonts\Geist-LICENSE.txt"; DestDir: "{app}"; Flags: ignoreversion
 

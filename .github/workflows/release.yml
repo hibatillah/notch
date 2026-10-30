@@ -14,36 +14,41 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Check the tag matches the crate version
+      - name: Check the tag matches both crate versions
         shell: bash
         run: |
-          version=$(grep -m1 '^version' Cargo.toml | cut -d'"' -f2)
-          if [ "v$version" != "$GITHUB_REF_NAME" ]; then
-            echo "Tag $GITHUB_REF_NAME does not match Cargo.toml version $version" >&2
-            exit 1
-          fi
+          for manifest in Cargo.toml settings/Cargo.toml; do
+            version=$(grep -m1 '^version' "$manifest" | cut -d'"' -f2)
+            if [ "v$version" != "$GITHUB_REF_NAME" ]; then
+              echo "Tag $GITHUB_REF_NAME does not match $manifest version $version" >&2
+              exit 1
+            fi
+          done
 
       - name: Install Rust
         shell: bash
         run: |
-          rustup toolchain install stable --profile minimal --component rustfmt --component clippy
-          rustup default stable
+          # The settings crate (GPUI) builds only with the MSVC host toolchain.
+          rustup toolchain install stable-x86_64-pc-windows-msvc --profile minimal --component rustfmt --component clippy
+          rustup default stable-x86_64-pc-windows-msvc
 
       - name: Check
         shell: bash
         run: |
-          cargo fmt --check
-          cargo clippy --all-targets -- -D warnings
-          cargo test
+          cargo fmt --all --check
+          cargo clippy --workspace --all-targets -- -D warnings
+          cargo test --workspace
 
       - name: Build
         shell: bash
-        run: cargo build --release
+        run: cargo build --release --workspace
 
       - name: Package
         shell: bash
         run: |
           name=$(grep -m1 '^name' Cargo.toml | cut -d'"' -f2)
+          settings_name=$(grep -m1 '^name' settings/Cargo.toml | cut -d'"' -f2)
+          release_directory="$PWD/target/x86_64-pc-windows-msvc/release"
           version=$(grep -m1 '^version' Cargo.toml | cut -d'"' -f2)
           installer="$name-$GITHUB_REF_NAME-windows-x64-setup"
           mkdir -p dist
@@ -51,7 +56,9 @@ jobs:
           # The slashes of the compiler's options must not be taken for paths.
           MSYS2_ARG_CONV_EXCL='*' "/c/Program Files (x86)/Inno Setup 6/ISCC.exe" \
             "/DAppVersion=$version" "/DExeName=$name.exe" \
-            "/DSourceExe=$(cygpath -w "$PWD/target/x86_64-pc-windows-msvc/release/$name.exe")" \
+            "/DSourceExe=$(cygpath -w "$release_directory/$name.exe")" \
+            "/DSettingsExeName=$settings_name.exe" \
+            "/DSourceSettingsExe=$(cygpath -w "$release_directory/$settings_name.exe")" \
             "/O$(cygpath -w "$PWD/dist")" "/F$installer" installer/notch.iss
           (cd dist && sha256sum "$installer.exe" > "$installer.exe.sha256")
           echo "INSTALLER=$installer.exe" >> "$GITHUB_ENV"
