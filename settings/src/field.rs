@@ -165,8 +165,14 @@ impl TextField {
 fn shown_value(settings: &Settings, key: &str, kind: &Kind) -> String {
     match kind {
         Kind::Text => settings.get_string(key).unwrap_or_default().to_owned(),
-        Kind::Minutes { default, range } => {
-            settings.get_string(key).and_then(|text| parse_minutes(text, range)).unwrap_or(*default).to_string()
+        Kind::Minutes { default, .. } => {
+            // The notch accepts any positive value, so a hand edit outside the field's range is shown as stored.
+            settings
+                .get_string(key)
+                .and_then(|text| text.trim().parse::<u32>().ok())
+                .filter(|minutes| *minutes > 0)
+                .unwrap_or(*default)
+                .to_string()
         }
     }
 }
@@ -312,5 +318,24 @@ mod tests {
         draft.insert("?");
         assert_eq!(draft.press("escape", None), Press::Revert);
         assert_eq!(draft.text(), "hi!");
+    }
+}
+
+#[cfg(test)]
+mod shown_value_tests {
+    use super::*;
+
+    #[test]
+    fn a_stored_value_outside_the_range_is_shown_not_replaced_by_the_default() {
+        let path = std::env::temp_dir().join(format!("notch-settings-shown-{}.txt", std::process::id()));
+        std::fs::write(&path, "timer.short_break_minutes=180\ntimer.long_break_minutes=0\ntimer.focus_minutes=abc\n")
+            .unwrap();
+        let settings = Settings::at(Some(path.clone()));
+        let _ = std::fs::remove_file(&path);
+        let kind = |default| Kind::Minutes { default, range: 1..=120 };
+        assert_eq!(shown_value(&settings, "timer.short_break_minutes", &kind(5)), "180");
+        assert_eq!(shown_value(&settings, "timer.long_break_minutes", &kind(15)), "15");
+        assert_eq!(shown_value(&settings, "timer.focus_minutes", &kind(25)), "25");
+        assert_eq!(shown_value(&settings, "missing", &kind(7)), "7");
     }
 }
