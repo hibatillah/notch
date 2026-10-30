@@ -15,6 +15,8 @@ mod settings;
 mod settings_launcher;
 mod startup;
 mod tray;
+#[allow(dead_code)] // Task 11 wires the module into the host and removes this
+mod visibility;
 mod window;
 
 pub use settings::Settings;
