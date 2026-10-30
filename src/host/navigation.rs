@@ -140,6 +140,11 @@ impl PageList {
     }
 }
 
+/// The `id:Label` list the settings window reads as `pages.known`; it lists pages without linking to the notch.
+pub fn known_pages_text(ids: &[&str], labels: &[&str]) -> String {
+    ids.iter().zip(labels).map(|(id, label)| format!("{id}:{label}")).collect::<Vec<_>>().join(",")
+}
+
 /// Urgent pages override selection; otherwise retain an available selection before falling back to priority.
 pub fn choose(selected: Option<usize>, priorities: &[Option<Priority>]) -> Option<usize> {
     if let Some(index) = highest(priorities, Priority::URGENT) {
@@ -246,6 +251,12 @@ mod tests {
         assert!(list.is_enabled(0) && !list.is_enabled(3));
         let saved = PageList::load(&IDS, &[false, false, false, true], None, Some(""));
         assert!(saved.is_enabled(3));
+    }
+
+    #[test]
+    fn known_pages_text_joins_ids_and_labels() {
+        assert_eq!(known_pages_text(&["clock", "media"], &["Clock", "Now Playing"]), "clock:Clock,media:Now Playing");
+        assert_eq!(known_pages_text(&[], &[]), "");
     }
 
     #[test]

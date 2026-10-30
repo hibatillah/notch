@@ -91,6 +91,7 @@ const LAST_PAGE_SETTING: &str = "navigation.page";
 const PAGE_ORDER_SETTING: &str = "navigation.order";
 const EDITOR_WIDTH: f32 = 428.0;
 const PAGES_OFF_SETTING: &str = "navigation.disabled";
+const KNOWN_PAGES_SETTING: &str = "pages.known";
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum Source {
@@ -258,6 +259,7 @@ impl Notch {
             .get_string(LAST_PAGE_SETTING)
             .and_then(|id| self.pages.iter().position(|page| page.id() == id));
         let ids = self.page_ids();
+        self.publish_known_pages(&ids);
         let opt_in: Vec<bool> = self.pages.iter().map(|page| page.is_opt_in()).collect();
         self.page_list = PageList::load(
             &ids,
@@ -839,6 +841,15 @@ impl Notch {
                 let view = ChipView { name: self.pages[page].name(), icon: self.pages[page].icon() };
                 page_editor::draw_chip(canvas, rect, &view, is_on, is_dragged, opacity);
             }
+        }
+    }
+
+    /// Lets the settings window list the pages; the file is written only when the list changed.
+    fn publish_known_pages(&mut self, ids: &[&str]) {
+        let labels: Vec<&str> = self.pages.iter().map(|page| page.name()).collect();
+        let known = navigation::known_pages_text(ids, &labels);
+        if self.settings.get_string(KNOWN_PAGES_SETTING) != Some(known.as_str()) {
+            self.settings.set_string(KNOWN_PAGES_SETTING, &known);
         }
     }
 

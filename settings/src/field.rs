@@ -1,8 +1,8 @@
 use std::ops::RangeInclusive;
 
 use gpui::{
-    AnyElement, App, Context, Entity, FocusHandle, KeyDownEvent, MouseButton, Rgba, Subscription, Window, div,
-    prelude::*, px, rgb, rgba,
+    AnyElement, App, Context, Entity, FocusHandle, KeyDownEvent, MouseButton, Rgba, SharedString, Subscription, Window,
+    div, prelude::*, px, rgb, rgba,
 };
 use notch_store::Settings;
 
@@ -209,7 +209,8 @@ impl Render for TextField {
     }
 }
 
-fn row(label: &'static str, control: impl IntoElement) -> AnyElement {
+fn row(label: impl Into<SharedString>, control: impl IntoElement) -> AnyElement {
+    let label: SharedString = label.into();
     div().flex().items_center().justify_between().gap_4().child(div().child(label)).child(control).into_any_element()
 }
 
@@ -218,14 +219,15 @@ pub fn field_row(label: &'static str, field: &Entity<TextField>) -> AnyElement {
 }
 
 pub fn switch_row(
-    label: &'static str,
+    label: impl Into<SharedString>,
     enabled: bool,
     on_click: impl Fn(&mut SettingsWindow) + 'static,
     cx: &mut Context<SettingsWindow>,
 ) -> AnyElement {
+    let label: SharedString = label.into();
     let track_color: Rgba = rgb(if enabled { ACCENT } else { SWITCH_OFF });
     let switch = div()
-        .id(label)
+        .id(label.clone())
         .flex()
         .items_center()
         .w(px(40.0))
