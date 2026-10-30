@@ -25,6 +25,7 @@ const MENU_COMMAND_START_WITH_WINDOWS: usize = 3;
 const MENU_COMMAND_HIDE_FOR_APPS: usize = 4;
 const MENU_COMMAND_LYRICS_OVER_MAXIMIZED: usize = 5;
 const MENU_COMMAND_NOTCH_OVER_MAXIMIZED: usize = 6;
+const MENU_COMMAND_OPEN_SETTINGS: usize = 7;
 const MENU_COMMAND_FIRST_ACTIVITY: usize = 100;
 
 /// Commands of the items pages add start here: `PAGE_ITEM_BASE + page * ITEMS_PER_PAGE + item`.
@@ -44,6 +45,7 @@ pub enum MenuChoice {
     ToggleHideForApps,
     ToggleLyricsOverMaximized,
     ToggleNotchOverMaximized,
+    OpenSettings,
     Quit,
 }
 
@@ -69,6 +71,7 @@ fn choice_for_command(command: usize, activities: &[(usize, &'static str, bool)]
         MENU_COMMAND_HIDE_FOR_APPS => return Some(MenuChoice::ToggleHideForApps),
         MENU_COMMAND_LYRICS_OVER_MAXIMIZED => return Some(MenuChoice::ToggleLyricsOverMaximized),
         MENU_COMMAND_NOTCH_OVER_MAXIMIZED => return Some(MenuChoice::ToggleNotchOverMaximized),
+        MENU_COMMAND_OPEN_SETTINGS => return Some(MenuChoice::OpenSettings),
         _ => {}
     }
     if let Some(offset) = command.checked_sub(PAGE_ITEM_BASE) {
@@ -180,6 +183,7 @@ pub fn show_context_menu(
             MENU_COMMAND_START_WITH_WINDOWS,
             w!("Start with Windows"),
         );
+        let _ = AppendMenuW(menu, MF_STRING, MENU_COMMAND_OPEN_SETTINGS, w!("Settings…"));
         let _ = AppendMenuW(menu, MF_STRING, MENU_COMMAND_QUIT, w!("Quit"));
         let mut cursor = POINT::default();
         let _ = GetCursorPos(&mut cursor);
@@ -237,6 +241,11 @@ mod tests {
             choice_for_command(MENU_COMMAND_NOTCH_OVER_MAXIMIZED, OPTIONAL_ACTIVITIES),
             Some(MenuChoice::ToggleNotchOverMaximized)
         );
+    }
+
+    #[test]
+    fn settings_has_its_own_command() {
+        assert_eq!(choice_for_command(MENU_COMMAND_OPEN_SETTINGS, OPTIONAL_ACTIVITIES), Some(MenuChoice::OpenSettings));
     }
 
     #[test]

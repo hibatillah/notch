@@ -12,6 +12,7 @@ mod page_editor;
 mod registry;
 mod screen_mode;
 mod settings;
+mod settings_launcher;
 mod startup;
 mod tray;
 mod window;

@@ -36,7 +36,7 @@ use super::{
     registry,
     screen_mode::{self, ScreenMode},
     settings::Settings,
-    startup, tray,
+    settings_launcher, startup, tray,
 };
 use crate::{
     activity::{Activity, SystemMessage, WM_ACTIVITY_NOTIFY},
@@ -99,6 +99,7 @@ fn show_menu(window: HWND) {
         Some(tray::MenuChoice::Toggle(index)) => {
             with_notch(|notch| notch.toggle_activity(index));
         }
+        Some(tray::MenuChoice::OpenSettings) => settings_launcher::open_settings_window(),
         Some(tray::MenuChoice::Quit) => unsafe { PostQuitMessage(0) },
         None => {}
     }

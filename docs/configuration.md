@@ -89,3 +89,8 @@ Things a developer tunes by editing source:
 The installer starts the notch at sign-in unless that is unticked in its options. The tray menu's **Start with
 Windows** item shows whether it does, and switches it: it adds or removes a `Notch` value under
 `HKCU\Software\Microsoft\Windows\CurrentVersion\Run` that points at the copy of `notch.exe` that is running.
+
+## Settings window
+
+The tray menu's **Settings…** item starts `notch-settings.exe` from the folder of the running `notch.exe` and does not
+wait for it (`src/host/settings_launcher.rs`). A missing program is logged as `could not start settings`.
