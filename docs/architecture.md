@@ -25,6 +25,8 @@ src/
     calendar/     calendar: dates, the iCal reader, the day's agenda, the download
     timer/        focus timer: the rules, what is said in each state, the layout
     stats/        system stats: the readings and how they are written
+store/            notch-store: the settings file code shared by the notch and the settings window (per-key atomic writes)
+settings/         notch-settings: the settings window, a separate GPUI executable (needs the MSVC host toolchain)
 installer/        the Inno Setup script the release workflow builds the installer from
 assets/fonts/     Geist, the bundled font, and its license
 ```
@@ -51,7 +53,7 @@ other.
 | `startup.rs` | the "Start with Windows" entry under the user's `Run` key |
 | `page_editor.rs` | the "Edit pages" view: chip layout, drag and double-click rules, drawing |
 | `activity_layout.rs` | which transient activities show and where each one starts (pure functions) |
-| `settings.rs` | the persistent key-value store pages and activities share |
+| `settings.rs` | re-exports `Settings` from `notch-store`, the persistent key-value store pages and activities share |
 | `tray.rs` | the tray icon and its menu: a checkable item per activity, the pages' items, the notch's own options, Quit |
 | `display.rs` | display scale and refresh rate |
 | `notch/snapshots.rs` | tests that draw pages off-screen, and the tests of the hiding rules |
