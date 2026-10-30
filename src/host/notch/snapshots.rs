@@ -712,6 +712,29 @@ mod screen_mode_tests {
     }
 
     #[test]
+    fn switching_off_an_earlier_page_keeps_the_open_page_in_place() {
+        let settings_file = SettingsFile::new("reload-disable-earlier");
+        let options = SampleOptions { media: Some((false, false)), timer: true, ..SampleOptions::default() };
+        let mut notch = configured_rig(options, settings_file.load(), Vec::new());
+        open(&mut notch, "calendar");
+        let calendar = notch.selected_page.unwrap();
+        let shelf = notch.pages.iter().position(|page| page.id() == "shelf").unwrap();
+        let navigable_before = notch.navigable.clone();
+        let shelf_row = navigable_before.iter().position(|&index| index == shelf).unwrap();
+        let calendar_row = navigable_before.iter().position(|&index| index == calendar).unwrap();
+        assert!(shelf_row < calendar_row, "the test needs the switched-off page before the open one");
+        assert_eq!(notch.page_at(notch.track.position), calendar);
+        fs::write(&settings_file.0, "navigation.disabled=shelf\n").unwrap();
+        notch.reload_settings();
+        assert!(!notch.page_list.is_enabled(shelf));
+        assert!(notch.is_hovering);
+        assert_eq!(notch.expanded_index, Some(calendar));
+        assert_eq!(notch.page_at(notch.track.position), calendar);
+        assert_eq!(notch.page_at(notch.track.target), calendar);
+        assert!(notch.track.is_settled(), "the open notch must not scroll to the page's new row");
+    }
+
+    #[test]
     fn a_malformed_settings_file_keeps_the_current_values() {
         let settings_file = SettingsFile::new("reload-malformed");
         fs::write(

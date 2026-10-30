@@ -1250,7 +1250,8 @@ impl Notch {
             self.settings.get_bool(LYRICS_OVER_WINDOWS_SETTING, self.keeps_lyrics_over_windows);
         self.keeps_notch_over_windows =
             self.settings.get_bool(NOTCH_OVER_WINDOWS_SETTING, self.keeps_notch_over_windows);
-        let order_changed = self.reload_page_list();
+        let navigable_before = self.navigable.clone();
+        self.reload_page_list();
         for index in 0..self.pages.len() {
             self.with_page(index, |page, context| page.on_settings_changed(context));
         }
@@ -1268,14 +1269,12 @@ impl Notch {
             }
         }
         self.apply_suppression(was_suppressed);
-        if order_changed {
-            self.keep_shown_page_in_place();
-        }
+        self.keep_shown_page_in_place(&navigable_before);
         self.flush();
     }
 
-    /// Returns whether the page order changed; a list that switches every page off is ignored.
-    fn reload_page_list(&mut self) -> bool {
+    /// A list that switches every page off is ignored.
+    fn reload_page_list(&mut self) {
         let ids = self.page_ids();
         let opt_in: Vec<bool> = self.pages.iter().map(|page| page.is_opt_in()).collect();
         let (current_order, current_disabled) = (self.page_list.order_text(&ids), self.page_list.disabled_text(&ids));
@@ -1285,18 +1284,15 @@ impl Notch {
             Some(self.settings.get_string(PAGE_ORDER_SETTING).unwrap_or(&current_order)),
             Some(self.settings.get_string(PAGES_OFF_SETTING).unwrap_or(&current_disabled)),
         );
-        if !(0..self.pages.len()).any(|index| page_list.is_enabled(index)) {
-            return false;
+        if (0..self.pages.len()).any(|index| page_list.is_enabled(index)) {
+            self.page_list = page_list;
         }
-        let order_changed = page_list.order() != self.page_list.order();
-        self.page_list = page_list;
-        order_changed
     }
 
-    /// A new order moves the open page to another row position; jump there so the open notch does not scroll.
-    fn keep_shown_page_in_place(&mut self) {
+    /// A reordered or switched page list moves the open page to another row; jump there instead of scrolling.
+    fn keep_shown_page_in_place(&mut self, navigable_before: &[usize]) {
         self.refresh_layout();
-        if self.swipe.is_some() || self.holds_page_position {
+        if self.navigable == navigable_before || self.swipe.is_some() || self.holds_page_position {
             return;
         }
         if let Some(position) = self.navigable.iter().position(|&index| Some(index) == self.expanded_index) {
