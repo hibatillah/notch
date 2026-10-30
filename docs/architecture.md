@@ -112,12 +112,11 @@ The notch can step out of the way in two ways, both in `notch.rs` (`is_hidden`, 
   240 x 6 px strip that still receives the pointer, shows the small pill after the pointer rests on it for 150 ms, and
   opens if the pointer stays.
 - **Over a maximized or full-screen window** one `Showing` each (`notch.maximized`, default `lyrics`;
-  `notch.fullscreen`, default `hidden`) replaces Hide when idle. `hidden` suppresses the notch: its window is hidden
-  and nothing is drawn, so no hover, banner or message shows until the window in front changes. `activities` keeps a
-  banner, a transient message or a badge; `lyrics` also keeps active lyrics (`Page::shows_live_text`); `music` keeps
-  everything, the idle clock included (`visibility::allows` decides; a suppressed notch keeps its full-size layout so
-  no strip grows back when it returns). Whatever a choice leaves out
-  hides to the strip, 3 px high with a 350 ms wait unless Hide when idle is on, so the tabs and title bar of the window
+  `notch.fullscreen`, default `hidden`) replaces Hide when idle. The words are listed in
+  [configuration.md](configuration.md#settings-file). `visibility::allows` decides what a word shows, with
+  `Page::shows_live_text` marking active lyrics. `hidden` hides the window and draws nothing, so no hover, banner or
+  message shows until the window in front changes; a suppressed notch keeps its full-size layout so no strip grows back
+  when it returns. Whatever a word leaves out hides to the strip, 3 px high with a 350 ms wait unless Hide when idle is on, so the tabs and title bar of the window
   are not caught. `visibility::migrate` writes the new keys from the retired `notch.hide_for_fullscreen`,
   `notch.show_over_maximized` and `notch.lyrics_over_maximized` at start and on a reload, never over a saved new key.
   A reload that changes a choice while such a window is in front applies at once: it hides or shows the window and

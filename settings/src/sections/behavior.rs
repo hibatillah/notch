@@ -1,9 +1,11 @@
 use gpui::{AnyElement, Context, SharedString, div, prelude::*, px, rgb, rgba};
 use notch_store::Settings;
 
-use crate::{SettingsWindow, sections::apply};
-
-const ACCENT: u32 = 0x3b82f6;
+use crate::{
+    SettingsWindow,
+    field::{ACCENT, ACCENT_TINT},
+    sections::apply,
+};
 
 pub struct Choice {
     pub word: &'static str,
@@ -11,23 +13,27 @@ pub struct Choice {
     pub description: &'static str,
 }
 
-// Mirrors `Showing` in `src/host/visibility.rs`: the same words, in the order the window offers them.
+// The words `Showing::parse` accepts in `src/host/visibility.rs`; a test compares them, the labels are this window's own.
 pub const CHOICES: [Choice; 4] = [
-    Choice { word: "hidden", label: "Hidden", description: "Takes the notch off the screen, activities included." },
+    Choice {
+        word: "hidden",
+        label: "Hidden",
+        description: "The notch hides, even for notification banners and volume changes.",
+    },
     Choice {
         word: "activities",
         label: "Activities only",
-        description: "Shows volume, notification banners and badges, nothing else.",
+        description: "The notch shows only notification banners, volume changes and badges.",
     },
     Choice {
         word: "lyrics",
         label: "Music with lyrics",
-        description: "Also shows the pill while music plays with lyrics.",
+        description: "The notch also shows playing music that has lyrics.",
     },
     Choice {
         word: "music",
         label: "Music, even without lyrics",
-        description: "Keeps the pill up always, the idle clock included.",
+        description: "The notch stays up with nothing playing and shows the idle clock.",
     },
 ];
 
@@ -68,7 +74,7 @@ fn choice_group(
             .rounded_md()
             .border_1()
             .border_color(if is_selected { rgb(ACCENT) } else { rgba(0x80808055) })
-            .when(is_selected, |option| option.bg(rgba(0x3b82f633)))
+            .when(is_selected, |option| option.bg(rgba(ACCENT_TINT)))
             .cursor_pointer()
             .on_click(cx.listener(move |window_state, _event, _window, cx| {
                 window_state.settings.reload();
@@ -147,5 +153,18 @@ mod tests {
         let text = std::fs::read_to_string(&path).unwrap();
         let _ = std::fs::remove_file(&path);
         assert!(text.contains("notch.fullscreen=music") && text.contains("notch.maximized=activities"), "{text}");
+    }
+
+    #[test]
+    fn every_choice_word_is_accepted_by_the_hosts_parser() {
+        let host = std::fs::read_to_string(concat!(env!("CARGO_MANIFEST_DIR"), "/../src/host/visibility.rs"))
+            .expect("host visibility source");
+        for choice in &CHOICES {
+            assert!(
+                host.contains(&format!("\"{}\" => Some(Showing::", choice.word)),
+                "{} missing in host",
+                choice.word
+            );
+        }
     }
 }

@@ -52,7 +52,7 @@ next start, or at once if something posts that message.
 | `calendar.ics_url` | a web address | the calendar address; the tray menu sets it from the clipboard. It is a secret: anyone with it can read the calendar |
 | `calendar.refresh_minutes` | minutes | how often the calendar is downloaded again (default 15); set by hand |
 | `notch.hide_when_idle` | `on`, `off` | off by default: hide the notch when there is nothing to show until you point at the top of the screen |
-| `notch.maximized`, `notch.fullscreen` | `hidden`, `activities`, `lyrics`, `music` | what the notch shows over a maximized window (default `lyrics`) and over a full-screen app (default `hidden`); a missing or unknown word uses the default. `hidden` suppresses the notch, activities included. `activities` shows only banners, volume changes and badges. `lyrics` shows an activity, or playing music that has lyrics. `music` also keeps the idle pill up with nothing playing. What a word leaves out hides to the strip. The settings window's Behavior section writes them |
+| `notch.maximized`, `notch.fullscreen` | `hidden`, `activities`, `lyrics`, `music` | what the notch shows over a maximized window (default `lyrics`) and over a full-screen app (default `hidden`); a missing or unknown word uses the default. With `hidden`, the notch hides even for activities. With `activities`, it shows only banners, volume changes and badges. With `lyrics`, it shows an activity, or music that is playing with lyrics. With `music`, it also keeps the idle pill up with nothing playing. The notch shows the strip for anything the word leaves out. The settings window writes both keys |
 | `notch.hide_for_fullscreen`, `notch.show_over_maximized`, `notch.lyrics_over_maximized` | `on`, `off` | retired, with no tray item: read only to write `notch.fullscreen` (`on` becomes `hidden`, `off` becomes `music`) and `notch.maximized` (`show_over_maximized=on` becomes `music`, else `lyrics_over_maximized=off` becomes `activities`, else `lyrics`) when the new key is missing, at start and on a reload |
 | `pages.known` | `id:Label,...`, with `:opt_in` after the label of an opt-in page | written by the notch at start, only when it changed: the pages the settings window lists (label is `Page::name`; an opt-in page shows as off until `navigation.disabled` is saved). Do not edit; with it missing the window's Pages section shows a note and writes nothing. The window never switches off the last enabled page, so one page stays reachable |
 | `navigation.page` | a page id | the page that was open last; the notch opens on it (the notch writes this when you change page) |
@@ -95,12 +95,12 @@ Windows** item shows whether it does, and switches it: it adds or removes a `Not
 The tray menu's **Settings…** item starts `notch-settings.exe` from the folder of the running `notch.exe` and does not
 wait for it (`src/host/settings_launcher.rs`). A missing program is logged as `could not start settings`.
 
-`notch-settings.exe` allows one open window; starting it again focuses the existing one. Its sections are General, Pages,
-Behavior (one choice of the four words each for `notch.maximized` and `notch.fullscreen`, applied on click), Notifications, Calendar, Media, Timer and Advanced. Toggles apply at once and write `on` or
-`off`; the Pages section applies each drag to reorder and each show or hide at once, writing `navigation.order` and
-`navigation.disabled`. Every write posts `WM_SETTINGS_CHANGED` to the notch (see Settings file). Text and minute fields
-save on Enter or when they lose focus, and a minute value outside its
-range (focus 5 to 120, breaks 1 to 120, calendar refresh 1 to 1440) is dropped and the field shows the saved value
+`notch-settings.exe` allows one open window; starting it again focuses the existing one. Its sections are General,
+Pages, Behavior (a choice for each of `notch.maximized` and `notch.fullscreen`), Notifications, Calendar, Media, Timer
+and Advanced. Toggles apply at once and write `on` or `off`; the Pages section applies each drag to reorder and each
+show or hide at once, writing `navigation.order` and `navigation.disabled`. Every write posts `WM_SETTINGS_CHANGED` to
+the notch (see Settings file). Text and minute fields save on Enter or when they lose focus, and a minute value outside
+its range (focus 5 to 120, breaks 1 to 120, calendar refresh 1 to 1440) is dropped and the field shows the saved value
 again. **Start with Windows** writes the same `Run` value as the tray item, pointing at the `notch.exe` beside the
-settings program. The Advanced section only lists the environment variables above. The window's memory and CPU
-figures are in [performance.md](performance.md#settings-window).
+settings program. The Advanced section only lists the environment variables above. The window's memory and CPU figures
+are in [performance.md](performance.md#settings-window).

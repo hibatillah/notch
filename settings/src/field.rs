@@ -8,7 +8,8 @@ use notch_store::Settings;
 
 use crate::{SettingsWindow, sections::apply};
 
-const ACCENT: u32 = 0x3b82f6;
+pub(crate) const ACCENT: u32 = 0x3b82f6;
+pub(crate) const ACCENT_TINT: u32 = 0x3b82f633;
 const SWITCH_OFF: u32 = 0x777777;
 
 pub fn on_off(enabled: bool) -> &'static str {

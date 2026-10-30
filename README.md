@@ -34,7 +34,7 @@ Activities (what the collapsed pill shows while something happens):
 
 ### Maximized and full-screen windows
 
-Over a **maximized** window and over a **full-screen** app (a game, a video, an F11 window) the notch follows its own choice for each, saved as `notch.maximized` and `notch.fullscreen`: **hidden** takes the whole notch off the screen; **activities** shows only volume, notifications and other short messages; **lyrics** also keeps active lyrics; **music** keeps all notch content, including music without lyrics and the idle clock. Anything a choice leaves out hides to a thin strip at the very top edge that wakes when the pointer waits there. Both choices are in the **Behavior** section of **Settings…** (defaults in the table above) and take precedence over **Hide when idle**. Choices saved with the old tray options carry over.
+Over a **maximized** window and over a **full-screen** app (a game, a video, an F11 window) the notch follows its own choice for each, saved as `notch.maximized` and `notch.fullscreen`. The choices, from hiding the notch to keeping music visible, are listed in [docs/configuration.md](docs/configuration.md). You set them in the **Behavior** section of **Settings…**; they take precedence over **Hide when idle**, and choices saved with the old tray options carry over.
 
 ### Status marks
 

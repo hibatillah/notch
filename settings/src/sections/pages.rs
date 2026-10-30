@@ -138,7 +138,7 @@ pub fn render(window_state: &SettingsWindow, cx: &mut Context<SettingsWindow>) -
             .rounded_md()
             .cursor_grab()
             .on_drag(dragged, |dragged, _position, _window, cx| cx.new(|_| DragPreview(dragged.label.clone())))
-            .drag_over::<DraggedPage>(|style, _dragged, _window, _cx| style.bg(rgba(0x3b82f633)))
+            .drag_over::<DraggedPage>(|style, _dragged, _window, _cx| style.bg(rgba(field::ACCENT_TINT)))
             .on_drop(cx.listener(move |window_state, dragged: &DraggedPage, _window, cx| {
                 let settings = &mut window_state.settings;
                 settings.reload();
