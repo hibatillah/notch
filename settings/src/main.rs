@@ -1,8 +1,10 @@
 #![windows_subsystem = "windows"]
 
+mod field;
 mod notify;
 mod sections;
 mod single_instance;
+mod startup;
 
 use gpui::{
     App, Application, Bounds, Context, Rgba, SharedString, TitlebarOptions, Window, WindowAppearance, WindowBounds,
@@ -41,13 +43,14 @@ impl Palette {
 
 struct SettingsWindow {
     selected_section_index: usize,
-    // Section bodies will read and write settings through this.
-    #[allow(dead_code)]
     settings: Settings,
+    fields: sections::Fields,
 }
 
 impl Render for SettingsWindow {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        // The notch's tray toggles and hand edits change the file; show them instead of a stale copy.
+        self.settings.reload();
         let palette = Palette::for_appearance(window.appearance());
         let sidebar = div().flex().flex_col().w(px(180.0)).h_full().p_2().gap_1().bg(palette.sidebar).children(
             sections::SECTION_NAMES.iter().enumerate().map(|(section_index, section_name)| {
@@ -74,7 +77,8 @@ impl Render for SettingsWindow {
             .flex_1()
             .p_4()
             .gap_3()
-            .child(div().text_xl().child(sections::SECTION_NAMES[self.selected_section_index]));
+            .child(div().text_xl().child(sections::SECTION_NAMES[self.selected_section_index]))
+            .child(sections::render(self.selected_section_index, self, cx));
 
         div().flex().size_full().bg(palette.content).text_color(palette.text).child(sidebar).child(content)
     }
@@ -98,7 +102,9 @@ fn main() {
             ..Default::default()
         };
         let opened = cx.open_window(options, |window, cx| {
-            let settings_window = cx.new(|_| SettingsWindow { selected_section_index: 0, settings: Settings::load() });
+            let fields = sections::Fields::new(window, cx);
+            let settings_window =
+                cx.new(|_| SettingsWindow { selected_section_index: 0, settings: Settings::load(), fields });
             let observed_window = settings_window.clone();
             window
                 .observe_window_appearance(move |_window, cx| observed_window.update(cx, |_, cx| cx.notify()))
