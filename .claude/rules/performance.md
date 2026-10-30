@@ -1,6 +1,7 @@
 # Performance
 
-Budget: 0 % CPU while idle, under 50 MB of memory. The limits `scripts/perf.sh` enforces are in `scripts/perf.rs`.
+Budget for `notch.exe`: 0 % CPU while idle, under 50 MB of memory. The limits `scripts/perf.sh` enforces are in
+`scripts/perf.rs`. The settings window is a separate process outside this budget; its figures are in `docs/performance.md`.
 
 - Stop every timer and animation as soon as its output stops changing; the frame timer ends when the springs settle
   and no page reports `animate` as moving.

@@ -1,9 +1,16 @@
 # Notch
 
 A Windows "dynamic island" written in Rust: a black pill at the top of the screen, drawn with Direct2D, no UI
-framework. It idles at 0 % CPU and stays under 50 MB of memory. Windows only.
+framework. `notch.exe` idles at 0 % CPU and stays under 50 MB of memory. Windows only.
+
+The settings window is a second program, `notch-settings.exe` (`settings/`, built with GPUI), that the tray's
+**Settings…** item starts. It has a higher footprint while open and is outside that budget. `store/` holds the settings
+file code both programs share. See `docs/architecture.md`.
 
 ## Commands
+
+Root commands cover only the notch (the workspace's default member). GPUI builds only with the MSVC host toolchain, so
+run `settings/` and `store/` commands as `cargo +stable-x86_64-pc-windows-msvc ... -p notch-settings` (or `--workspace`).
 
 ```
 cargo build --release                     # target\x86_64-pc-windows-msvc\release\notch.exe
@@ -34,7 +41,7 @@ Read the doc for the work in front of you before starting it:
 | a new activity (volume, Caps Lock, notification banner) | `docs/adding-an-activity.md` |
 | layout, padding or the open and collapsed shapes | `docs/development.md` (the notch layout) |
 | a test, a snapshot, the manual checklist, `perf.sh` | `docs/testing.md` |
-| settings keys, environment variables, tray options | `docs/configuration.md` |
+| settings keys, environment variables, tray options, the settings window | `docs/configuration.md` |
 | the installer, a release, updating | `docs/releasing.md` |
 | a CPU or memory number, a perf limit | `docs/performance.md` |
 

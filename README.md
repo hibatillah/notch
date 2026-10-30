@@ -4,7 +4,7 @@
 
 A tiny notch for the top of your Windows screen, written in Rust. It sits at the top edge as a slim black pill, and opens when you hover over it. While music plays, it shows the track and scrolls the synced lyrics inline, line by line. It also keeps a file shelf, a calendar, a focus timer and system stats, and shows short messages (volume, notifications, Caps Lock) in the pill.
 
-It draws straight to the screen with Direct2D: no UI framework, no web view. Every page and every pill message is its own module. Pages can be disabled; notifications are the only optional activity. See [Resource use](#resource-use) for measured CPU and memory.
+The notch draws straight to the screen with Direct2D: no UI framework, no web view. Every page and every pill message is its own module. Pages can be disabled; notifications are the only optional activity. A settings window, opened from the tray menu, is a separate program, so it adds nothing to the notch while closed. See [Resource use](#resource-use) for measured CPU and memory.
 
 ![The open notch on the media page, playing a song with its synced lyrics beside the controls](docs/images/notch-lyrics.png)
 
@@ -42,7 +42,7 @@ While the notch is open, small marks beside the time show what is going on: the 
 
 ### Extensible
 
-The tray menu can switch **Notifications** on or off; the other activities are always enabled. The settings file orders and removes pages (the **Edit pages** view that does it in the notch is switched off for now; see [docs/configuration.md](docs/configuration.md)). To go further, write your own page or activity: each is one folder or file and one line in a registry, with no other code to touch. See [docs/adding-a-page.md](docs/adding-a-page.md) and [docs/adding-an-activity.md](docs/adding-an-activity.md).
+The tray menu can switch **Notifications** on or off; the other activities are always enabled. The **Settings…** window (General, Pages, Notifications, Calendar, Media, Timer and Advanced sections) changes the options, orders pages and switches them on or off, and the notch applies each change at once; the same keys can be edited in the settings file (the **Edit pages** view in the notch is switched off; see [docs/configuration.md](docs/configuration.md)). To go further, write your own page or activity: each is one folder or file and one line in a registry, with no other code to touch. See [docs/adding-a-page.md](docs/adding-a-page.md) and [docs/adding-an-activity.md](docs/adding-an-activity.md).
 
 ### Limitations
 
@@ -106,6 +106,7 @@ Requirements for building (running a built `notch.exe` needs only Windows 10 or 
 - [Rust](https://rustup.rs) 1.88 or newer (tested with 1.97)
 - Visual Studio Build Tools with the **Desktop development with C++** workload (MSVC linker and Windows SDK)
 - Git Bash, only for the `scripts/*.sh` helpers
+- To build the settings window (`notch-settings`), the MSVC Rust toolchain (`stable-x86_64-pc-windows-msvc`); the default `cargo build` builds only the notch
 
 Build and run:
 
@@ -163,6 +164,8 @@ All baseline checks passed in this run. Earlier runs intermittently exceeded CPU
 one passing sample does not establish their cause or guarantee the same result on every machine.
 Music playback, live lyrics, held hover and swiping were not measured in this latest baseline.
 
+These figures are for `notch.exe`. The settings window is a separate process with a higher footprint while it is open; see [docs/performance.md](docs/performance.md#settings-window).
+
 Run `scripts/perf.sh` to repeat the baseline, or add `--extended` for held hover and swiping.
 The check moves the mouse and replaces the running Notch; afterwards run `scripts/reload.sh` to restore normal pages.
 See [docs/testing.md](docs/testing.md) for options and limits.
@@ -180,7 +183,7 @@ It connects out for two things only:
 
 Notch is heavily inspired by Apple's Dynamic Island, and by the apps that bring the same idea to screens that have no hardware notch: [NotchNook](https://lo.cafe/notchnook) for the Mac and [Nusa](https://rama2555.github.io/nusa/) for Windows. They showed what a notch overlay can hold and how it should feel: the media player, the file shelf, the calendar and the short messages that open the pill.
 
-Notch itself is written independently, from scratch in Rust. It draws with Direct2D and uses no UI framework, and every page and every pill message is its own module, so you can remove one or write your own. It is open source under the MIT license: clone or fork it and change your copy (see [Contributing](#contributing)).
+Notch itself is written independently, from scratch in Rust. It draws with Direct2D and uses no UI framework (only its separate settings window does), and every page and every pill message is its own module, so you can remove one or write your own. It is open source under the MIT license: clone or fork it and change your copy (see [Contributing](#contributing)).
 
 Notch is not affiliated with or endorsed by Apple, NotchNook, Nusa or their developers. Dynamic Island is a trademark of Apple Inc., and the other names belong to their owners.
 

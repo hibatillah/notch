@@ -30,6 +30,22 @@ It predates the subsequent reduction of the idle music width cap to 400 DIP.
 Notch settled after startup and after the animations. Normal pages were restored after the test.
 This baseline did not measure music playback, live lyrics, held hover or swiping.
 
+## Settings window
+
+The 0 % idle and 50 MB budget applies to `notch.exe` and is what the baseline above measures. The settings window is a
+separate process (`notch-settings.exe`, GPUI) with its own, higher footprint while it is open, and `scripts/perf.sh`
+does not run it. Measured on 2026-10-30 on the same machine with the spike prototype (one window, a sidebar and one
+toggle, release profile; see [the spike](superpowers/spikes/2026-10-30-gpui-spike.md)):
+
+| Measurement | Result |
+| --- | ---: |
+| Executable size | 3.6 MB |
+| Private working set 10 s after opening | 20.6 MB |
+| Working set on the first launch after the build | 86.9 MB |
+| CPU while open and idle | 0.6 to 1.1 % of one core |
+
+The prototype is not the finished window, and the cause of the larger first launch is not confirmed.
+
 ## Earlier measurements
 
 All runs below were recorded on 2026-10-28. They used different revisions and workloads, so they are not controlled

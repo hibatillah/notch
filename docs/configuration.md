@@ -96,8 +96,12 @@ Windows** item shows whether it does, and switches it: it adds or removes a `Not
 The tray menu's **Settings…** item starts `notch-settings.exe` from the folder of the running `notch.exe` and does not
 wait for it (`src/host/settings_launcher.rs`). A missing program is logged as `could not start settings`.
 
-`notch-settings.exe` shows the General, Notifications, Calendar, Media, Timer and Advanced sections. Toggles apply at once
-and write `on` or `off`; text and minute fields save on Enter or when they lose focus, and a minute value outside its
+`notch-settings.exe` allows one open window; starting it again focuses the existing one. Its sections are General, Pages,
+Behavior (no options yet), Notifications, Calendar, Media, Timer and Advanced. Toggles apply at once and write `on` or
+`off`; the Pages section applies each drag to reorder and each show or hide at once, writing `navigation.order` and
+`navigation.disabled`. Every write posts `WM_SETTINGS_CHANGED` to the notch (see Settings file). Text and minute fields
+save on Enter or when they lose focus, and a minute value outside its
 range (focus 5 to 120, breaks 1 to 120, calendar refresh 1 to 1440) is dropped and the field shows the saved value
 again. **Start with Windows** writes the same `Run` value as the tray item, pointing at the `notch.exe` beside the
-settings program. The Advanced section only lists the environment variables above.
+settings program. The Advanced section only lists the environment variables above. The window's memory and CPU
+figures are in [performance.md](performance.md#settings-window).

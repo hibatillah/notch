@@ -21,6 +21,9 @@ add the target once:
 rustup target add x86_64-pc-windows-msvc
 ```
 
+The settings window (`settings/`, GPUI) builds only with the MSVC host toolchain: install it with
+`rustup toolchain install stable-x86_64-pc-windows-msvc` and run its commands as `cargo +stable-x86_64-pc-windows-msvc`.
+
 ## Build
 
 ```
@@ -29,7 +32,9 @@ cd notch
 cargo build --release
 ```
 
-The executable is `target\x86_64-pc-windows-msvc\release\notch.exe`. A debug build (`cargo build`) works too, but
+The executable is `target\x86_64-pc-windows-msvc\release\notch.exe`. The workspace's default member is the notch, so
+this does not build the settings window; `cargo +stable-x86_64-pc-windows-msvc build --release -p notch-settings` builds
+`notch-settings.exe` beside it, and `--workspace` builds both. A debug build (`cargo build`) works too, but
 animation is noticeably slower, so use release for anything you look at.
 
 ## App icon
@@ -96,6 +101,7 @@ cargo test
 scripts/perf.sh          # when you touched the host, animation, timers or drawing
 ```
 
+The checks above cover only the notch; add `--workspace` (with the MSVC toolchain) to include `store/` and `settings/`.
 CI runs the first three on every push to the default branch ([releasing.md](releasing.md)); run them yourself first. Where the tests live and what they cover: [testing.md](testing.md).
 `scripts/perf.sh` moves the mouse for about two minutes, so leave the mouse alone while it runs.
 
@@ -168,6 +174,7 @@ are in device-independent pixels (multiply by the display scale when drawing). T
 | which page shows, swiping, hover, the springs, hiding | `src/host/notch.rs` |
 | maximized and full-screen detection | `src/host/screen_mode.rs` |
 | the tray menu | `src/host/tray.rs` (the items), `src/host/window.rs` (what they do) |
+| the settings window | `settings/src/sections/` (one file per section), `settings/src/field.rs` (text fields); `docs/configuration.md` |
 | start with Windows | `src/host/startup.rs` (the tray item), `installer/notch.iss` (the installer's choice) |
 | a page's content and size | that page's folder in `src/pages/` |
 | register a page | `src/pages/mod.rs` |
@@ -188,8 +195,9 @@ are in device-independent pixels (multiply by the display scale when drawing). T
 
 The project is MIT licensed (see `LICENSE`). Every dependency, including build-time ones, is licensed
 `MIT OR Apache-2.0` (the `windows-*` crates, `proc-macro2`, `quote`, `syn`); `unicode-ident` is
-`(MIT OR Apache-2.0) AND Unicode-3.0`. All are permissive and compatible with MIT. Re-check after changing
-`Cargo.lock`:
+`(MIT OR Apache-2.0) AND Unicode-3.0`. All are permissive and compatible with MIT. That list is the notch's;
+`settings/` adds GPUI and its dependencies, all permissive, whose license texts ship in `THIRD-PARTY-LICENSES.txt`
+([releasing.md](releasing.md#third-party-licenses)). Re-check after changing `Cargo.lock`:
 
 ```
 cargo install cargo-license --locked    # once
