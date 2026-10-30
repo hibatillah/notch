@@ -1113,8 +1113,8 @@ impl Notch {
             !self.shown_transients.is_empty() || self.shown_banner.is_some() || !self.shown_badges.is_empty();
         match self.current_showing() {
             None => self.hides_when_idle && !has_activity && !self.has_resting_content,
-            // Music keeps even the idle clock up, as the old show_over_maximized did.
-            Some(Showing::Music) => false,
+            // The suppressed window draws nothing; a full-size layout avoids a strip growing back when it returns.
+            Some(Showing::Hidden) => false,
             Some(showing) => {
                 let has_lyrics = self.resting_index.is_some_and(|index| self.pages[index].shows_live_text());
                 !visibility::allows(showing, has_activity, self.has_resting_content, has_lyrics)
@@ -1193,6 +1193,8 @@ impl Notch {
             unsafe {
                 let _ = ShowWindow(self.window, SW_SHOWNOACTIVATE);
             }
+            // A reload can release the window while a maximized or full-screen window sits above it.
+            super::window::raise_topmost(self.window);
         }
         super::drop_target::set_suppressed(is_suppressed);
         if !is_suppressed {

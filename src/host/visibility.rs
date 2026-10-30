@@ -68,13 +68,14 @@ pub fn migrate(settings: &mut Settings) {
     }
 }
 
-/// An activity (a notification banner, a volume change) shows in every mode except Hidden.
+/// An activity (a notification banner, a volume change) shows in every mode except Hidden; Music keeps the pill up
+/// even with nothing playing, so the idle clock stays visible.
 pub fn allows(showing: Showing, has_activity: bool, is_playing: bool, has_lyrics: bool) -> bool {
     match showing {
         Showing::Hidden => false,
         Showing::ActivitiesOnly => has_activity,
         Showing::MusicWithLyrics => has_activity || (is_playing && has_lyrics),
-        Showing::Music => has_activity || is_playing,
+        Showing::Music => true,
     }
 }
 
@@ -185,7 +186,11 @@ mod tests {
         assert!(!allows(Showing::MusicWithLyrics, false, false, true));
         assert!(allows(Showing::MusicWithLyrics, true, false, false));
         assert!(allows(Showing::Music, false, true, false));
-        assert!(!allows(Showing::Music, false, false, true));
+    }
+
+    #[test]
+    fn music_keeps_the_pill_up_even_with_nothing_playing() {
+        assert!(allows(Showing::Music, false, false, false));
     }
 
     #[test]

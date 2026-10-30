@@ -203,9 +203,7 @@ fn lyrics_comparison(executable: &Path, log: &Path, center_x: i32) -> bool {
         fs::create_dir_all(&settings).expect("create isolated lyrics test profile");
         fs::write(
             settings.join("settings.txt"),
-            format!(
-                "media.lyrics={state}\nnotch.hide_when_idle=off\nnotch.hide_for_fullscreen=off\nnavigation.page=media\n"
-            ),
+            format!("media.lyrics={state}\nnotch.hide_when_idle=off\nnotch.fullscreen=music\nnavigation.page=media\n"),
         )
         .expect("write isolated lyrics test settings");
         println!("Lyrics {state}: isolated default-page profile, real Windows media playback");

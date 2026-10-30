@@ -909,7 +909,6 @@ mod screen_mode_tests {
     fn maximized_lyrics_hides_music_without_lyrics() {
         let mut without_lyrics = playing(false);
         without_lyrics.maximized_showing = Showing::MusicWithLyrics;
-        without_lyrics.refresh_layout();
         without_lyrics.screen_mode = ScreenMode::Maximized;
         without_lyrics.refresh_layout();
         assert!(without_lyrics.is_hidden());
@@ -943,6 +942,34 @@ mod screen_mode_tests {
         playing_notch.screen_mode = ScreenMode::Fullscreen;
         playing_notch.refresh_layout();
         assert!(playing_notch.is_hidden(), "music and lyrics do not count as activities");
+    }
+
+    #[test]
+    fn leaving_full_screen_with_default_settings_keeps_the_pill_at_full_size_without_animating() {
+        let mut notch = rig(SampleOptions::default());
+        settle(&mut notch);
+        assert_eq!(notch.resting_height.target, RESTING_PILL_HEIGHT);
+        // Settling snaps the springs but leaves the rig's start-up frame timer running.
+        notch.stop_animation();
+        notch.set_screen_mode(ScreenMode::Fullscreen);
+        assert!(!notch.is_animating, "entering full screen starts no strip animation");
+        assert!(notch.is_suppressed());
+        assert!(!notch.is_hidden(), "a suppressed notch keeps its full-size layout");
+        assert_eq!(notch.resting_height.target, RESTING_PILL_HEIGHT);
+        notch.set_screen_mode(ScreenMode::Normal);
+        assert_eq!(notch.resting_height.target, RESTING_PILL_HEIGHT);
+        assert!(!notch.is_animating);
+    }
+
+    #[test]
+    fn fullscreen_music_keeps_the_idle_clock_up_even_with_hide_when_idle_on() {
+        let mut notch = rig(SampleOptions::default());
+        notch.hides_when_idle = true;
+        notch.fullscreen_showing = Showing::Music;
+        notch.screen_mode = ScreenMode::Fullscreen;
+        notch.refresh_layout();
+        assert!(!notch.has_resting_content);
+        assert!(!notch.is_hidden());
     }
 
     #[test]
