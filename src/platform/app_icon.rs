@@ -1,4 +1,4 @@
-//! Finds the icon of the app that is playing, so the notch can show it next to the track.
+//! Finds the icon of an app from its Windows app identifier.
 
 use std::ffi::c_void;
 
@@ -29,7 +29,7 @@ const REQUESTED_PIXELS: i32 = 256;
 /// Retain roughly twice the drawn size for smooth downscaling.
 const STORED_PIXELS: u32 = 64;
 
-/// Loads the icon of the app that owns a media session, from its Windows app identifier.
+/// Loads the icon of an app, from its Windows app identifier.
 /// Packaged apps resolve through the Apps folder; classic apps (such as `Spotify.exe`) through their running process.
 pub fn load(app_user_model_id: &str) -> Option<ImageData> {
     if app_user_model_id.is_empty() {

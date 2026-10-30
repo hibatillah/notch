@@ -136,6 +136,24 @@ fn track_mouse_leave(window: HWND) {
     }
 }
 
+/// Moves the window to the top of the topmost band; another topmost window can sit above it with the flag still set.
+pub(super) fn raise_topmost(window: HWND) {
+    let result = unsafe {
+        SetWindowPos(
+            window,
+            Some(HWND_TOPMOST),
+            0,
+            0,
+            0,
+            0,
+            SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE | SWP_NOOWNERZORDER,
+        )
+    };
+    if let Err(error) = result {
+        log::debug(&format!("could not raise topmost: {error}"));
+    }
+}
+
 pub(super) fn restore_topmost(window: HWND) {
     if unsafe { GetWindowLongW(window, GWL_EXSTYLE) } as u32 & WS_EX_TOPMOST.0 != 0 {
         return;

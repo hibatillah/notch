@@ -137,7 +137,8 @@ are in device-independent pixels (multiply by the display scale when drawing). T
   page out for 86 px (the stats tiles and the calendar do).
 - A page cannot draw into the header or the padding.
 
-**Collapsed**, the pill is 30 px high (plus 3 px of bottom padding), and one of four things fills it:
+**Collapsed**, the pill is 33 px high (`RESTING_HEIGHT`, plus 3 px of bottom padding) and at least 150 px wide
+(`RESTING_MIN_WIDTH`), and one of four things fills it:
 
 ```
   nothing happening     music playing        activity or timer      notification banner
@@ -145,8 +146,8 @@ are in device-independent pixels (multiply by the display scale when drawing). T
     /  18:41  \      / (page draws it) [o] \  / (activity draws) \  | [D] Rafi - Discord  |
     \_________/      \____________________/  \__________________/  |  Deploy is green... |
     host: the time    the media page, plus    a transient takes      \____________________/
-    in a 96 px pill   an optional badge       the pill for a moment  an activity opens the pill
-                      at the right            (volume, Caps Lock)    into a card, 48 to 70 px high
+    in a 150 px pill  an optional badge       the pill for a moment  an activity opens the pill
+                      at the right            (volume, Caps Lock)    into a card, 48 to 70 px high (400 px wide)
 ```
 
 - A page answers `priority(Mode::Resting)` to claim the collapsed pill; with no answer the host shows the time.

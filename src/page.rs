@@ -17,7 +17,8 @@ use crate::{
 };
 
 /// Device-independent pixels; resting content is centered within this height.
-pub const RESTING_HEIGHT: f32 = 30.0;
+pub const RESTING_HEIGHT: f32 = 33.0;
+pub const RESTING_MIN_WIDTH: f32 = 150.0;
 
 pub(crate) const WM_PAGE_NOTIFY: u32 = WM_APP + 1;
 /// Win32 timer ids from this up to `PAGE_TIMER_LIMIT` belong to pages; each page owns `TIMERS_PER_PAGE` of them.

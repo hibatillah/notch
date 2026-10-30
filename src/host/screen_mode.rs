@@ -114,6 +114,9 @@ fn read() -> ScreenMode {
 
 fn refresh(notify_when_unchanged: bool) {
     let mode = read();
+    if notify_when_unchanged {
+        crate::log::debug(&format!("foreground class={} mode={mode:?}", class_name(unsafe { GetForegroundWindow() })));
+    }
     if (LAST_MODE.swap(mode as u8, Ordering::Relaxed) != mode as u8 || notify_when_unchanged)
         && let Some(on_change) = ON_CHANGE.get()
     {

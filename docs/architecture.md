@@ -13,7 +13,8 @@ src/
   log.rs          optional debug log (set NOTCH_DEBUG to a file path)
   host/           the notch itself: window, animation, hover, tray, settings. Knows no page.
   gfx/            drawing toolkit: Canvas, fonts, colors, images, springs, geometry, text clamping
-  platform.rs     small Windows actions for pages: open a file, paste text, drag a file out, the picture Explorer shows
+  platform/       small Windows actions for pages and activities: an app's icon, open a file, paste text, drag a file
+                  out, the picture Explorer shows
   ui/             reusable widgets: IconButton, PillButton, Ring, icons, the dashed outline, the HUD layouts
   activities/     the registry (mod.rs) and one file or folder per activity: volume, brightness, battery, Bluetooth,
                   microphone, camera, clipboard, Caps Lock, notifications
@@ -29,7 +30,7 @@ assets/fonts/     Geist, the bundled font, and its license
 ```
 
 Dependencies point one way. Pages use `page`, `activity` (for `Presence` and `Flash`), `gfx`, `ui` and `platform`;
-activities use `activity`, `page` (for `Context`), `gfx` and `ui`. The host uses `page`, `activity` and `gfx`. Nothing in
+activities use `activity`, `page` (for `Context`), `gfx`, `ui` and `platform`. The host uses `page`, `activity` and `gfx`. Nothing in
 `gfx`, `ui`, `page` or `activity` knows about a particular page or activity, and pages and activities never use each
 other.
 

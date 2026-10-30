@@ -20,7 +20,7 @@ use crate::{
 const SHOW_MILLISECONDS: u32 = 4000;
 const SHOW_TEXT_SETTING: &str = "notifications.show_text";
 
-const WIDTH: f32 = 330.0;
+const WIDTH: f32 = 400.0;
 const PADDING: f32 = 14.0;
 const TOP_PADDING: f32 = 10.0;
 const BOTTOM_PADDING: f32 = 12.0;
@@ -30,8 +30,9 @@ const TILE_GAP: f32 = 12.0;
 const HEADING_HEIGHT: f32 = 18.0;
 const BODY_LINE_HEIGHT: f32 = 15.0;
 const BODY_LINES: usize = 2;
+/// The most body lines the 260 DIP notch window has room for under the pointer.
+const HOVER_BODY_LINES: usize = 12;
 const MIN_HEIGHT: f32 = 48.0;
-const TEXT_WIDTH: f32 = WIDTH - 2.0 * PADDING - TILE_SIZE - TILE_GAP;
 
 const HEADING: FontStyle = FontStyle::new(UI_FONT, 13.0, Weight::Medium, Align::Leading);
 const BODY: FontStyle = FontStyle::new(UI_FONT, 12.0, Weight::Regular, Align::Leading);
@@ -43,16 +44,42 @@ fn banner_height(body_lines: usize) -> f32 {
     (TOP_PADDING + HEADING_HEIGHT + body_lines as f32 * BODY_LINE_HEIGHT + BOTTOM_PADDING).max(MIN_HEIGHT)
 }
 
+fn text_width(banner_width: f32) -> f32 {
+    banner_width - 2.0 * PADDING - TILE_SIZE - TILE_GAP
+}
+
 struct Words {
     heading: String,
     body: Vec<String>,
 }
 
-fn words(item: &Item, shows_text: bool, fonts: &Fonts) -> Words {
-    let heading =
-        clamp_lines(&heading(item), 1, TEXT_WIDTH, |text| fonts.measure(&HEADING, text)).pop().unwrap_or_default();
-    let body = clamp_lines(&body_text(item, shows_text), BODY_LINES, TEXT_WIDTH, |text| fonts.measure(&BODY, text));
-    Words { heading, body }
+impl Words {
+    fn new(item: &Item, shows_text: bool, fonts: &Fonts, banner_width: f32, body_lines: usize) -> Self {
+        let width = text_width(banner_width);
+        let heading =
+            clamp_lines(&heading(item), 1, width, |text| fonts.measure(&HEADING, text)).pop().unwrap_or_default();
+        let body = clamp_lines(&body_text(item, shows_text), body_lines, width, |text| fonts.measure(&BODY, text));
+        Self { heading, body }
+    }
+}
+
+/// The message cut to its idle lines, and in full for while the pointer is on the banner.
+struct Layouts {
+    compact: Words,
+    full: Words,
+}
+
+impl Layouts {
+    fn new(item: &Item, shows_text: bool, fonts: &Fonts) -> Self {
+        Self {
+            compact: Words::new(item, shows_text, fonts, WIDTH, BODY_LINES),
+            full: Words::new(item, shows_text, fonts, WIDTH, HOVER_BODY_LINES),
+        }
+    }
+
+    fn shown(&self, is_hovered: bool) -> &Words {
+        if is_hovered { &self.full } else { &self.compact }
+    }
 }
 
 pub struct NotificationsActivity {
@@ -60,17 +87,25 @@ pub struct NotificationsActivity {
     shows_text: bool,
     flash: Flash,
     item: Option<Item>,
-    words: Option<Words>,
+    layouts: Option<Layouts>,
     is_hovered: bool,
 }
 
 impl NotificationsActivity {
     pub fn new() -> Self {
-        Self { shared: None, shows_text: true, flash: Flash::default(), item: None, words: None, is_hovered: false }
+        Self { shared: None, shows_text: true, flash: Flash::default(), item: None, layouts: None, is_hovered: false }
     }
 
     #[cfg(test)]
     pub fn sample(fonts: &Fonts) -> Self {
+        Self::sample_with_body(
+            fonts,
+            "Deploy is green. Can you check the hover state on the 1440p monitor before we tag it?",
+        )
+    }
+
+    #[cfg(test)]
+    pub fn sample_with_body(fonts: &Fonts, body: &str) -> Self {
         let mut activity = Self::new();
         let item = Item {
             id: 1,
@@ -78,16 +113,22 @@ impl NotificationsActivity {
             app_id: String::new(),
             icon: None,
             title: "Rafi".to_owned(),
-            body: "Deploy is green. Can you check the hover state on the 1440p monitor before we tag it?".to_owned(),
+            body: body.to_owned(),
         };
-        activity.words = Some(words(&item, true, fonts));
+        activity.layouts = Some(Layouts::new(&item, true, fonts));
         activity.item = Some(item);
         activity.flash = Flash::visible();
         activity
     }
 
+    #[cfg(test)]
+    pub fn hovered(mut self) -> Self {
+        self.is_hovered = true;
+        self
+    }
+
     fn show(&mut self, item: Item, context: &mut Context) {
-        self.words = Some(words(&item, self.shows_text, context.fonts()));
+        self.layouts = Some(Layouts::new(&item, self.shows_text, context.fonts()));
         self.item = Some(item);
         self.flash.show(context, SHOW_MILLISECONDS);
         if self.is_hovered {
@@ -124,12 +165,13 @@ impl Activity for NotificationsActivity {
     }
 
     fn presence(&self) -> Option<Presence> {
-        let words = self.words.as_ref()?;
+        let words = self.layouts.as_ref()?.shown(self.is_hovered);
         self.flash.is_visible().then_some(Presence::Banner { width: WIDTH, height: banner_height(words.body.len()) })
     }
 
     fn draw(&self, canvas: &Canvas, area: Rect, scale: f32, opacity: f32) {
-        let (Some(item), Some(words)) = (&self.item, &self.words) else { return };
+        let (Some(item), Some(layouts)) = (&self.item, &self.layouts) else { return };
+        let words = layouts.shown(self.is_hovered);
         let tile = Rect::new(
             area.left + PADDING * scale,
             area.top + TOP_PADDING * scale,
@@ -184,6 +226,10 @@ impl Activity for NotificationsActivity {
 mod tests {
     use super::*;
 
+    fn is_cut(words: &Words) -> bool {
+        words.heading.ends_with('\u{2026}') || words.body.last().is_some_and(|line| line.ends_with('\u{2026}'))
+    }
+
     #[test]
     fn the_banner_grows_with_the_lines_of_the_message() {
         assert_eq!(banner_height(0), MIN_HEIGHT);
@@ -207,8 +253,9 @@ mod tests {
             title: "A very long conversation name that goes on and on and on".to_owned(),
             body: "Deploy is green. Can you check the hover state on the 1440p monitor before we tag it? ".repeat(3),
         };
-        let words = words(&item, true, &fonts);
+        let words = Words::new(&item, true, &fonts, WIDTH, BODY_LINES);
         assert!(words.heading.ends_with('\u{2026}'));
+        assert!(is_cut(&words));
         assert_eq!(words.body.len(), BODY_LINES);
         assert!(words.body[BODY_LINES - 1].ends_with('\u{2026}'));
     }
@@ -224,7 +271,7 @@ mod tests {
             title: "Invoice".to_owned(),
             body: "secret".to_owned(),
         };
-        assert_eq!(words(&item, false, &fonts).body, vec![items::PRIVATE_TEXT.to_owned()]);
+        assert_eq!(Words::new(&item, false, &fonts, WIDTH, BODY_LINES).body, vec![items::PRIVATE_TEXT.to_owned()]);
     }
 
     #[test]
@@ -233,9 +280,27 @@ mod tests {
     }
 
     #[test]
-    fn the_banner_is_the_same_size_whether_or_not_the_pointer_is_on_it() {
+    fn the_pointer_grows_a_cut_banner_taller_and_keeps_its_width() {
         let fonts = Fonts::new(1.0).unwrap();
         let mut activity = NotificationsActivity::sample(&fonts);
+        let item = Item { body: activity.item.clone().unwrap().body.repeat(3), ..activity.item.clone().unwrap() };
+        activity.layouts = Some(Layouts::new(&item, true, &fonts));
+        let Some(Presence::Banner { width: calm_width, height: calm_height }) = activity.presence() else { panic!() };
+        activity.is_hovered = true;
+        let Some(Presence::Banner { width, height }) = activity.presence() else { panic!() };
+        assert_eq!(width, calm_width);
+        assert!(height > calm_height);
+        let layouts = activity.layouts.as_ref().unwrap();
+        assert!(!is_cut(&layouts.full));
+        assert!(layouts.full.body.len() > BODY_LINES);
+    }
+
+    #[test]
+    fn a_message_that_already_fits_keeps_its_size_under_the_pointer() {
+        let fonts = Fonts::new(1.0).unwrap();
+        let mut activity = NotificationsActivity::sample(&fonts);
+        let item = Item { body: "Deploy is green.".to_owned(), ..activity.item.clone().unwrap() };
+        activity.layouts = Some(Layouts::new(&item, true, &fonts));
         let calm = activity.presence();
         activity.is_hovered = true;
         assert_eq!(activity.presence(), calm);

@@ -5,7 +5,7 @@ use windows::Win32::System::SystemInformation::GetLocalTime;
 use crate::gfx::{Align, Canvas, Color, FontStyle, Point, Rect, UI_FONT, Weight, lerp};
 
 /// The collapsed pill never gets narrower than this, so the time sits in the middle of a pill of a steady size.
-pub const RESTING_WIDTH: f32 = 96.0;
+pub const RESTING_WIDTH: f32 = crate::page::RESTING_MIN_WIDTH;
 
 const TIME: FontStyle = FontStyle::new(UI_FONT, 12.0, Weight::Medium, Align::Center);
 

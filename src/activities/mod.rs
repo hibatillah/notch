@@ -7,7 +7,7 @@ mod camera;
 mod caps_lock;
 mod clipboard;
 mod microphone;
-mod notifications;
+pub mod notifications;
 mod privacy;
 mod volume;
 

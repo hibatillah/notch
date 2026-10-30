@@ -1,4 +1,4 @@
-//! Windows integration shared by pages.
+//! Windows integration shared by pages and activities.
 
 use std::{
     path::{Path, PathBuf},
@@ -31,6 +31,8 @@ use windows::{
     },
     core::{HSTRING, PCWSTR, w},
 };
+
+pub mod app_icon;
 
 use crate::gfx::ImageData;
 

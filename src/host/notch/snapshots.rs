@@ -412,8 +412,20 @@ fn snapshot_of_the_notification_banner() {
     banner_snapshot(&notch, "banner-notification");
 }
 
+#[test]
+#[ignore = "writes images to target/snapshots; run on purpose"]
+fn snapshot_of_the_hovered_notification_banner() {
+    let notch = rig(SampleOptions::default());
+    let body = "Warp finished the task you gave it. The summary has the changed files, the checks that ran and what is left to do before the release goes out. ".repeat(2);
+    let activity = crate::activities::notifications::NotificationsActivity::sample_with_body(&notch.fonts, &body);
+    banner_snapshot_of(&notch, Box::new(activity.hovered()), "banner-notification-hovered");
+}
+
 fn banner_snapshot(notch: &Notch, name: &str) {
-    let activity = crate::activities::sample_notification(&notch.fonts);
+    banner_snapshot_of(notch, crate::activities::sample_notification(&notch.fonts), name);
+}
+
+fn banner_snapshot_of(notch: &Notch, activity: Box<dyn Activity>, name: &str) {
     let Some(Presence::Banner { width, height }) = activity.presence() else { panic!("the sample has a banner") };
     let surface = &notch.surface;
     let scale = SCALE;
@@ -739,6 +751,21 @@ mod screen_mode_tests {
                 }
             }
         }
+    }
+
+    #[test]
+    fn hovering_a_cut_banner_makes_the_pill_taller_and_keeps_its_width() {
+        let fonts = Fonts::new(SCALE).unwrap();
+        let body = "Deploy is green. Can you check the hover state on the 1440p monitor before we tag it? ".repeat(3);
+        let activity = crate::activities::notifications::NotificationsActivity::sample_with_body(&fonts, &body);
+        let mut notch = configured_rig(SampleOptions::default(), Settings::at(None), vec![Box::new(activity)]);
+        notch.activities[0].is_started = true;
+        settle(&mut notch);
+        let (calm_width, calm_height) = (notch.resting_width.target, notch.resting_height.target);
+        notch.set_hovering(true);
+        notch.flush();
+        assert_eq!(notch.resting_width.target, calm_width);
+        assert!(notch.resting_height.target > calm_height, "{} vs {}", notch.resting_height.target, calm_height);
     }
 
     #[test]

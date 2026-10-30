@@ -18,10 +18,10 @@ use windows::{
 };
 
 use super::{
-    app_icon, artwork,
+    artwork,
     lyrics::{self, Lyrics},
 };
-use crate::gfx::ImageData;
+use crate::{gfx::ImageData, platform::app_icon};
 
 /// A lookup starts once the new track's length has arrived, so the match is exact, but never later than this.
 const LYRICS_LOOKUP_DELAY: Duration = Duration::from_millis(600);

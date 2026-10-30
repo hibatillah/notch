@@ -19,3 +19,11 @@ paths:
 - Enable `windows` crate features one API at a time in `Cargo.toml`.
 - An undocumented Windows entry point (the dark tray menu in `host/tray.rs`) is looked up by `GetProcAddress` at run
   time and skipped when missing, so a Windows version without it keeps working.
+- `track_mouse_leave` re-arms only while the pointer is over the notch window; re-arming under another window posts an
+  endless stream of `WM_MOUSELEAVE`.
+- Session lock, unlock and resume from sleep clear hover and swipe state (`reset_session_interaction`) and refresh the
+  foreground window mode; the window registers for `WM_WTSSESSION_CHANGE` for that.
+- `restore_topmost` re-asserts `WS_EX_TOPMOST` before the notch takes hover or drop input, because a hidden-over-
+  maximized notch drops it.
+- `GetCurrentInputMessageSource` tells a touchpad scroll from a wheel; when a driver gives no source, `scrolled()` falls
+  back to the delta size and the active gesture.

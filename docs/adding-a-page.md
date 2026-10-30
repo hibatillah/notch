@@ -116,6 +116,7 @@ What each part does:
   header. The height is always 86 px whatever you ask for, so lay the content out for that.
 - `sizes` is the size you want, in device-independent pixels. Ask again whenever your content changes size; the host
   asks after every event and animates the change.
+- Resting content uses `RESTING_HEIGHT` (33 DIP); the host adds 3 DIP below it and enforces a minimum collapsed width of 150 DIP.
 - `draw_resting` and `draw_expanded` draw your content. Multiply sizes by `frame.scale` to get device pixels, and fade
   your colors with the `opacity` you are given so the content follows the open and close animation.
   During navigation, each visible page keeps its requested width in `frame.bounds` and `frame.expanded.width`.

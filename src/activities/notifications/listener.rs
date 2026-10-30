@@ -34,7 +34,7 @@ use windows::{
 };
 
 use super::items::Item;
-use crate::{gfx::ImageData, log, page::Notifier};
+use crate::{gfx::ImageData, log, page::Notifier, platform::app_icon};
 
 /// Changes must stop for this long before the list is read, so one toast is one read.
 const QUIET_TIME_MILLISECONDS: u32 = 300;
@@ -115,7 +115,10 @@ fn read_all(listener: &UserNotificationListener, logos: &mut Logos) -> Result<Ve
         }
         let title = if texts.is_empty() { String::new() } else { texts.remove(0) };
         let app_id = app_info.AppUserModelId()?.to_string();
-        let icon = logos.entry(app_id.clone()).or_insert_with(|| read_logo(&app_info).map(Arc::new).ok()).clone();
+        let icon = logos
+            .entry(app_id.clone())
+            .or_insert_with(|| app_icon::load(&app_id).or_else(|| read_logo(&app_info).ok()).map(Arc::new))
+            .clone();
         items.push(Item {
             id: notification.Id()?,
             app: app_info.DisplayInfo()?.DisplayName()?.to_string(),

@@ -13,6 +13,8 @@ It draws straight to the screen with Direct2D: no UI framework, no web view. Eve
 Pages (what you see when you open the notch; the time sits in the header of every one):
 
 - Media player with synced lyrics; with lyrics off, the collapsed pill fits the song title up to 400 DIP wide
+- The idle pill is 36 DIP tall (33 DIP content + 3 DIP bottom padding), with a minimum width of 150 DIP.
+- The outer curves joining the top screen edge use a 6 DIP radius when idle and 12 DIP when open.
 - File shelf: drop files to keep them for a while
 - Calendar: the week and the events of a day you pick
 - Focus timer
@@ -28,7 +30,7 @@ Activities (what the collapsed pill shows while something happens):
 - Camera in use
 - Copied to the clipboard
 - Caps Lock on and off
-- Windows notifications: the pill opens into a banner with the app's logo for a few seconds, between its idle and open sizes; point at it to keep it on screen
+- Windows notifications: the pill opens into a banner with the app's logo for a few seconds, between its idle and open sizes; point at it to keep it on screen; a message that was cut short grows taller to show all of its text
 
 ### Maximized and full-screen windows
 

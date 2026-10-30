@@ -36,6 +36,7 @@ Read the doc for the work in front of you before starting it:
 | a test, a snapshot, the manual checklist, `perf.sh` | `docs/testing.md` |
 | settings keys, environment variables, tray options | `docs/configuration.md` |
 | the installer, a release, updating | `docs/releasing.md` |
+| a CPU or memory number, a perf limit | `docs/performance.md` |
 
 ## Debugging
 

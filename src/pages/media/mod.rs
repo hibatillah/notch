@@ -1,6 +1,5 @@
 //! Media state comes from session; no progress bar means no per-second redraw while open.
 
-mod app_icon;
 mod artwork;
 mod backdrop;
 mod controls;
@@ -601,6 +600,6 @@ mod tests {
 
     #[test]
     fn the_collapsed_pill_with_a_short_title_is_small() {
-        assert_eq!(playing_page().sizes().resting_width, 96.0);
+        assert_eq!(playing_page().sizes().resting_width, crate::page::RESTING_MIN_WIDTH);
     }
 }

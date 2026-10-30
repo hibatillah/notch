@@ -42,8 +42,8 @@ const SHADOW_LAYERS: usize = 10;
 const SHADOW_STEP: f32 = 2.0;
 const SHADOW_OFFSET: f32 = 4.0;
 const SHADOW_LAYER_ALPHA: f32 = 0.028;
-const RESTING_FLARE: f32 = 8.0;
-const EXPANDED_FLARE: f32 = 14.0;
+const RESTING_FLARE: f32 = 6.0;
+const EXPANDED_FLARE: f32 = 12.0;
 const ANIMATION_TIMER_ID: usize = 1;
 /// Safety net while the notch is open: the leave notification can be lost when the window resizes under the pointer.
 const HOVER_WATCH_TIMER_ID: usize = 2;
@@ -73,6 +73,9 @@ const CONTENT_FADE: (f32, f32) = (0.62, 0.9);
 const CLOCK_TIMER_ID: usize = 6;
 const STAGE_TIMER_ID: usize = 7;
 const CLOSE_TIMER_ID: usize = 8;
+const RAISE_TIMER_ID: usize = 9;
+/// The window the user switched to finishes raising itself after the foreground event, so raise the notch again.
+const RAISE_DELAY_MILLISECONDS: u32 = 250;
 const CLOSE_DELAY_MILLISECONDS: u32 = 200;
 const HOVER_OPEN_DELAY_MILLISECONDS: u32 = 100;
 const OPEN_STAGE_MILLISECONDS: u32 = 165;
@@ -552,6 +555,14 @@ impl Notch {
                     self.flush();
                 }
             }
+            RAISE_TIMER_ID => {
+                unsafe {
+                    let _ = KillTimer(Some(self.window), RAISE_TIMER_ID);
+                }
+                if !self.is_suppressed() {
+                    super::window::raise_topmost(self.window);
+                }
+            }
             CLOSE_TIMER_ID => {
                 unsafe {
                     let _ = KillTimer(Some(self.window), CLOSE_TIMER_ID);
@@ -973,8 +984,11 @@ impl Notch {
         self.has_resting_content = resting_index.is_some();
         let is_hidden = self.is_hidden();
         let banner_height = banner.map_or(RESTING_PILL_HEIGHT, |(_, _, height)| height + RESTING_BOTTOM_PADDING);
-        let (resting_target, resting_height_target) =
-            if is_hidden { (HIDDEN_WIDTH, self.hidden_height()) } else { (resting_target, banner_height) };
+        let (resting_target, resting_height_target) = if is_hidden {
+            (HIDDEN_WIDTH, self.hidden_height())
+        } else {
+            (resting_target.max(crate::page::RESTING_MIN_WIDTH), banner_height)
+        };
         let growth = if self.is_dragging_files { DRAG_GROWTH } else { Size::new(0.0, 0.0) };
         let mut targets_changed = false;
         for (spring, target) in [
@@ -1124,7 +1138,10 @@ impl Notch {
 
     pub fn set_screen_mode(&mut self, mode: ScreenMode) {
         if mode != ScreenMode::Fullscreen || !self.hides_for_apps {
-            super::window::restore_topmost(self.window);
+            super::window::raise_topmost(self.window);
+            unsafe {
+                SetTimer(Some(self.window), RAISE_TIMER_ID, RAISE_DELAY_MILLISECONDS, None);
+            }
         }
         if mode == self.screen_mode {
             return;
