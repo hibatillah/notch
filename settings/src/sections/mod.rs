@@ -1,4 +1,5 @@
 mod advanced;
+mod behavior;
 mod calendar;
 mod general;
 mod media;
@@ -49,6 +50,7 @@ pub fn render(section_index: usize, window_state: &SettingsWindow, cx: &mut Cont
         "General" => general::render(window_state, cx),
         "Notifications" => notifications::render(window_state, cx),
         "Pages" => pages::render(window_state, cx),
+        "Behavior" => behavior::render(window_state, cx),
         "Calendar" => calendar::render(window_state),
         "Media" => media::render(window_state, cx),
         "Timer" => timer::render(window_state),
