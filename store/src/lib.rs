@@ -1,4 +1,4 @@
-use std::{collections::BTreeMap, fs, path::PathBuf};
+use std::{collections::BTreeMap, fs, io::ErrorKind, path::PathBuf};
 
 /// Small persistent key-value store shared by all pages, saved as `key=value` lines in `%APPDATA%\notch`.
 pub struct Settings {
@@ -40,11 +40,19 @@ impl Settings {
     }
 
     pub fn reload(&mut self) {
-        self.values = self.read_file();
+        if let Ok(values) = self.read_file() {
+            self.values = values;
+        }
     }
 
-    fn read_file(&self) -> BTreeMap<String, String> {
-        self.path.as_ref().and_then(|path| fs::read_to_string(path).ok()).map(|text| parse(&text)).unwrap_or_default()
+    /// Only a missing file counts as empty; any other read error is returned so callers never overwrite unread keys.
+    fn read_file(&self) -> std::io::Result<BTreeMap<String, String>> {
+        let Some(path) = &self.path else { return Ok(BTreeMap::new()) };
+        match fs::read_to_string(path) {
+            Ok(text) => Ok(parse(&text)),
+            Err(error) if error.kind() == ErrorKind::NotFound => Ok(BTreeMap::new()),
+            Err(error) => Err(error),
+        }
     }
 
     /// Re-reads the file so keys another process wrote are kept, then replaces it atomically through a temp file.
@@ -53,16 +61,27 @@ impl Settings {
             self.values.insert(key.to_owned(), value);
             return;
         };
-        let mut values = self.read_file();
+        let Ok(mut values) = self.read_file() else {
+            self.values.insert(key.to_owned(), value);
+            return;
+        };
         values.insert(key.to_owned(), value);
         if let Some(directory) = path.parent() {
             let _ = fs::create_dir_all(directory);
         }
-        let text: String = values.iter().map(|(key, value)| format!("{key}={value}\n")).collect();
+        let text: String = values
+            .iter()
+            .map(|(key, value)| {
+                format!(
+                    "{key}={value}
+"
+                )
+            })
+            .collect();
         let mut temporary_name = path.clone().into_os_string();
-        temporary_name.push(".tmp");
+        temporary_name.push(format!(".{}.tmp", std::process::id()));
         let temporary_path = PathBuf::from(temporary_name);
-        if fs::write(&temporary_path, text).is_ok() && fs::rename(&temporary_path, &path).is_err() {
+        if fs::write(&temporary_path, text).and_then(|()| fs::rename(&temporary_path, &path)).is_err() {
             let _ = fs::remove_file(&temporary_path);
         }
         self.values = values;
@@ -179,5 +198,38 @@ mod tests {
         assert_eq!(settings.get_string("anything"), None);
         settings.reload();
         assert_eq!(settings.get_string("anything"), None);
+    }
+
+    #[test]
+    fn a_read_error_other_than_missing_never_wipes_other_keys() {
+        let path = temporary_file("read-error");
+        fs::create_dir_all(&path).unwrap();
+        let mut settings = Settings { path: Some(path.clone()), values: parse("keep=1") };
+        settings.set_string("a", "2");
+        assert!(path.is_dir());
+        assert_eq!(settings.get_string("a"), Some("2"));
+        settings.reload();
+        assert_eq!(settings.get_string("keep"), Some("1"));
+        let _ = fs::remove_dir_all(path.parent().unwrap());
+    }
+
+    #[test]
+    fn a_successful_set_leaves_no_temp_file_behind() {
+        let path = temporary_file("no-temp");
+        let mut settings = Settings::at(Some(path.clone()));
+        settings.set_string("a", "1");
+        let names: Vec<_> =
+            fs::read_dir(path.parent().unwrap()).unwrap().map(|entry| entry.unwrap().file_name()).collect();
+        assert_eq!(names, vec![std::ffi::OsString::from("settings.txt")]);
+        let _ = fs::remove_dir_all(path.parent().unwrap());
+    }
+
+    #[test]
+    fn a_value_with_an_equals_sign_round_trips_through_disk() {
+        let path = temporary_file("equals");
+        let mut settings = Settings::at(Some(path.clone()));
+        settings.set_string("calendar.url", "https://x.test/a?b=c");
+        assert_eq!(Settings::at(Some(path.clone())).get_string("calendar.url"), Some("https://x.test/a?b=c"));
+        let _ = fs::remove_dir_all(path.parent().unwrap());
     }
 }
