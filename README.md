@@ -42,7 +42,7 @@ While the notch is open, small marks beside the time show what is going on: the 
 
 ### Extensible
 
-The tray menu can switch **Notifications** on or off; the other activities are always enabled. The **Settings…** window (General, Pages, Notifications, Calendar, Media, Timer and Advanced sections) changes the options, orders pages and switches them on or off, and the notch applies each change at once; the same keys can be edited in the settings file (the **Edit pages** view in the notch is switched off; see [docs/configuration.md](docs/configuration.md)). To go further, write your own page or activity: each is one folder or file and one line in a registry, with no other code to touch. See [docs/adding-a-page.md](docs/adding-a-page.md) and [docs/adding-an-activity.md](docs/adding-an-activity.md).
+The tray menu can switch **Notifications** on or off; the other activities are always enabled. The **Settings…** window changes the options, orders pages and switches them on or off, and the notch applies each change at once; the same keys can be edited in the settings file (the **Edit pages** view in the notch is switched off; see [docs/configuration.md](docs/configuration.md)). To go further, write your own page or activity: each is one folder or file and one line in a registry, with no other code to touch. See [docs/adding-a-page.md](docs/adding-a-page.md) and [docs/adding-an-activity.md](docs/adding-an-activity.md).
 
 ### Limitations
 

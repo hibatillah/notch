@@ -20,7 +20,7 @@ cargo fmt --check
 cargo clippy --all-targets -- -D warnings
 cargo license                             # dependency licenses
 scripts/reload.sh [--debug]               # build, start the new build, close the old one (Git Bash)
-scripts/watch.sh                          # debug build and relaunch on every saved source file (Git Bash)
+scripts/watch.sh                          # debug build of the notch (not settings/), relaunched on every saved source file (Git Bash)
 scripts/perf.sh [--no-build]              # memory and CPU checks (scripts/perf.rs); moves the mouse for about two minutes
 ```
 

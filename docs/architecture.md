@@ -5,10 +5,8 @@ The notch is a small window pinned to the top of the screen. It shows one **page
 charger being plugged in, a notification) take over the pill for a moment or add a small badge to it. The code is split
 so that adding or removing a page or an activity never touches the host.
 
-The app is two processes: `notch.exe` (everything below, drawn with Direct2D, no UI framework) and
-`notch-settings.exe`, the settings window, a GPUI program in `settings/` that the tray's **Settings…** item starts. They
-share no memory. The `notch-store` crate (`store/`) holds the settings file code both link, and the window talks to
-the notch through that file plus one message (see [Two processes](#two-processes)).
+The app is two processes: `notch.exe` (this document's subject, drawn with Direct2D, no UI framework) and the settings
+window, `notch-settings.exe`, started from the tray (see [Two processes](#two-processes)).
 
 ```
 src/
@@ -30,11 +28,9 @@ src/
     calendar/     calendar: dates, the iCal reader, the day's agenda, the download
     timer/        focus timer: the rules, what is said in each state, the layout
     stats/        system stats: the readings and how they are written
-store/            notch-store: the settings file code shared by the notch and the settings window (per-key atomic writes);
-                  no UI framework
-settings/         notch-settings: the settings window, a separate GPUI executable (needs the MSVC host toolchain):
-                  main.rs, single_instance.rs, notify.rs (the reload message), startup.rs, field.rs (text fields),
-                  sections/ (one file per section)
+store/            notch-store: the settings file code shared by the notch and the settings window (per-key atomic writes)
+settings/         notch-settings: the settings window, a separate GPUI executable (needs the MSVC host toolchain);
+                  sections/ holds one file per section
 installer/        the Inno Setup script the release workflow builds the installer from
 assets/fonts/     Geist, the bundled font, and its license
 ```
@@ -220,14 +216,11 @@ has no timers running except the host's own clock (once a minute) and a page's o
 
 ## Two processes
 
-The settings window never links the notch and the notch never links GPUI; `settings/` and `src/` both depend on `store/`
-only. The notch publishes `pages.known` (every registered page with its label and whether it is opt-in) when it starts, so
-the window can list pages it does not link. The window writes one key at a time through `notch-store`, then posts
-`WM_SETTINGS_CHANGED` (`WM_APP + 30`) to the window of class `NotchWindow`; `window.rs` calls `Notch::reload_settings`,
-which re-reads the file and applies the keys without a restart. With no notch running the post finds no window and
-does nothing. The window allows one instance (a named mutex; a second launch focuses the first). Keys, the message and
-how fields commit: [configuration.md](configuration.md#settings-window). The notch's idle budget applies to
-`notch.exe` only ([performance.md](performance.md#settings-window)).
+`settings/` (GPUI) and `src/` depend on `store/` and never on each other, so the notch links no UI framework. The notch
+publishes `pages.known` when it starts so the window can list pages it does not link. The window writes keys through
+`store/` and tells the notch to re-read them; the message, keys and field behavior are in
+[configuration.md](configuration.md#settings-window). The idle budget applies to `notch.exe` only
+([performance.md](performance.md#settings-window)).
 
 ## Pages
 

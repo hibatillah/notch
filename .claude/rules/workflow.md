@@ -2,7 +2,7 @@
 
 - Replace the running notch with `scripts/reload.sh`, or let the user's `scripts/watch.sh` rebuild it; confirm a
   rebuild by reading the tail of its output. The user closes an old copy themselves while developing.
-- A change is done when `cargo fmt --check`, `cargo clippy --all-targets -- -D warnings` and `cargo test` all pass.
+- A change is done when `cargo fmt --check`, `cargo clippy --all-targets -- -D warnings` and `cargo test` all pass (add `--workspace`, with the MSVC toolchain, when `settings/` or `store/` changed).
   After touching the host, animation, timers or drawing, `scripts/perf.sh` must pass too; tell the user first, because
   it moves the mouse for about two minutes and replaces the running notch.
 - Mouse-driven checks (`scripts/perf.sh`) and screenshots need an unlocked screen; while it is locked (a `LogonUI`

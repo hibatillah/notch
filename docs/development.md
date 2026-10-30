@@ -78,7 +78,7 @@ scripts/watch.sh
 ```
 
 It does the same with a debug build (`scripts/reload.sh --debug`, about 2 s after a small edit, against about 20 s for
-release) every time a file in `src/` or `Cargo.toml` changes, and checks for saved files every 2 s. A debug build is
+release) every time a file in `src/`, `store/` or `Cargo.toml` changes (it rebuilds the notch only, not `settings/`), and checks for saved files every 2 s. A debug build is
 slower and larger, so use the release build and `scripts/perf.sh` for performance numbers. If a build fails, the
 error shows and the previous copy keeps running until the next save.
 
@@ -193,10 +193,12 @@ are in device-independent pixels (multiply by the display scale when drawing). T
 
 ## Dependencies and licenses
 
-The project is MIT licensed (see `LICENSE`). Every dependency, including build-time ones, is licensed
+The project is MIT licensed (see `LICENSE`). Every dependency of `notch.exe`, including build-time ones, is licensed
 `MIT OR Apache-2.0` (the `windows-*` crates, `proc-macro2`, `quote`, `syn`); `unicode-ident` is
-`(MIT OR Apache-2.0) AND Unicode-3.0`. All are permissive and compatible with MIT. That list is the notch's;
-`settings/` adds GPUI and its dependencies, all permissive, whose license texts ship in `THIRD-PARTY-LICENSES.txt`
+`(MIT OR Apache-2.0) AND Unicode-3.0`. `settings/` adds GPUI and its dependency tree. In the spike's `cargo license` run (441 packages) most are MIT or
+Apache-2.0 or MIT, 14 are Apache-2.0 only (`gpui` and its `gpui_*` crates among them), and no GPL, LGPL, AGPL or MPL
+crate is in the Windows build ([spike](superpowers/spikes/2026-10-30-gpui-spike.md#licenses)). All are permissive and
+compatible with MIT. The license texts ship in `THIRD-PARTY-LICENSES.txt`
 ([releasing.md](releasing.md#third-party-licenses)). Re-check after changing `Cargo.lock`:
 
 ```

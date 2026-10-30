@@ -34,17 +34,25 @@ This baseline did not measure music playback, live lyrics, held hover or swiping
 
 The 0 % idle and 50 MB budget applies to `notch.exe` and is what the baseline above measures. The settings window is a
 separate process (`notch-settings.exe`, GPUI) with its own, higher footprint while it is open, and `scripts/perf.sh`
-does not run it. Measured on 2026-10-30 on the same machine with the spike prototype (one window, a sidebar and one
-toggle, release profile; see [the spike](superpowers/spikes/2026-10-30-gpui-spike.md)):
+does not run it.
+
+Source: [the spike](superpowers/spikes/2026-10-30-gpui-spike.md), 2026-10-30, Windows 11 Home 10.0.26300, 12 logical
+cores, rustc 1.97.1, the workspace release profile. The workload is the spike prototype (one 640 x 420 window, a
+sidebar and one toggle), not the finished window, with no input after opening. The spike records no command for the
+samples, only the counter: private working set is `\Process(notch-settings)\Working Set - Private`, read 10 s after
+the window opened.
 
 | Measurement | Result |
 | --- | ---: |
-| Executable size | 3.6 MB |
-| Private working set 10 s after opening | 20.6 MB |
-| Working set on the first launch after the build | 86.9 MB |
-| CPU while open and idle | 0.6 to 1.1 % of one core |
+| Release executable size | 3.6 MB |
+| Private working set at 10 s | 20.6 MB |
+| Working set at 10 s | 49.2 to 49.5 MB |
+| Private bytes at 10 s | 48.3 to 49.2 MB |
+| Working set, first launch after the build | 86.9 MB |
+| Private bytes, first launch after the build | 74.9 MB |
+| CPU while open and idle, 10 s sample | 0.6 to 1.1 % of one core |
 
-The prototype is not the finished window, and the cause of the larger first launch is not confirmed.
+The private working set of the first launch was not sampled, and the cause of its larger size is not confirmed.
 
 ## Earlier measurements
 
