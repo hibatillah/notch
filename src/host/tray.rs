@@ -22,9 +22,6 @@ const TOOLTIP: &str = "Notch";
 const MENU_COMMAND_QUIT: usize = 1;
 const MENU_COMMAND_HIDE_WHEN_IDLE: usize = 2;
 const MENU_COMMAND_START_WITH_WINDOWS: usize = 3;
-const MENU_COMMAND_HIDE_FOR_APPS: usize = 4;
-const MENU_COMMAND_LYRICS_OVER_MAXIMIZED: usize = 5;
-const MENU_COMMAND_NOTCH_OVER_MAXIMIZED: usize = 6;
 const MENU_COMMAND_OPEN_SETTINGS: usize = 7;
 const MENU_COMMAND_FIRST_ACTIVITY: usize = 100;
 
@@ -35,16 +32,9 @@ const ITEMS_PER_PAGE: usize = 16;
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum MenuChoice {
     Toggle(usize),
-    PageItem {
-        page: usize,
-        item: usize,
-    },
+    PageItem { page: usize, item: usize },
     ToggleHideWhenIdle,
     ToggleStartWithWindows,
-    /// Fullscreen hiding is independent of the maximized-window options.
-    ToggleHideForApps,
-    ToggleLyricsOverMaximized,
-    ToggleNotchOverMaximized,
     OpenSettings,
     Quit,
 }
@@ -53,9 +43,6 @@ pub enum MenuChoice {
 pub struct MenuState {
     pub hides_when_idle: bool,
     pub starts_with_windows: bool,
-    pub hides_for_apps: bool,
-    pub lyrics_over_maximized: bool,
-    pub notch_over_maximized: bool,
 }
 
 /// The choice a menu command stands for; `None` when the menu was dismissed or the command is unknown.
@@ -68,9 +55,6 @@ fn choice_for_command(command: usize, activities: &[(usize, &'static str, bool)]
     }
     match command {
         MENU_COMMAND_START_WITH_WINDOWS => return Some(MenuChoice::ToggleStartWithWindows),
-        MENU_COMMAND_HIDE_FOR_APPS => return Some(MenuChoice::ToggleHideForApps),
-        MENU_COMMAND_LYRICS_OVER_MAXIMIZED => return Some(MenuChoice::ToggleLyricsOverMaximized),
-        MENU_COMMAND_NOTCH_OVER_MAXIMIZED => return Some(MenuChoice::ToggleNotchOverMaximized),
         MENU_COMMAND_OPEN_SETTINGS => return Some(MenuChoice::OpenSettings),
         _ => {}
     }
@@ -163,20 +147,6 @@ pub fn show_context_menu(
         }
         let flags = |is_on: bool| if is_on { MF_STRING | MF_CHECKED } else { MF_STRING };
         let _ = AppendMenuW(menu, flags(state.hides_when_idle), MENU_COMMAND_HIDE_WHEN_IDLE, w!("Hide when idle"));
-        let _ =
-            AppendMenuW(menu, flags(state.hides_for_apps), MENU_COMMAND_HIDE_FOR_APPS, w!("Hide for full-screen apps"));
-        let _ = AppendMenuW(
-            menu,
-            flags(state.notch_over_maximized),
-            MENU_COMMAND_NOTCH_OVER_MAXIMIZED,
-            w!("Show notch over maximized windows"),
-        );
-        let _ = AppendMenuW(
-            menu,
-            flags(state.lyrics_over_maximized),
-            MENU_COMMAND_LYRICS_OVER_MAXIMIZED,
-            w!("Show lyrics over maximized windows"),
-        );
         let _ = AppendMenuW(
             menu,
             flags(state.starts_with_windows),
@@ -228,22 +198,6 @@ mod tests {
     }
 
     #[test]
-    fn the_options_about_other_windows_have_their_own_commands() {
-        assert_eq!(
-            choice_for_command(MENU_COMMAND_HIDE_FOR_APPS, OPTIONAL_ACTIVITIES),
-            Some(MenuChoice::ToggleHideForApps)
-        );
-        assert_eq!(
-            choice_for_command(MENU_COMMAND_LYRICS_OVER_MAXIMIZED, OPTIONAL_ACTIVITIES),
-            Some(MenuChoice::ToggleLyricsOverMaximized)
-        );
-        assert_eq!(
-            choice_for_command(MENU_COMMAND_NOTCH_OVER_MAXIMIZED, OPTIONAL_ACTIVITIES),
-            Some(MenuChoice::ToggleNotchOverMaximized)
-        );
-    }
-
-    #[test]
     fn settings_has_its_own_command() {
         assert_eq!(choice_for_command(MENU_COMMAND_OPEN_SETTINGS, OPTIONAL_ACTIVITIES), Some(MenuChoice::OpenSettings));
     }
@@ -259,6 +213,9 @@ mod tests {
         assert_eq!(choice_for_command(0, OPTIONAL_ACTIVITIES), None);
         assert_eq!(choice_for_command(MENU_COMMAND_FIRST_ACTIVITY + 3, OPTIONAL_ACTIVITIES), None);
         assert_eq!(choice_for_command(50, OPTIONAL_ACTIVITIES), None);
+        for retired_command in [4, 5, 6] {
+            assert_eq!(choice_for_command(retired_command, OPTIONAL_ACTIVITIES), None, "the old window options moved");
+        }
     }
 
     #[test]

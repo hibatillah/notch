@@ -17,6 +17,7 @@ use super::{
     page_editor::{self, ChipView, Entry, Outcome, PageEditor},
     screen_mode::ScreenMode,
     settings::Settings,
+    visibility::{self, Showing},
 };
 use crate::{
     activity::{ACTIVITY_TIMER_BASE, Activity, Presence, SystemMessage},
@@ -59,9 +60,6 @@ const HIDDEN_HEIGHT: f32 = 6.0;
 const HIDDEN_HEIGHT_OVER_WINDOW: f32 = 3.0;
 const HIDDEN_ALPHA: f32 = 0.006;
 const HIDE_WHEN_IDLE_SETTING: &str = "notch.hide_when_idle";
-const HIDE_FOR_APPS_SETTING: &str = "notch.hide_for_fullscreen";
-const LYRICS_OVER_WINDOWS_SETTING: &str = "notch.lyrics_over_maximized";
-const NOTCH_OVER_WINDOWS_SETTING: &str = "notch.show_over_maximized";
 /// Expansion stages: 0 collapsed, HEADER_STAGE header-only, 1 fully open.
 const HEADER_STAGE: f32 = 0.5;
 const HEADER_STAGE_WIDTH: f32 = 240.0;
@@ -145,9 +143,8 @@ pub struct Notch {
     activity_blend: Spring,
     badge_width: Spring,
     hides_when_idle: bool,
-    hides_for_apps: bool,
-    keeps_lyrics_over_windows: bool,
-    keeps_notch_over_windows: bool,
+    maximized_showing: Showing,
+    fullscreen_showing: Showing,
     screen_mode: ScreenMode,
     is_revealed: bool,
     has_resting_content: bool,
@@ -182,11 +179,12 @@ impl Notch {
             screen_position,
             surface,
             fonts,
-            settings,
+            mut settings,
             pages,
             activities,
             ticks_per_second,
         } = parts;
+        visibility::migrate(&mut settings);
         let activities = activities
             .into_iter()
             .map(|activity| {
@@ -196,9 +194,8 @@ impl Notch {
             })
             .collect();
         let hides_when_idle = settings.get_bool(HIDE_WHEN_IDLE_SETTING, false);
-        let hides_for_apps = settings.get_bool(HIDE_FOR_APPS_SETTING, true);
-        let keeps_lyrics_over_windows = settings.get_bool(LYRICS_OVER_WINDOWS_SETTING, true);
-        let keeps_notch_over_windows = settings.get_bool(NOTCH_OVER_WINDOWS_SETTING, false);
+        let maximized_showing = read_showing(&settings, visibility::MAXIMIZED_KEY, visibility::DEFAULT_MAXIMIZED);
+        let fullscreen_showing = read_showing(&settings, visibility::FULLSCREEN_KEY, visibility::DEFAULT_FULLSCREEN);
         Self {
             window,
             scale,
@@ -232,9 +229,8 @@ impl Notch {
             activity_blend: Spring::new(0.0, 300.0, 28.0),
             badge_width: Spring::new(0.0, 220.0, 26.0),
             hides_when_idle,
-            hides_for_apps,
-            keeps_lyrics_over_windows,
-            keeps_notch_over_windows,
+            maximized_showing,
+            fullscreen_showing,
             screen_mode: ScreenMode::Normal,
             is_revealed: false,
             has_resting_content: false,
@@ -1110,33 +1106,29 @@ impl Notch {
     }
 
     fn is_hidden(&self) -> bool {
-        let is_over_window = self.is_over_maximized_window();
-        if is_over_window && self.keeps_notch_over_windows {
+        if self.is_revealed || self.expansion.target != 0.0 || self.editor.is_some() {
             return false;
         }
-        // Over maximized windows, only active lyrics with the user setting can keep the pill visible.
-        let resting_content_stays = if is_over_window {
-            self.keeps_lyrics_over_windows
-                && self.resting_index.is_some_and(|index| self.pages[index].shows_live_text())
-        } else {
-            self.has_resting_content
-        };
-        (self.hides_when_idle || is_over_window)
-            && !self.is_revealed
-            && self.expansion.target == 0.0
-            && self.editor.is_none()
-            && self.shown_transients.is_empty()
-            && self.shown_banner.is_none()
-            && self.shown_badges.is_empty()
-            && !resting_content_stays
+        let has_activity =
+            !self.shown_transients.is_empty() || self.shown_banner.is_some() || !self.shown_badges.is_empty();
+        match self.current_showing() {
+            None => self.hides_when_idle && !has_activity && !self.has_resting_content,
+            // Music keeps even the idle clock up, as the old show_over_maximized did.
+            Some(Showing::Music) => false,
+            Some(showing) => {
+                let has_lyrics = self.resting_index.is_some_and(|index| self.pages[index].shows_live_text());
+                !visibility::allows(showing, has_activity, self.has_resting_content, has_lyrics)
+            }
+        }
     }
 
-    fn is_over_maximized_window(&self) -> bool {
-        self.screen_mode == ScreenMode::Maximized
+    /// `None` over a regular window, where `notch.hide_when_idle` decides instead.
+    fn current_showing(&self) -> Option<Showing> {
+        visibility::showing_for(self.screen_mode, self.maximized_showing, self.fullscreen_showing)
     }
 
     fn is_suppressed(&self) -> bool {
-        self.hides_for_apps && self.screen_mode == ScreenMode::Fullscreen
+        self.current_showing() == Some(Showing::Hidden)
     }
 
     fn hidden_height(&self) -> f32 {
@@ -1148,7 +1140,7 @@ impl Notch {
     }
 
     pub fn set_screen_mode(&mut self, mode: ScreenMode) {
-        if mode != ScreenMode::Fullscreen || !self.hides_for_apps {
+        if visibility::showing_for(mode, self.maximized_showing, self.fullscreen_showing) != Some(Showing::Hidden) {
             super::window::raise_topmost(self.window);
             unsafe {
                 SetTimer(Some(self.window), RAISE_TIMER_ID, RAISE_DELAY_MILLISECONDS, None);
@@ -1208,38 +1200,6 @@ impl Notch {
         }
     }
 
-    pub fn toggle_hide_for_apps(&mut self) {
-        let was_suppressed = self.is_suppressed();
-        self.hides_for_apps = !self.hides_for_apps;
-        self.settings.set_bool(HIDE_FOR_APPS_SETTING, self.hides_for_apps);
-        self.apply_suppression(was_suppressed);
-        self.flush();
-    }
-
-    pub fn hides_for_apps(&self) -> bool {
-        self.hides_for_apps
-    }
-
-    pub fn toggle_lyrics_over_maximized(&mut self) {
-        self.keeps_lyrics_over_windows = !self.keeps_lyrics_over_windows;
-        self.settings.set_bool(LYRICS_OVER_WINDOWS_SETTING, self.keeps_lyrics_over_windows);
-        self.flush();
-    }
-
-    pub fn keeps_lyrics_over_windows(&self) -> bool {
-        self.keeps_lyrics_over_windows
-    }
-
-    pub fn toggle_notch_over_maximized(&mut self) {
-        self.keeps_notch_over_windows = !self.keeps_notch_over_windows;
-        self.settings.set_bool(NOTCH_OVER_WINDOWS_SETTING, self.keeps_notch_over_windows);
-        self.flush();
-    }
-
-    pub fn keeps_notch_over_windows(&self) -> bool {
-        self.keeps_notch_over_windows
-    }
-
     pub fn toggle_hide_when_idle(&mut self) {
         self.hides_when_idle = !self.hides_when_idle;
         self.settings.set_bool(HIDE_WHEN_IDLE_SETTING, self.hides_when_idle);
@@ -1254,13 +1214,12 @@ impl Notch {
     /// Hover, the open page and the page shown stay as they are.
     pub fn reload_settings(&mut self) {
         self.settings.reload();
+        // A hand-edited old key still migrates while the notch runs.
+        visibility::migrate(&mut self.settings);
         let was_suppressed = self.is_suppressed();
         self.hides_when_idle = self.settings.get_bool(HIDE_WHEN_IDLE_SETTING, self.hides_when_idle);
-        self.hides_for_apps = self.settings.get_bool(HIDE_FOR_APPS_SETTING, self.hides_for_apps);
-        self.keeps_lyrics_over_windows =
-            self.settings.get_bool(LYRICS_OVER_WINDOWS_SETTING, self.keeps_lyrics_over_windows);
-        self.keeps_notch_over_windows =
-            self.settings.get_bool(NOTCH_OVER_WINDOWS_SETTING, self.keeps_notch_over_windows);
+        self.maximized_showing = read_showing(&self.settings, visibility::MAXIMIZED_KEY, self.maximized_showing);
+        self.fullscreen_showing = read_showing(&self.settings, visibility::FULLSCREEN_KEY, self.fullscreen_showing);
         let navigable_before = self.navigable.clone();
         self.reload_page_list();
         for index in 0..self.pages.len() {
@@ -1801,6 +1760,11 @@ fn ramp(expansion: f32, range: (f32, f32)) -> f32 {
 
 fn activity_setting_key(id: &str) -> String {
     format!("activity.{id}")
+}
+
+/// A missing key or an unknown word gives `fallback`: the default at start, the current choice on reload.
+fn read_showing(settings: &Settings, key: &str, fallback: Showing) -> Showing {
+    settings.get_string(key).and_then(Showing::parse).unwrap_or(fallback)
 }
 
 fn badge_space(badges: &[(Source, f32)]) -> f32 {

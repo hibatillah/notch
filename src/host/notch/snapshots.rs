@@ -494,7 +494,7 @@ fn snapshots_of_the_short_lived_messages() {
 #[cfg(test)]
 mod screen_mode_tests {
     use super::*;
-    use crate::host::screen_mode::ScreenMode;
+    use crate::host::{screen_mode::ScreenMode, visibility::Showing};
 
     struct SettingsFile(PathBuf);
 
@@ -580,13 +580,12 @@ mod screen_mode_tests {
         let settings_file = SettingsFile::new("defaults");
         let notch = configured_rig(SampleOptions::default(), settings_file.load(), Vec::new());
         assert!(!notch.hides_when_idle);
-        assert!(notch.hides_for_apps);
-        assert!(notch.keeps_lyrics_over_windows);
-        assert!(!notch.keeps_notch_over_windows);
+        assert_eq!(notch.maximized_showing, Showing::MusicWithLyrics);
+        assert_eq!(notch.fullscreen_showing, Showing::Hidden);
     }
 
     #[test]
-    fn the_maximized_override_shows_even_an_empty_notch_with_hide_when_idle_enabled() {
+    fn the_old_maximized_override_shows_even_an_empty_notch_with_hide_when_idle_enabled() {
         let settings_file = SettingsFile::new("maximized");
         let mut settings = settings_file.load();
         settings.set_bool("notch.show_over_maximized", true);
@@ -602,33 +601,65 @@ mod screen_mode_tests {
     #[test]
     fn disabling_fullscreen_hiding_does_not_show_the_notch_over_maximized_windows() {
         let mut notch = rig(SampleOptions::default());
-        notch.hides_for_apps = false;
+        notch.fullscreen_showing = Showing::Music;
         notch.screen_mode = ScreenMode::Maximized;
         assert!(notch.is_hidden());
     }
 
     #[test]
-    fn the_maximized_override_remembers_its_choice_without_changing_the_lyrics_preference() {
-        let settings_file = SettingsFile::new("remember-maximized");
-        let mut notch = configured_rig(SampleOptions::default(), settings_file.load(), Vec::new());
-        notch.toggle_notch_over_maximized();
-        assert!(settings_file.load().get_bool(NOTCH_OVER_WINDOWS_SETTING, false));
-        assert!(notch.keeps_lyrics_over_windows);
-        notch.toggle_notch_over_maximized();
-        assert!(!settings_file.load().get_bool(NOTCH_OVER_WINDOWS_SETTING, true));
-    }
-
-    #[test]
-    fn saved_visibility_choices_override_the_new_defaults() {
+    fn saved_old_visibility_choices_migrate_at_start() {
         let settings_file = SettingsFile::new("saved-visibility");
         let mut settings = settings_file.load();
         settings.set_bool(HIDE_WHEN_IDLE_SETTING, true);
-        settings.set_bool(HIDE_FOR_APPS_SETTING, false);
-        settings.set_bool(LYRICS_OVER_WINDOWS_SETTING, false);
+        settings.set_bool("notch.hide_for_fullscreen", false);
+        settings.set_bool("notch.lyrics_over_maximized", false);
         let notch = configured_rig(SampleOptions::default(), settings_file.load(), Vec::new());
         assert!(notch.hides_when_idle);
-        assert!(!notch.hides_for_apps);
-        assert!(!notch.keeps_lyrics_over_windows);
+        assert_eq!(notch.fullscreen_showing, Showing::Music);
+        assert_eq!(notch.maximized_showing, Showing::ActivitiesOnly);
+        assert_eq!(settings_file.load().get_string("notch.fullscreen"), Some("music"));
+        assert_eq!(settings_file.load().get_string("notch.maximized"), Some("activities"));
+    }
+
+    #[test]
+    fn saved_showings_are_read_and_an_unknown_word_falls_back_to_the_default() {
+        let settings_file = SettingsFile::new("saved-showings");
+        fs::write(&settings_file.0, "notch.maximized=music\nnotch.fullscreen=sometimes\n").unwrap();
+        let notch = configured_rig(SampleOptions::default(), settings_file.load(), Vec::new());
+        assert_eq!(notch.maximized_showing, Showing::Music);
+        assert_eq!(notch.fullscreen_showing, Showing::Hidden);
+    }
+
+    #[test]
+    fn reloading_a_showing_over_a_maximized_window_applies_at_once_and_releases_the_window() {
+        let settings_file = SettingsFile::new("reload-showing");
+        fs::write(&settings_file.0, "notch.maximized=hidden\n").unwrap();
+        let mut notch = configured_rig(SampleOptions::default(), settings_file.load(), Vec::new());
+        notch.set_screen_mode(ScreenMode::Maximized);
+        assert!(notch.is_suppressed());
+        fs::write(&settings_file.0, "notch.maximized=music\n").unwrap();
+        notch.reload_settings();
+        assert_eq!(notch.maximized_showing, Showing::Music);
+        assert!(!notch.is_suppressed(), "a choice other than hidden must not leave the window hidden");
+        assert!(!notch.is_hidden());
+        assert_eq!(notch.resting_height.target, RESTING_PILL_HEIGHT);
+        fs::write(&settings_file.0, "notch.maximized=bogus\n").unwrap();
+        notch.reload_settings();
+        assert_eq!(notch.maximized_showing, Showing::Music, "an unknown word keeps the current choice");
+        fs::write(&settings_file.0, "notch.maximized=activities\n").unwrap();
+        notch.reload_settings();
+        assert!(notch.is_hidden());
+        assert_eq!(notch.resting_height.target, notch.hidden_height());
+    }
+
+    #[test]
+    fn a_hand_edited_old_key_migrates_on_reload() {
+        let settings_file = SettingsFile::new("reload-old-key");
+        let mut notch = configured_rig(SampleOptions::default(), settings_file.load(), Vec::new());
+        fs::write(&settings_file.0, "notch.show_over_maximized=on\n").unwrap();
+        notch.reload_settings();
+        assert_eq!(notch.maximized_showing, Showing::Music);
+        assert_eq!(settings_file.load().get_string("notch.maximized"), Some("music"));
     }
 
     #[test]
@@ -680,7 +711,7 @@ mod screen_mode_tests {
         fs::write(&settings_file.0, "notch.hide_when_idle=on\nnotch.hide_for_fullscreen=off\n").unwrap();
         notch.reload_settings();
         assert!(notch.hides_when_idle);
-        assert!(!notch.hides_for_apps);
+        assert_eq!(notch.fullscreen_showing, Showing::Music);
         assert!(notch.is_hidden());
         assert_eq!(notch.resting_height.target, HIDDEN_HEIGHT);
     }
@@ -751,8 +782,8 @@ mod screen_mode_tests {
             .unwrap();
         notch.reload_settings();
         assert!(notch.hides_when_idle);
-        assert!(!notch.hides_for_apps);
-        assert!(notch.keeps_lyrics_over_windows);
+        assert_eq!(notch.fullscreen_showing, Showing::Music);
+        assert_eq!(notch.maximized_showing, Showing::MusicWithLyrics);
         assert!(!notch.page_list.is_enabled(stats));
 
         let every_page_off = notch.page_ids().join(",");
@@ -765,7 +796,7 @@ mod screen_mode_tests {
         fs::create_dir(&settings_file.0).unwrap();
         notch.reload_settings();
         assert!(notch.hides_when_idle, "an unreadable file keeps every value");
-        assert!(!notch.hides_for_apps);
+        assert_eq!(notch.fullscreen_showing, Showing::Music);
         fs::remove_dir(&settings_file.0).unwrap();
         fs::write(&settings_file.0, "").unwrap();
     }
@@ -850,8 +881,8 @@ mod screen_mode_tests {
         assert!(!notch.is_hidden());
         notch.screen_mode = ScreenMode::Maximized;
         assert!(notch.is_hidden());
-        notch.keeps_notch_over_windows = true;
-        assert!(!notch.is_hidden(), "the choice in the tray menu turns it off");
+        notch.maximized_showing = Showing::Music;
+        assert!(!notch.is_hidden(), "the music choice keeps even the idle clock up");
     }
 
     #[test]
@@ -866,17 +897,67 @@ mod screen_mode_tests {
     #[test]
     fn lyrics_stay_over_a_maximized_window_only_when_the_user_asked() {
         let mut notch = playing(true);
-        notch.keeps_lyrics_over_windows = false;
+        notch.maximized_showing = Showing::ActivitiesOnly;
         notch.refresh_layout();
         notch.screen_mode = ScreenMode::Maximized;
         assert!(notch.is_hidden());
-        notch.keeps_lyrics_over_windows = true;
+        notch.maximized_showing = Showing::MusicWithLyrics;
         assert!(!notch.is_hidden());
+    }
+
+    #[test]
+    fn maximized_lyrics_hides_music_without_lyrics() {
         let mut without_lyrics = playing(false);
+        without_lyrics.maximized_showing = Showing::MusicWithLyrics;
         without_lyrics.refresh_layout();
         without_lyrics.screen_mode = ScreenMode::Maximized;
-        without_lyrics.keeps_lyrics_over_windows = true;
+        without_lyrics.refresh_layout();
         assert!(without_lyrics.is_hidden());
+        assert_eq!(without_lyrics.resting_height.target, without_lyrics.hidden_height());
+        assert!(!without_lyrics.is_suppressed());
+    }
+
+    #[test]
+    fn maximized_music_shows_without_lyrics() {
+        let mut notch = playing(false);
+        notch.maximized_showing = Showing::Music;
+        notch.hides_when_idle = true;
+        notch.screen_mode = ScreenMode::Maximized;
+        notch.refresh_layout();
+        assert!(notch.has_resting_content);
+        assert!(!notch.is_hidden());
+        assert!(!notch.is_suppressed());
+    }
+
+    #[test]
+    fn fullscreen_activities_only_shows_a_banner_but_hides_the_idle_clock() {
+        let mut notch = rig(SampleOptions::default());
+        notch.fullscreen_showing = Showing::ActivitiesOnly;
+        notch.set_screen_mode(ScreenMode::Fullscreen);
+        assert!(!notch.is_suppressed());
+        assert!(notch.is_hidden(), "the idle clock hides to the strip");
+        notch.shown_banner = Some((Source::Activity(0), 330.0, 70.0));
+        assert!(!notch.is_hidden());
+        let mut playing_notch = playing(true);
+        playing_notch.fullscreen_showing = Showing::ActivitiesOnly;
+        playing_notch.screen_mode = ScreenMode::Fullscreen;
+        playing_notch.refresh_layout();
+        assert!(playing_notch.is_hidden(), "music and lyrics do not count as activities");
+    }
+
+    #[test]
+    fn fullscreen_hidden_suppresses_the_window() {
+        let mut notch = rig(SampleOptions::default());
+        notch.fullscreen_showing = Showing::Hidden;
+        notch.set_screen_mode(ScreenMode::Fullscreen);
+        assert!(notch.is_suppressed());
+        notch.shown_banner = Some((Source::Activity(0), 330.0, 70.0));
+        assert!(notch.is_suppressed(), "hidden hides even an activity");
+        notch.set_screen_mode(ScreenMode::Normal);
+        assert!(!notch.is_suppressed());
+        notch.maximized_showing = Showing::Hidden;
+        notch.set_screen_mode(ScreenMode::Maximized);
+        assert!(notch.is_suppressed(), "hidden over a maximized window suppresses too");
     }
 
     #[test]
@@ -886,7 +967,8 @@ mod screen_mode_tests {
                 for keeps_lyrics_over_windows in [false, true] {
                     let mut notch = playing(lyrics_enabled);
                     notch.hides_when_idle = hides_when_idle;
-                    notch.keeps_lyrics_over_windows = keeps_lyrics_over_windows;
+                    notch.maximized_showing =
+                        if keeps_lyrics_over_windows { Showing::MusicWithLyrics } else { Showing::ActivitiesOnly };
                     notch.screen_mode = ScreenMode::Maximized;
                     notch.refresh_layout();
                     let should_hide = !(lyrics_enabled && keeps_lyrics_over_windows);
@@ -908,20 +990,17 @@ mod screen_mode_tests {
     }
 
     #[test]
-    fn the_maximized_override_keeps_music_visible_regardless_of_lyrics_and_idle_settings() {
+    fn maximized_music_keeps_music_visible_regardless_of_lyrics_and_idle_settings() {
         for lyrics_enabled in [false, true] {
             for hides_when_idle in [false, true] {
-                for keeps_lyrics_over_windows in [false, true] {
-                    let mut notch = playing(lyrics_enabled);
-                    notch.hides_when_idle = hides_when_idle;
-                    notch.keeps_lyrics_over_windows = keeps_lyrics_over_windows;
-                    notch.keeps_notch_over_windows = true;
-                    notch.screen_mode = ScreenMode::Maximized;
-                    notch.refresh_layout();
-                    assert!(!notch.is_hidden());
-                    notch.screen_mode = ScreenMode::Fullscreen;
-                    assert!(notch.is_suppressed());
-                }
+                let mut notch = playing(lyrics_enabled);
+                notch.hides_when_idle = hides_when_idle;
+                notch.maximized_showing = Showing::Music;
+                notch.screen_mode = ScreenMode::Maximized;
+                notch.refresh_layout();
+                assert!(!notch.is_hidden());
+                notch.screen_mode = ScreenMode::Fullscreen;
+                assert!(notch.is_suppressed());
             }
         }
     }
@@ -957,11 +1036,16 @@ mod screen_mode_tests {
         let mut notch = rig(SampleOptions::default());
         notch.screen_mode = ScreenMode::Fullscreen;
         assert!(notch.is_suppressed());
-        notch.hides_for_apps = false;
-        assert!(!notch.is_suppressed());
-        notch.hides_for_apps = true;
+        for showing in [Showing::ActivitiesOnly, Showing::MusicWithLyrics, Showing::Music] {
+            notch.fullscreen_showing = showing;
+            assert!(!notch.is_suppressed(), "{showing:?}");
+        }
+        notch.fullscreen_showing = Showing::Hidden;
         notch.screen_mode = ScreenMode::Maximized;
         assert!(!notch.is_suppressed());
+        notch.screen_mode = ScreenMode::Normal;
+        notch.maximized_showing = Showing::Hidden;
+        assert!(!notch.is_suppressed(), "a regular window never suppresses the notch");
     }
 
     #[test]

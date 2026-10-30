@@ -105,17 +105,22 @@ While files are dragged over the notch it opens at once on the page that takes d
 
 ### Hiding
 
-The notch can step out of the way in three cases, all in `notch.rs` (`is_hidden`, `is_suppressed`):
+The notch can step out of the way in two ways, both in `notch.rs` (`is_hidden`, `is_suppressed`), with the rules in
+`visibility.rs`:
 
-- **Hide when idle** (a tray option): with nothing to show it shrinks to a nearly invisible 240 x 6 px strip that still
-  receives the pointer, shows the small pill after the pointer rests on it for 150 ms, and opens if the pointer stays.
-- **Over a maximized window** (`Show notch over maximized windows`, off by default): the same, with a 3 px strip and a 350 ms
-  wait, so the tabs and title bar of the window are not caught. A banner, a transient message or a badge still show.
-  Page content is hidden except active lyrics when "Show lyrics over maximized windows" is on (the default), using
-  `Page::shows_live_text`. Turning on the whole-notch option keeps even the idle clock visible and overrides
-  **Hide when idle** over maximized windows.
-- **Over a full-screen window** (`Hide for full-screen apps`, on by default): the notch's window is hidden and nothing is drawn, so no hover, banner or message
-  shows until the window leaves full screen.
+- **Hide when idle** (a tray option, over regular windows): with nothing to show it shrinks to a nearly invisible
+  240 x 6 px strip that still receives the pointer, shows the small pill after the pointer rests on it for 150 ms, and
+  opens if the pointer stays.
+- **Over a maximized or full-screen window** one `Showing` each (`notch.maximized`, default `lyrics`;
+  `notch.fullscreen`, default `hidden`) replaces Hide when idle. `hidden` suppresses the notch: its window is hidden
+  and nothing is drawn, so no hover, banner or message shows until the window in front changes. `activities` keeps a
+  banner, a transient message or a badge; `lyrics` also keeps active lyrics (`Page::shows_live_text`); `music` keeps
+  everything, the idle clock included (`visibility::allows` decides the first three). Whatever a choice leaves out
+  hides to the strip, 3 px high with a 350 ms wait unless Hide when idle is on, so the tabs and title bar of the window
+  are not caught. `visibility::migrate` writes the new keys from the retired `notch.hide_for_fullscreen`,
+  `notch.show_over_maximized` and `notch.lyrics_over_maximized` at start and on a reload, never over a saved new key.
+  A reload that changes a choice while such a window is in front applies at once: it hides or shows the window and
+  re-lays out the pill.
 
 `screen_mode.rs` decides which case applies. It hooks Windows' events for the window in front changing, and, for as
 long as one window is in front, for the moves and resizes of that window's thread (`SetWinEventHook`, one thread at a

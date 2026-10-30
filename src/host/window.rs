@@ -70,29 +70,15 @@ fn with_notch<R>(action: impl FnOnce(&mut Notch) -> R) -> Option<R> {
 fn show_menu(window: HWND) {
     let activities = with_notch(|notch| notch.activity_menu()).unwrap_or_default();
     let page_items = with_notch(|notch| notch.page_menu()).unwrap_or_default();
-    let state = with_notch(|notch| tray::MenuState {
-        hides_when_idle: notch.hides_when_idle(),
-        starts_with_windows: false,
-        hides_for_apps: notch.hides_for_apps(),
-        lyrics_over_maximized: notch.keeps_lyrics_over_windows(),
-        notch_over_maximized: notch.keeps_notch_over_windows(),
-    })
-    .unwrap_or_default();
+    let state =
+        with_notch(|notch| tray::MenuState { hides_when_idle: notch.hides_when_idle(), starts_with_windows: false })
+            .unwrap_or_default();
     let state = tray::MenuState { starts_with_windows: startup::is_enabled(), ..state };
     match tray::show_context_menu(window, &activities, &page_items, state) {
         Some(tray::MenuChoice::ToggleHideWhenIdle) => {
             with_notch(|notch| notch.toggle_hide_when_idle());
         }
         Some(tray::MenuChoice::ToggleStartWithWindows) => startup::set_enabled(!state.starts_with_windows),
-        Some(tray::MenuChoice::ToggleHideForApps) => {
-            with_notch(|notch| notch.toggle_hide_for_apps());
-        }
-        Some(tray::MenuChoice::ToggleLyricsOverMaximized) => {
-            with_notch(|notch| notch.toggle_lyrics_over_maximized());
-        }
-        Some(tray::MenuChoice::ToggleNotchOverMaximized) => {
-            with_notch(|notch| notch.toggle_notch_over_maximized());
-        }
         Some(tray::MenuChoice::PageItem { page, item }) => {
             with_notch(|notch| notch.page_menu_item_chosen(page, item));
         }

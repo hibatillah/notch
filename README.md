@@ -34,7 +34,7 @@ Activities (what the collapsed pill shows while something happens):
 
 ### Maximized and full-screen windows
 
-Over a **maximized** window the notch hides to a thin strip at the very top edge and wakes when the pointer waits there. Volume, notifications and other short messages still show. **Show lyrics over maximized windows** is on by default, keeping active lyrics visible. Turn on **Show notch over maximized windows** to keep all notch content visible, including music without lyrics and the idle clock. This option is off by default and takes precedence over **Hide when idle** on maximized windows. **Hide for full-screen apps**, on by default, independently hides the entire notch over a game, video or F11 window.
+Over a **maximized** window and over a **full-screen** app (a game, a video, an F11 window) the notch follows its own choice for each, saved as `notch.maximized` and `notch.fullscreen`: **hidden** takes the whole notch off the screen; **activities** shows only volume, notifications and other short messages; **lyrics** also keeps active lyrics; **music** keeps all notch content, including music without lyrics and the idle clock. Anything a choice leaves out hides to a thin strip at the very top edge that wakes when the pointer waits there. By default maximized windows use **lyrics** and full-screen apps use **hidden**; these choices take precedence over **Hide when idle**. Choices saved with the old tray options carry over.
 
 ### Status marks
 
@@ -63,15 +63,12 @@ The tray menu can switch **Notifications** on or off; the other activities are a
 - **Shelf:** drag files onto the notch (it turns blue when it is ready). The shelf shows six places; when there are more files, the last place shows the overflow count. Double-click a file to open it, drag it out to take it off the shelf into another app, and right-click it or press the cross on its corner to remove it.
 - **Calendar:** click a day of the week to list its events.
 - **Calendar:** copy your calendar's iCal address, then right-click the tray icon and choose **Use calendar link from clipboard**. For Google Calendar, use "Secret address in iCal format" and treat it like a password.
-- **Tray menu** (right-click the tray icon; the notch itself has no menu): **Notifications**, the calendar link, **Hide when idle**, **Hide for full-screen apps**, **Show notch over maximized windows**, **Show lyrics over maximized windows**, **Start with Windows**, **Settings…**, and **Quit**. On Windows 11 the icon may sit under the `^` overflow menu.
+- **Tray menu** (right-click the tray icon; the notch itself has no menu): **Notifications**, the calendar link, **Hide when idle**, **Start with Windows**, **Settings…**, and **Quit**. On Windows 11 the icon may sit under the `^` overflow menu.
 
 | Option | Default |
 | --- | --- |
 | Notifications | On |
 | Hide when idle | Off |
-| Hide for full-screen apps | On |
-| Show notch over maximized windows | Off |
-| Show lyrics over maximized windows | On |
 | Start with Windows | On in the installer |
 
 Defaults apply when no choice has been saved; existing notification, visibility and startup choices are retained.

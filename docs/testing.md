@@ -183,6 +183,8 @@ For a change to activities, also check (each one is a real event, so run them on
 - receive a notification: a banner with the app's logo for about four seconds; point at the notch while it shows and it stays until you leave
 - the activity section contains only Notifications; untick it and verify it stays off after restarting
 - old disable settings for volume, brightness and other required activities do not suppress them
-- Show notch over maximized windows keeps music without lyrics and the idle clock visible, even with Hide when idle on
-- turning that override off restores lyrics-only visibility; fullscreen hiding remains independent
+- `notch.maximized=music` keeps music without lyrics and the idle clock visible over a maximized window, even with Hide when idle on
+- `notch.maximized=lyrics` (the default) keeps only active lyrics and activities; `activities` keeps only activities; `hidden` takes the notch off the screen
+- `notch.fullscreen=activities` shows a notification banner over a full-screen video but hides the idle clock to the strip; `hidden` (the default) shows nothing
+- a settings file with only the old keys (`notch.show_over_maximized=on`) behaves as before and gains the matching new key at start
 - open the tray menu with Windows in dark mode: the menu is dark; tick "Start with Windows" and check the entry under `HKCU\Software\Microsoft\Windows\CurrentVersion\Run`

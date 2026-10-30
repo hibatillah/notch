@@ -162,7 +162,8 @@ are in device-independent pixels (multiply by the display scale when drawing). T
   (`presence()`; see [adding-an-activity.md](adding-an-activity.md)).
 - The time is one element: it glides from the middle of the collapsed pill to the right end of the header as the notch
   opens, and stays visible the whole way.
-- Over a maximized window the pill hides to a strip, and over a full-screen window the notch is off the screen; see
+- By default, over a maximized window the pill hides to a strip unless lyrics play, and over a full-screen window the
+  notch is off the screen; see
   [architecture.md](architecture.md#hiding).
 
 **Where to change what:**
