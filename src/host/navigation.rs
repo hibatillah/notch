@@ -140,9 +140,15 @@ impl PageList {
     }
 }
 
-/// The `id:Label` list the settings window reads as `pages.known`; it lists pages without linking to the notch.
-pub fn known_pages_text(ids: &[&str], labels: &[&str]) -> String {
-    ids.iter().zip(labels).map(|(id, label)| format!("{id}:{label}")).collect::<Vec<_>>().join(",")
+/// The `id:Label[:opt_in]` list the settings window reads as `pages.known`; it lists pages without linking to the notch.
+pub fn known_pages_text(ids: &[&str], labels: &[&str], opt_in: &[bool]) -> String {
+    debug_assert!(ids.len() == labels.len() && ids.len() == opt_in.len());
+    ids.iter()
+        .zip(labels)
+        .zip(opt_in)
+        .map(|((id, label), is_opt_in)| format!("{id}:{label}{}", if *is_opt_in { ":opt_in" } else { "" }))
+        .collect::<Vec<_>>()
+        .join(",")
 }
 
 /// Urgent pages override selection; otherwise retain an available selection before falling back to priority.
@@ -255,8 +261,9 @@ mod tests {
 
     #[test]
     fn known_pages_text_joins_ids_and_labels() {
-        assert_eq!(known_pages_text(&["clock", "media"], &["Clock", "Now Playing"]), "clock:Clock,media:Now Playing");
-        assert_eq!(known_pages_text(&[], &[]), "");
+        let text = known_pages_text(&["clock", "stats"], &["Clock", "Stats"], &[false, true]);
+        assert_eq!(text, "clock:Clock,stats:Stats:opt_in");
+        assert_eq!(known_pages_text(&[], &[], &[]), "");
     }
 
     #[test]

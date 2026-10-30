@@ -55,7 +55,7 @@ next start, or at once if something posts that message.
 | `notch.hide_for_fullscreen` | `on`, `off` | on by default: hide completely over a full-screen window; independent of the maximized-window options |
 | `notch.show_over_maximized` | `on`, `off` | off by default: keep the whole notch visible over maximized windows, including when Hide when idle is on |
 | `notch.lyrics_over_maximized` | `on`, `off` | on by default: keep active lyrics visible over maximized windows when the whole-notch override is off |
-| `pages.known` | `id:Label,...` | written by the notch at start, only when it changed: the pages the settings window lists (label is `Page::name`). Do not edit; with it missing the window's Pages section shows a note and writes nothing. The window never switches off the last enabled page, so one page stays reachable |
+| `pages.known` | `id:Label,...`, with `:opt_in` after the label of an opt-in page | written by the notch at start, only when it changed: the pages the settings window lists (label is `Page::name`; an opt-in page shows as off until `navigation.disabled` is saved). Do not edit; with it missing the window's Pages section shows a note and writes nothing. The window never switches off the last enabled page, so one page stays reachable |
 | `navigation.page` | a page id | the page that was open last; the notch opens on it (the notch writes this when you change page) |
 | `activity.notifications` | `on`, `off` | on by default: show Windows notification banners in the notch; the tray menu changes this |
 

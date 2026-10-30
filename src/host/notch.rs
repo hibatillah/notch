@@ -259,8 +259,8 @@ impl Notch {
             .get_string(LAST_PAGE_SETTING)
             .and_then(|id| self.pages.iter().position(|page| page.id() == id));
         let ids = self.page_ids();
-        self.publish_known_pages(&ids);
         let opt_in: Vec<bool> = self.pages.iter().map(|page| page.is_opt_in()).collect();
+        self.publish_known_pages(&ids, &opt_in);
         self.page_list = PageList::load(
             &ids,
             &opt_in,
@@ -845,9 +845,9 @@ impl Notch {
     }
 
     /// Lets the settings window list the pages; the file is written only when the list changed.
-    fn publish_known_pages(&mut self, ids: &[&str]) {
+    fn publish_known_pages(&mut self, ids: &[&str], opt_in: &[bool]) {
         let labels: Vec<&str> = self.pages.iter().map(|page| page.name()).collect();
-        let known = navigation::known_pages_text(ids, &labels);
+        let known = navigation::known_pages_text(ids, &labels, opt_in);
         if self.settings.get_string(KNOWN_PAGES_SETTING) != Some(known.as_str()) {
             self.settings.set_string(KNOWN_PAGES_SETTING, &known);
         }

@@ -9,17 +9,25 @@ const DISABLED_KEY: &str = "navigation.disabled";
 pub struct KnownPage {
     pub id: String,
     pub label: String,
+    pub opt_in: bool,
 }
 
-/// Reads the notch's `id:Label,...` list; an entry without a label shows its id.
+/// Reads the notch's `id:Label[:opt_in],...` list; an entry without a label shows its id.
 pub fn parse_known(text: Option<&str>) -> Vec<KnownPage> {
     word_list(text)
         .into_iter()
         .filter_map(|entry| {
-            let (id, label) = entry.split_once(':').unwrap_or((entry.as_str(), ""));
+            let (entry, opt_in) = match entry.strip_suffix(":opt_in") {
+                Some(rest) => (rest, true),
+                None => (entry.as_str(), false),
+            };
+            let (id, label) = entry.split_once(':').unwrap_or((entry, ""));
             let (id, label) = (id.trim(), label.trim());
-            (!id.is_empty())
-                .then(|| KnownPage { id: id.to_owned(), label: if label.is_empty() { id } else { label }.to_owned() })
+            (!id.is_empty()).then(|| KnownPage {
+                id: id.to_owned(),
+                label: if label.is_empty() { id } else { label }.to_owned(),
+                opt_in,
+            })
         })
         .collect()
 }
@@ -36,6 +44,14 @@ pub fn current_order(known: &[KnownPage], order_text: Option<&str>) -> Vec<Strin
         known.iter().filter(|page| !order.contains(&page.id)).map(|page| page.id.clone()).collect();
     order.extend(missing);
     order
+}
+
+/// Mirrors `PageList::load`: without a saved list only the opt-in pages start switched off.
+pub fn disabled_pages(known: &[KnownPage], disabled_text: Option<&str>) -> Vec<String> {
+    match disabled_text {
+        Some(_) => word_list(disabled_text),
+        None => known.iter().filter(|page| page.opt_in).map(|page| page.id.clone()).collect(),
+    }
 }
 
 pub fn word_list(text: Option<&str>) -> Vec<String> {
@@ -94,7 +110,7 @@ pub fn render(window_state: &SettingsWindow, cx: &mut Context<SettingsWindow>) -
             .into_any_element();
     }
     let order = current_order(&known, settings.get_string(ORDER_KEY));
-    let disabled = word_list(settings.get_string(DISABLED_KEY));
+    let disabled = disabled_pages(&known, settings.get_string(DISABLED_KEY));
     let rows = order.iter().enumerate().map(|(index, id)| {
         let label = known.iter().find(|page| &page.id == id).map(|page| page.label.clone()).unwrap_or_default();
         let shown_label = SharedString::from(label);
@@ -107,7 +123,7 @@ pub fn render(window_state: &SettingsWindow, cx: &mut Context<SettingsWindow>) -
                 settings.reload();
                 let known = parse_known(settings.get_string(KNOWN_KEY));
                 let order = current_order(&known, settings.get_string(ORDER_KEY));
-                let mut disabled = word_list(settings.get_string(DISABLED_KEY));
+                let mut disabled = disabled_pages(&known, settings.get_string(DISABLED_KEY));
                 let enabled = disabled.contains(&switch_id);
                 if switch_page(&order, &mut disabled, &switch_id, enabled) {
                     apply(settings, DISABLED_KEY, &order_text(&order, &disabled).1);
@@ -232,6 +248,40 @@ mod tests {
         reorder(&mut order, 2, 0);
         let (text, _) = order_text(&order, &[]);
         assert_eq!(text, "media,timer,clock");
+    }
+
+    #[test]
+    fn an_opt_in_page_is_shown_off_when_no_disabled_list_is_saved() {
+        let pages = known("clock:Clock,media:Media,stats:Stats:opt_in");
+        assert!(pages[2].opt_in && !pages[0].opt_in);
+        assert_eq!(pages[2].label, "Stats");
+        assert_eq!(disabled_pages(&pages, None), strings(&["stats"]));
+        assert!(disabled_pages(&pages, Some("")).is_empty(), "a saved empty list switches everything on");
+        assert_eq!(disabled_pages(&pages, Some("media")), strings(&["media"]));
+    }
+
+    #[test]
+    fn old_two_field_entries_are_not_opt_in() {
+        let pages = known("clock:Clock,stats:Stats");
+        assert!(disabled_pages(&pages, None).is_empty());
+    }
+
+    #[test]
+    fn the_first_toggle_of_another_page_keeps_the_opt_in_page_off() {
+        let pages = known("clock:Clock,media:Media,stats:Stats:opt_in");
+        let order = current_order(&pages, None);
+        let mut disabled = disabled_pages(&pages, None);
+        assert!(switch_page(&order, &mut disabled, "media", false));
+        assert_eq!(order_text(&order, &disabled).1, "stats,media");
+    }
+
+    #[test]
+    fn the_last_enabled_guard_counts_the_opt_in_default() {
+        let pages = known("clock:Clock,stats:Stats:opt_in");
+        let order = current_order(&pages, None);
+        let mut disabled = disabled_pages(&pages, None);
+        assert!(!switch_page(&order, &mut disabled, "clock", false));
+        assert_eq!(disabled, strings(&["stats"]));
     }
 
     #[test]
