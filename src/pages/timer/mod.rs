@@ -266,6 +266,11 @@ impl Page for TimerPage {
         self.schedule(context);
     }
 
+    fn on_settings_changed(&mut self, context: &mut Context) {
+        self.timer.reload_lengths(context.settings);
+        context.request_repaint();
+    }
+
     fn on_hover_changed(&mut self, is_hovering: bool, context: &mut Context) {
         self.is_open = is_hovering;
         if !is_hovering {

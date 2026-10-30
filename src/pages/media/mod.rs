@@ -316,8 +316,12 @@ impl MediaPage {
     }
 
     fn toggle_lyrics(&mut self, context: &mut Context) {
-        self.lyrics_enabled = !self.lyrics_enabled;
-        context.settings.set_bool(SETTING_LYRICS, self.lyrics_enabled);
+        context.settings.set_bool(SETTING_LYRICS, !self.lyrics_enabled);
+        self.set_lyrics_enabled(!self.lyrics_enabled, context);
+    }
+
+    fn set_lyrics_enabled(&mut self, is_enabled: bool, context: &mut Context) {
+        self.lyrics_enabled = is_enabled;
         self.refresh_title_lines(context.fonts());
         self.sync_wave_timer(context);
         self.sync_backdrop(context);
@@ -412,6 +416,13 @@ impl Page for MediaPage {
 
     fn on_notify(&mut self, context: &mut Context) {
         self.apply_snapshot(context);
+    }
+
+    fn on_settings_changed(&mut self, context: &mut Context) {
+        let is_enabled = context.settings.get_bool(SETTING_LYRICS, self.lyrics_enabled);
+        if is_enabled != self.lyrics_enabled {
+            self.set_lyrics_enabled(is_enabled, context);
+        }
     }
 
     fn on_pointer(&mut self, event: PointerEvent, frame: &Frame, context: &mut Context) {

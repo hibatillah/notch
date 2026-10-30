@@ -196,6 +196,11 @@ impl Activity for NotificationsActivity {
         self.shared = Some(listener::start(context.notifier()));
     }
 
+    fn on_settings_changed(&mut self, context: &mut Context) {
+        self.shows_text = context.settings.get_bool(SHOW_TEXT_SETTING, self.shows_text);
+        context.request_repaint();
+    }
+
     fn on_timer(&mut self, timer: TimerId, context: &mut Context) {
         if timer == FLASH_TIMER {
             self.flash.on_timer(timer, context);

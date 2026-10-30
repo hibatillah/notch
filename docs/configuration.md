@@ -33,7 +33,12 @@ default. Its choice is remembered as `activity.notifications`; when off at start
 ## Settings file
 
 `%APPDATA%\notch\settings.txt` is a plain text file with one `key=value` per line. The notch writes it when you
-change something; you can also edit it by hand while the notch is not running.
+change something, one key at a time through a temporary file, so keys another program wrote are kept. Another program
+(the settings window) that changes the file posts `WM_SETTINGS_CHANGED` (`WM_APP + 30`) to the window of class
+`NotchWindow`; the notch then re-reads the file and applies the `notch.*`, `navigation.order`, `navigation.disabled`,
+`activity.notifications`, `media.lyrics`, `timer.*_minutes`, `calendar.*` and `notifications.show_text` keys without a
+restart, keeping the page that is open. A missing or unreadable value keeps the current one. A hand edit is read at the
+next start, or at once if something posts that message.
 
 | Key | Values | Meaning |
 | --- | --- | --- |

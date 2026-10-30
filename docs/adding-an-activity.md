@@ -46,6 +46,7 @@ listens to one Windows power setting and flashes a level bar when it changes.
 | `on_timer()`, `on_notify()` | a timer fired; a background thread used the `Notifier` |
 | `on_hover_changed()` | the pointer entered or left the notch |
 | `on_system_message()` | a power setting or the clipboard changed (see below) |
+| `on_settings_changed()` | on a started activity, after the notch received `WM_SETTINGS_CHANGED` and re-read `settings.txt`; re-read the activity's own keys, falling back to the current value |
 
 Use `Flash` for a transient that shows and then goes: `flash.show(context, milliseconds)` shows it, again while
 visible keeps it up for a fresh duration, and `flash.on_timer(timer, context)` hides it. It uses `TimerId(0)`; an
@@ -78,7 +79,9 @@ tray entries; filtering the tray must preserve the registered activity indices.
 Only **Notifications** is optional among the built-in activities. Right-click the tray icon to switch it on or off.
 The choice is stored as `activity.notifications=off` or `on` in `%APPDATA%\notch\settings.txt`, defaulting to on.
 An optional activity that is off at start is never started; switching it off while running hides it but retains its
-listeners until exit. Required activities ignore saved disable settings and reject toggle requests.
+listeners until exit. The same happens when another program changes `activity.<id>` in the file and posts
+`WM_SETTINGS_CHANGED`: switched on, the activity starts if it never had; switched off, it is hidden. Required activities
+ignore saved disable settings and reject toggle requests.
 
 ## Remove an activity
 

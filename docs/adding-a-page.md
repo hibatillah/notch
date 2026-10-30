@@ -94,6 +94,11 @@ impl Page for GreetingPage {
         context.request_repaint();
     }
 
+    fn on_settings_changed(&mut self, context: &mut Context) {
+        self.is_formal = context.settings.get_bool(SETTING_FORMAL, self.is_formal);
+        context.request_repaint();
+    }
+
     fn on_pointer(&mut self, event: PointerEvent, frame: &Frame, context: &mut Context) {
         if let PointerEvent::Released(point) = event
             && frame.is_open()
@@ -123,6 +128,9 @@ What each part does:
   The notch clips the visible portion; do not stretch your content to the neighbouring page's width. Pointer events
   use the same shifted frame as drawing, including while the user rests between pages.
 - `on_start` runs once. Read settings and start timers or background work here.
+- `on_settings_changed` runs after another program (the settings window) changed `settings.txt` and the notch re-read
+  it. Read your keys again here; fall back to the current value, not the default, so a missing or unreadable line
+  changes nothing. Never write settings from it.
 - `on_timer` runs when a timer from `context.set_timer` fires. Request a repaint when something visible changed.
 - `on_pointer` receives pointer events while your page is visible, including beside another page during a swipe.
   Positions are in the same space as its own shifted `frame.bounds`.
@@ -187,6 +195,7 @@ To only turn a page off without deleting it, list the pages you want in `NOTCH_P
 | `menu_items()`, `on_menu_item(index, context)` | no | items the page adds to the tray menu |
 | `on_timer(timer, context)` | no | when one of the page's timers fires |
 | `on_notify(context)` | no | after a background thread used the page's `Notifier` |
+| `on_settings_changed(context)` | no | on every page, after the notch received `WM_SETTINGS_CHANGED` and re-read `settings.txt`; re-read the page's keys |
 | `animate(elapsed_seconds)` | no | each frame while the notch animates; return true while the page is still moving |
 | `draw_backdrop(canvas, frame, pill, radius, opacity)` | no | behind everything in the open notch, header included (the media page's lyric glow); `pill` is the whole notch |
 | `header_status_width()`, `draw_header_status(canvas, area, scale, opacity)`, `header_status_rank()` | no | a small mark kept in the header beside the time, whichever page is open (the wave, the timer's ring); the lowest rank sits nearest the time |

@@ -139,6 +139,7 @@ pub struct CalendarPage {
     hovered_join: Option<usize>,
     selected_day: Option<i64>,
     hovered_day: Option<usize>,
+    fetch_interval_milliseconds: u32,
 }
 
 impl CalendarPage {
@@ -162,6 +163,7 @@ impl CalendarPage {
             hovered_join: None,
             selected_day: None,
             hovered_day: None,
+            fetch_interval_milliseconds: minutes_to_milliseconds(DEFAULT_REFRESH_MINUTES),
         }
     }
 
@@ -210,6 +212,8 @@ impl CalendarPage {
             event(today(23, 0), 60, "Deep learning reading group", ""),
         );
         let mut page = Self::new();
+        // A test that removes the link must never delete the real cached calendar.
+        page.storage = None;
         page.link = Some("https://example.invalid/calendar.ics".to_owned());
         page.load_events(&text);
         page.refresh(fonts);
@@ -222,14 +226,9 @@ impl CalendarPage {
         context.set_timer(MINUTE_TIMER, 60_000 - milliseconds_into_minute + 50);
     }
 
-    fn refresh_interval_milliseconds(context: &Context) -> u32 {
-        let minutes = context
-            .settings
-            .get_string(REFRESH_SETTING)
-            .and_then(|text| text.parse::<u64>().ok())
-            .filter(|minutes| *minutes > 0)
-            .unwrap_or(DEFAULT_REFRESH_MINUTES);
-        (minutes * 60_000).min(u64::from(u32::MAX)) as u32
+    fn read_fetch_interval(&mut self, context: &Context) {
+        self.fetch_interval_milliseconds =
+            fetch_interval(context.settings.get_string(REFRESH_SETTING), self.fetch_interval_milliseconds);
     }
 
     fn start_fetch(&self) {
@@ -261,12 +260,16 @@ impl CalendarPage {
 
     fn remove_link(&mut self, context: &mut Context) {
         context.settings.set_string(LINK_SETTING, "");
+        self.forget_link();
+        self.announce("Calendar link removed", context);
+    }
+
+    fn forget_link(&mut self) {
         self.link = None;
         self.events.clear();
         if let Some(storage) = &self.storage {
             let _ = std::fs::remove_file(storage);
         }
-        self.announce("Calendar link removed", context);
     }
 
     fn join_button(&self, position: usize, bounds: Rect, scale: f32) -> Option<Rect> {
@@ -553,6 +556,7 @@ impl Page for CalendarPage {
     fn on_start(&mut self, context: &mut Context) {
         self.notifier = Some(context.notifier());
         self.link = context.settings.get_string(LINK_SETTING).map(str::to_owned).filter(|link| !link.is_empty());
+        self.read_fetch_interval(context);
         if let Some(text) = self.storage.as_ref().and_then(|storage| std::fs::read_to_string(storage).ok()) {
             self.load_events(&text);
         }
@@ -561,6 +565,29 @@ impl Page for CalendarPage {
         if self.link.is_some() {
             context.set_timer(FETCH_TIMER, FIRST_FETCH_MILLISECONDS);
         }
+    }
+
+    fn on_settings_changed(&mut self, context: &mut Context) {
+        let previous_interval = self.fetch_interval_milliseconds;
+        self.read_fetch_interval(context);
+        match link_change(self.link.as_deref(), context.settings.get_string(LINK_SETTING)) {
+            LinkChange::Keep => {
+                if self.link.is_some() && self.fetch_interval_milliseconds != previous_interval {
+                    context.set_timer(FETCH_TIMER, self.fetch_interval_milliseconds);
+                }
+                return;
+            }
+            LinkChange::Remove => {
+                self.forget_link();
+                context.kill_timer(FETCH_TIMER);
+            }
+            LinkChange::Replace(link) => {
+                self.link = Some(link);
+                context.set_timer(FETCH_TIMER, FIRST_FETCH_MILLISECONDS);
+            }
+        }
+        self.refresh(context.fonts());
+        context.request_repaint();
     }
 
     fn on_shown_changed(&mut self, is_shown: bool, context: &mut Context) {
@@ -646,10 +673,40 @@ impl Page for CalendarPage {
             }
             FETCH_TIMER => {
                 self.start_fetch();
-                context.set_timer(FETCH_TIMER, Self::refresh_interval_milliseconds(context));
+                context.set_timer(FETCH_TIMER, self.fetch_interval_milliseconds);
             }
             _ => {}
         }
+    }
+}
+
+fn minutes_to_milliseconds(minutes: u64) -> u32 {
+    minutes.saturating_mul(60_000).min(u64::from(u32::MAX)) as u32
+}
+
+/// A missing, unreadable or zero value keeps `fallback`.
+fn fetch_interval(minutes_text: Option<&str>, fallback: u32) -> u32 {
+    minutes_text
+        .and_then(|text| text.parse::<u64>().ok())
+        .filter(|minutes| *minutes > 0)
+        .map_or(fallback, minutes_to_milliseconds)
+}
+
+#[derive(Debug, PartialEq)]
+enum LinkChange {
+    Keep,
+    Remove,
+    Replace(String),
+}
+
+/// A missing key keeps the link and an empty one removes it, as `remove_link` saves it.
+fn link_change(current: Option<&str>, saved: Option<&str>) -> LinkChange {
+    match saved {
+        None => LinkChange::Keep,
+        Some("") if current.is_none() => LinkChange::Keep,
+        Some("") => LinkChange::Remove,
+        Some(link) if Some(link) == current => LinkChange::Keep,
+        Some(link) => LinkChange::Replace(link.to_owned()),
     }
 }
 
@@ -749,5 +806,24 @@ mod tests {
         let local = SystemClock.utc_to_local(utc);
         assert!((local - utc).abs() <= 14 * 3600);
         assert_eq!(SystemClock.utc_to_local(utc + 3600) - local, 3600);
+    }
+
+    #[test]
+    fn a_reloaded_link_is_kept_when_missing_removed_when_empty_and_replaced_when_new() {
+        let link = Some("https://a.test/cal.ics");
+        assert_eq!(link_change(link, None), LinkChange::Keep);
+        assert_eq!(link_change(link, link), LinkChange::Keep);
+        assert_eq!(link_change(link, Some("")), LinkChange::Remove);
+        assert_eq!(link_change(None, Some("")), LinkChange::Keep);
+        assert_eq!(link_change(link, Some("https://b.test")), LinkChange::Replace("https://b.test".to_owned()));
+        assert_eq!(link_change(None, Some("https://b.test")), LinkChange::Replace("https://b.test".to_owned()));
+    }
+
+    #[test]
+    fn an_unreadable_refresh_interval_keeps_the_current_one() {
+        assert_eq!(fetch_interval(Some("5"), 1), 300_000);
+        for text in [None, Some("soon"), Some("0"), Some("-3")] {
+            assert_eq!(fetch_interval(text, 42), 42, "{text:?}");
+        }
     }
 }

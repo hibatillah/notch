@@ -51,6 +51,8 @@ const WM_POWERBROADCAST: u32 = 0x0218;
 const WM_CLIPBOARDUPDATE: u32 = 0x031D;
 /// The `wparam` of `WM_POWERBROADCAST` when a power setting registered with `listen_to_power_setting` changed.
 const PBT_POWERSETTINGCHANGE: usize = 0x8013;
+/// Posted to the `NotchWindow` window by another program after it changed settings.txt.
+pub const WM_SETTINGS_CHANGED: u32 = WM_APP + 30;
 
 /// Registered message id the shell broadcasts when Explorer restarts and the tray is rebuilt.
 static TASKBAR_CREATED_MESSAGE: AtomicU32 = AtomicU32::new(0);
@@ -261,6 +263,11 @@ extern "system" fn window_procedure(window: HWND, message: u32, wparam: WPARAM, 
                 screen_mode::refresh_foreground();
             }
             with_notch(|notch| notch.reset_session_interaction());
+            LRESULT(0)
+        }
+        WM_SETTINGS_CHANGED => {
+            log::debug("settings changed by another program");
+            with_notch(|notch| notch.reload_settings());
             LRESULT(0)
         }
         WM_CLIPBOARDUPDATE => {

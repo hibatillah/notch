@@ -67,6 +67,9 @@ pub trait Activity {
     fn on_notify(&mut self, _context: &mut Context) {}
 
     fn on_system_message(&mut self, _message: &SystemMessage, _context: &mut Context) {}
+
+    /// Called on a started activity after another program changed settings.txt: re-read this activity's keys here.
+    fn on_settings_changed(&mut self, _context: &mut Context) {}
 }
 
 /// The timer a `Flash` uses; an activity that also needs timers of its own starts from `TimerId(1)`.

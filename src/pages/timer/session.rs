@@ -85,6 +85,22 @@ impl Lengths {
             Phase::LongBreak => self.long_break,
         }
     }
+
+    /// A missing, unreadable or zero value keeps the length from `fallback`.
+    fn load(settings: &Settings, fallback: Lengths) -> Self {
+        let read = |key: &str, fallback: u64| {
+            settings
+                .get_string(key)
+                .and_then(|text| text.parse().ok())
+                .filter(|minutes| *minutes > 0)
+                .unwrap_or(fallback)
+        };
+        Self {
+            focus: read(FOCUS_MINUTES_KEY, fallback.focus).clamp(MIN_FOCUS_MINUTES, MAX_FOCUS_MINUTES),
+            short_break: read(SHORT_BREAK_MINUTES_KEY, fallback.short_break),
+            long_break: read(LONG_BREAK_MINUTES_KEY, fallback.long_break),
+        }
+    }
 }
 
 pub struct Timer {
@@ -224,25 +240,18 @@ impl Timer {
 
     /// Restores the timer saved by `save`; a phase that ran out while the notch was closed comes back finished.
     pub fn load(settings: &Settings, now: u64) -> Self {
-        let defaults = Lengths::default();
-        let read = |key: &str, default: u64| {
-            settings
-                .get_string(key)
-                .and_then(|text| text.parse().ok())
-                .filter(|minutes| *minutes > 0)
-                .unwrap_or(default)
-        };
         let mut timer = Self {
             state: settings.get_string(STATE_KEY).and_then(parse_state).unwrap_or(State::Idle),
             completed: settings.get_string(COMPLETED_KEY).and_then(|text| text.parse().ok()).unwrap_or(0),
-            lengths: Lengths {
-                focus: read(FOCUS_MINUTES_KEY, defaults.focus).clamp(MIN_FOCUS_MINUTES, MAX_FOCUS_MINUTES),
-                short_break: read(SHORT_BREAK_MINUTES_KEY, defaults.short_break),
-                long_break: read(LONG_BREAK_MINUTES_KEY, defaults.long_break),
-            },
+            lengths: Lengths::load(settings, Lengths::default()),
         };
         timer.tick(now);
         timer
+    }
+
+    /// Re-reads the phase lengths; a running phase keeps the length it started with.
+    pub fn reload_lengths(&mut self, settings: &Settings) {
+        self.lengths = Lengths::load(settings, self.lengths);
     }
 
     pub fn save(&self, settings: &mut Settings) {
@@ -529,6 +538,23 @@ mod tests {
         timer.save(&mut settings);
         let restored = Timer::load(&Settings::at(Some(path.clone())), NOW);
         assert_eq!(restored.lengths, Lengths { focus: 30, short_break: 7, long_break: 15 });
+        let _ = std::fs::remove_dir_all(path.parent().unwrap());
+    }
+
+    #[test]
+    fn reloaded_lengths_take_new_values_keep_unreadable_ones_and_leave_a_running_phase_alone() {
+        let path = std::env::temp_dir().join(format!("notch-test-{}-reload-lengths", std::process::id()));
+        let path = path.join("settings.txt");
+        let mut settings = Settings::at(Some(path.clone()));
+        let mut timer = running();
+        timer.lengths = Lengths { focus: 30, short_break: 7, long_break: 20 };
+        let running_state = timer.state;
+        settings.set_string(FOCUS_MINUTES_KEY, "45");
+        settings.set_string(SHORT_BREAK_MINUTES_KEY, "soon");
+        settings.set_string(LONG_BREAK_MINUTES_KEY, "0");
+        timer.reload_lengths(&settings);
+        assert_eq!(timer.lengths, Lengths { focus: 45, short_break: 7, long_break: 20 });
+        assert_eq!(timer.state, running_state);
         let _ = std::fs::remove_dir_all(path.parent().unwrap());
     }
 }

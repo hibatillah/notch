@@ -131,6 +131,9 @@ pub trait Page {
 
     fn on_notify(&mut self, _context: &mut Context) {}
 
+    /// Called after another program changed settings.txt and the host re-read it: re-read this page's keys here.
+    fn on_settings_changed(&mut self, _context: &mut Context) {}
+
     /// Collapsed activity content, independent of page selection; re-evaluated after every event.
     fn presence(&self) -> Option<Presence> {
         None
