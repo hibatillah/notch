@@ -501,7 +501,10 @@ impl Page for CalendarPage {
         self.notifier = Some(context.notifier());
         self.link = context.settings.get_string(LINK_SETTING).map(str::to_owned).filter(|link| !link.is_empty());
         self.read_fetch_interval(context);
-        if let Some(text) = self.storage.as_ref().and_then(|storage| std::fs::read_to_string(storage).ok()) {
+        // The stored copy belongs to the address; with none, a cleared calendar must not come back.
+        let stored =
+            self.link.as_ref().and(self.storage.as_ref()).and_then(|storage| std::fs::read_to_string(storage).ok());
+        if let Some(text) = stored {
             self.load_events(&text);
         }
         self.refresh(context.fonts());
@@ -548,7 +551,8 @@ impl Page for CalendarPage {
     fn on_notify(&mut self, context: &mut Context) {
         let result = self.fetched.lock().ok().and_then(|mut slot| slot.take());
         match result {
-            Some(Ok(text)) => {
+            Some((link, _)) if self.link.as_deref() != Some(link.as_str()) => {}
+            Some((_, Ok(text))) => {
                 if let Some(storage) = &self.storage {
                     if let Some(directory) = storage.parent() {
                         let _ = std::fs::create_dir_all(directory);
@@ -559,7 +563,7 @@ impl Page for CalendarPage {
                 self.refresh(context.fonts());
                 context.request_repaint();
             }
-            Some(Err(message)) => crate::log::debug(&format!("calendar: could not download: {message}")),
+            Some((_, Err(message))) => crate::log::debug(&format!("calendar: could not download: {message}")),
             None => {}
         }
     }

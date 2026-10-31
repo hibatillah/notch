@@ -75,7 +75,7 @@ listener is not started.
 write it one key at a time through a temporary file, so keys another program wrote are kept.
 
 After a write, the settings window posts `WM_SETTINGS_CHANGED` (`WM_APP + 30`) to the window of class `NotchWindow`. The
-notch then re-reads the file and applies the `notch.*`, `navigation.order`, `navigation.disabled`,
+notch then re-reads the file and applies the `notch.*` keys except `notch.top`, `navigation.order`, `navigation.disabled`,
 `activity.notifications`, `media.lyrics`, `timer.*_minutes`, `calendar.*` and `notifications.show_text` keys without a
 restart, keeping the page that is open. A missing or unreadable value keeps the current one. A hand edit is read at the
 next start, or at once if something posts that message.

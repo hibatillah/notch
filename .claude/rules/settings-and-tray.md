@@ -8,7 +8,7 @@ paths:
 
 # Settings and tray
 
-- Every tray toggle and every settings-window control is backed by one settings key (`notch.*`, `activity.<id>`, page
+- Every tray toggle and every settings-window control is backed by one settings key (`notch.*`, `activity.<id>`, `advanced.*`, page
   keys start with the page id), written through `host/settings.rs` or `sections::apply`, read into a field of `Notch` at
   start and re-read on `WM_SETTINGS_CHANGED` (`Notch::reload_settings`, then `on_settings_changed` on every page and
   started activity). A re-read falls back to the field's current value, not the default.

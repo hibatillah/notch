@@ -13,8 +13,8 @@ keys, defaults and the window's sections are listed in [configuration.md](config
 3. **Add the control to the window** (`settings/src/`):
    - A toggle: add `Item::new(label, field::toggle(key, default)).description(text)` to a `Group` in the section's
      `page()`.
-   - A text or number field: use `field::input(key, Kind::Text { width })` or
-     `field::input(key, Kind::WholeNumber { default, range })` as the item's control. It saves on Enter or when it loses
+   - A text or number field: use `field::input(key, Kind::Text { width }, placeholder)` or
+     `field::input(key, Kind::WholeNumber { default, range }, placeholder)` as the item's control. It saves on Enter or when it loses
      focus, and shows the saved value again when the typed one is rejected.
    - A choice from a list: `field::dropdown(key, choices, shown)`.
    - Every item gets a description of one to three short lines that says what the setting does.

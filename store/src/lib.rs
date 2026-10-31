@@ -83,6 +83,7 @@ impl Settings {
         let temporary_path = PathBuf::from(temporary_name);
         if fs::write(&temporary_path, text).and_then(|()| fs::rename(&temporary_path, &path)).is_err() {
             let _ = fs::remove_file(&temporary_path);
+            return;
         }
         self.values = values;
     }
