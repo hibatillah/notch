@@ -62,14 +62,15 @@ The tray menu can switch **Notifications** on or off; the other activities are a
 - **Media:** click the buttons; the speech-bubble button turns lyrics on and off.
 - **Shelf:** drag files onto the notch (it turns blue when it is ready). The shelf shows six places; when there are more files, the last place shows the overflow count. Double-click a file to open it, drag it out to take it off the shelf into another app, and right-click it or press the cross on its corner to remove it.
 - **Calendar:** click a day of the week to list its events.
-- **Calendar:** copy your calendar's iCal address, then right-click the tray icon and choose **Use calendar link from clipboard**. For Google Calendar, use "Secret address in iCal format" and treat it like a password.
-- **Tray menu** (right-click the tray icon; the notch itself has no menu): **Notifications**, the calendar link, **Hide when idle**, **Start with Windows**, **Settings…**, and **Quit**. On Windows 11 the icon may sit under the `^` overflow menu.
+- **Calendar:** paste your calendar's iCal address into **Settings… > Calendar**, which lists the Google Calendar steps for finding it. Treat the address like a password.
+- **Tray menu** (right-click the tray icon; the notch itself has no menu): **Notifications**, **Hide when idle**, **Start with Windows**, **Settings…**, and **Quit**. On Windows 11 the icon may sit under the `^` overflow menu.
+- **Settings window** (**Settings…** in the tray menu): General (startup, notifications, music and timer, in cards), Pages, Behavior, Calendar and Advanced. Toggles apply at once; type a value into a field and press Enter, or click away, to save it. Pages sets the order and which pages are on, and Behavior sets what the notch shows over a maximized window and over a full-screen app. [docs/configuration.md](docs/configuration.md) lists every setting.
 
 | Option | Default |
 | --- | --- |
 | Notifications | On |
 | Hide when idle | Off |
-| Over a maximized window | Music with lyrics |
+| Over a maximized window | Lyrics only |
 | Over a full-screen app | Hidden |
 | Start with Windows | On in the installer |
 

@@ -44,7 +44,7 @@ animation is noticeably slower, so use release for anything you look at.
 After changing the master, regenerate the export from Git Bash with `scripts/export-icon.sh` (requires `uv`; Pillow
 is used only for this export, not by the app or normal builds).
 
-`build.rs` uses the Windows SDK resource compiler to embed `logo.rc` and `logo.ico` in the executable. The window and
+`build.rs` uses the Windows SDK resource compiler to embed `logo.rc` and `logo.ico` in the executable, and `settings/build.rs` embeds `settings.rc` (the same icon as resource 1) in `notch-settings.exe` for its window and taskbar button; both share `build_support/icon_resource.rs`. The window and
 tray load this same resource at the current display scale. The installer uses the same ICO, and its Start menu
 shortcut and installed-app entry use the executable's embedded icon. No image files are needed beside the installed
 executable. Rebuild and restart Notch to see an icon change; updating an installed copy requires the newer installer.
@@ -68,8 +68,11 @@ around that:
 scripts/reload.sh
 ```
 
-It builds, copies the build to `run/notch-<time>.exe`, starts that copy, and asks the previous instance to close once
-the new one is showing. The notch never disappears between versions. `run/` is git-ignored.
+It builds the notch and the settings program, copies the notch build to `run/notch-<time>.exe` and the settings program
+to `run/notch-settings.exe` (the name the tray's **Settings…** item looks for beside the running notch), starts the
+notch copy, and asks the previous instance to close once the new one is showing. The notch never disappears between
+versions. `run/` is git-ignored. A settings window that is still open keeps the old `notch-settings.exe` until you close
+it and reload.
 
 To see a change as soon as you save it, leave this running in a terminal:
 
@@ -78,7 +81,7 @@ scripts/watch.sh
 ```
 
 It does the same with a debug build (`scripts/reload.sh --debug`, about 2 s after a small edit, against about 20 s for
-release) every time a file in `src/`, `store/` or `Cargo.toml` changes (it rebuilds the notch only, not `settings/`), and checks for saved files every 2 s. A debug build is
+release) every time a file in `src/`, `store/` or `Cargo.toml` changes (a saved file in `settings/` does not trigger it; the next rebuild picks the change up), and checks for saved files every 2 s. A debug build is
 slower and larger, so use the release build and `scripts/perf.sh` for performance numbers. If a build fails, the
 error shows and the previous copy keeps running until the next save.
 
@@ -175,8 +178,8 @@ are in device-independent pixels (multiply by the display scale when drawing). T
 | which page shows, swiping, hover, the springs, hiding | `src/host/notch.rs` |
 | maximized and full-screen detection | `src/host/screen_mode.rs` |
 | the tray menu | `src/host/tray.rs` (the items), `src/host/window.rs` (what they do) |
-| the settings window | `settings/src/sections/` (one file per section), `settings/src/field.rs` (text fields); `docs/configuration.md` |
-| start with Windows | `src/host/startup.rs` (the tray item), `installer/notch.iss` (the installer's choice) |
+| the settings window | `settings/src/sections/` (one file per section), `settings/src/field.rs` (toggles and text fields); [adding-a-setting.md](adding-a-setting.md) |
+| start with Windows | `src/host/startup.rs` (the tray item), `settings/src/startup.rs` (the window's switch), `installer/notch.iss` (the installer's choice) |
 | a page's content and size | that page's folder in `src/pages/` |
 | register a page | `src/pages/mod.rs` |
 | register an activity | `src/activities/mod.rs` |
@@ -196,7 +199,7 @@ are in device-independent pixels (multiply by the display scale when drawing). T
 
 The project is MIT licensed (see `LICENSE`). Every dependency of `notch.exe`, including build-time ones, is licensed
 `MIT OR Apache-2.0` (the `windows-*` crates, `proc-macro2`, `quote`, `syn`); `unicode-ident` is
-`(MIT OR Apache-2.0) AND Unicode-3.0`. `settings/` adds GPUI and its dependency tree. In the spike's `cargo license` run (441 packages) most are MIT or
+`(MIT OR Apache-2.0) AND Unicode-3.0`. `settings/` adds GPUI and its dependency tree, with `gpui-component` and `gpui-component-assets` (Apache-2.0, pinned to `=0.5.1`: the newest releases need a different GPUI fork). In the spike's `cargo license` run (441 packages) most are MIT or
 Apache-2.0 or MIT, 14 are Apache-2.0 only (`gpui` and its `gpui_*` crates among them), and no GPL, LGPL, AGPL or MPL
 crate is in the Windows build ([spike](superpowers/spikes/2026-10-30-gpui-spike.md#licenses)). All are permissive and
 compatible with MIT. The license texts ship in `THIRD-PARTY-LICENSES.txt`

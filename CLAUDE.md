@@ -41,7 +41,8 @@ Read the doc for the work in front of you before starting it:
 | a new activity (volume, Caps Lock, notification banner) | `docs/adding-an-activity.md` |
 | layout, padding or the open and collapsed shapes | `docs/development.md` (the notch layout) |
 | a test, a snapshot, the manual checklist, `perf.sh` | `docs/testing.md` |
-| settings keys, environment variables, tray options, the settings window | `docs/configuration.md` |
+| settings keys, environment variables, tray options, what each settings-window section sets | `docs/configuration.md` |
+| a new setting, a new settings-window control or section | `docs/adding-a-setting.md` |
 | the installer, a release, updating | `docs/releasing.md` |
 | a CPU or memory number, a perf limit | `docs/performance.md` |
 

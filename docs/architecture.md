@@ -54,6 +54,7 @@ other.
 | `chrome.rs` | the padding and the header (page dots, status marks and the time) around every open page |
 | `clock.rs` | the time: in the header of the open notch, and in the collapsed pill while no page or activity has anything to show |
 | `screen_mode.rs` | whether the window in front is maximized or full screen, from Windows' event hooks (no polling) |
+| `visibility.rs` | what the notch shows over a maximized or full-screen window: the four words, `allows`, and the one-time migration of the retired keys (pure) |
 | `startup.rs` | the "Start with Windows" entry under the user's `Run` key |
 | `page_editor.rs` | the "Edit pages" view: chip layout, drag and double-click rules, drawing |
 | `activity_layout.rs` | which transient activities show and where each one starts (pure functions) |
@@ -226,6 +227,18 @@ publishes `pages.known` when it starts so the window can list pages it does not 
 `store/` and tells the notch to re-read them; the message, keys and field behavior are in
 [configuration.md](configuration.md#settings-window). The idle budget applies to `notch.exe` only
 ([performance.md](performance.md#settings-window)).
+
+| File in `settings/src/` | Job |
+| --- | --- |
+| `main.rs` | the window: the logo and page list in the sidebar, the selected page, a clear title bar over both, in the system's light or dark theme |
+| `layout.rs` | `Page`, `Group` and `Item`: the page title and description, the bordered groups and their rows |
+| `sections/` | one file per section, each returning a `SettingPage`; `mod.rs` lists them and writes every key through `apply` |
+| `field.rs` | the switch and the text and number fields bound to a key, and their save rules |
+| `notify.rs` | posts `WM_SETTINGS_CHANGED` to the notch |
+| `single_instance.rs` | allows one window and focuses the open one |
+| `startup.rs` | the `Run` registry value behind **Start with Windows** |
+
+To add a setting, see [adding-a-setting.md](adding-a-setting.md).
 
 ## Pages
 

@@ -103,7 +103,7 @@ It checks, and fails when a limit is exceeded:
 | memory growth over 10 open-and-closes | 3 MB |
 | handle growth over 10 open-and-closes | 20 handles |
 | hover events logged | exactly two per cycle, so none were missed or doubled |
-| CPU while idle again after the animations | 0.1 % — the frame timer must have stopped |
+| CPU while idle again after the animations | 0.1 %; the frame timer must have stopped |
 
 The last check is the important one. A common mistake is leaving a timer or animation running, which makes the
 notch use CPU forever; it shows up there as several percent of a core.
@@ -132,8 +132,9 @@ set; the reported swipe peak is sampled at each end of a swipe, not a continuous
   process. A shell script cannot move the mouse or read those numbers, and an example is not part of the shipped
   `notch.exe`. The limits are constants at the top of the file.
 
-Besides the notch's own settings file, the check writes only a copy of the executable under `run/` and a temporary
-log.
+Every scenario starts the notch with its own settings file under `run/` (`notch.fullscreen=music`, so a full-screen
+window in front cannot hide the notch mid-check), and your `settings.txt` stays untouched. The check also writes a copy
+of the executable under `run/` and a temporary log.
 
 ## Manual checklist
 
