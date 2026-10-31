@@ -8,15 +8,13 @@ use std::{
 
 use windows::{
     Win32::{
-        Foundation::{HGLOBAL, SIZE},
+        Foundation::SIZE,
         Graphics::Gdi::{
             BITMAP, BITMAPINFO, BITMAPINFOHEADER, DIB_RGB_COLORS, DeleteObject, GetDC, GetDIBits, GetObjectW, HGDIOBJ,
             ReleaseDC,
         },
         System::{
             Com::{COINIT_APARTMENTTHREADED, CoInitializeEx, CoUninitialize, IBindCtx, IDataObject},
-            DataExchange::{CloseClipboard, GetClipboardData, OpenClipboard},
-            Memory::{GlobalLock, GlobalUnlock},
             Ole::{DROPEFFECT_COPY, DROPEFFECT_NONE, IDropSource, OleInitialize, OleUninitialize},
             Threading::{AttachThreadInput, GetCurrentThreadId},
         },
@@ -36,8 +34,6 @@ pub mod app_icon;
 
 use crate::gfx::ImageData;
 
-const CF_UNICODETEXT: u32 = 13;
-
 /// True while a file dragged out of the notch is being carried, so the notch's own drop target ignores it.
 static IS_DRAGGING_OUT: AtomicBool = AtomicBool::new(false);
 
@@ -51,26 +47,6 @@ pub fn open(target: &str) {
 
 pub fn double_click_time() -> Duration {
     Duration::from_millis(u64::from(unsafe { GetDoubleClickTime() }))
-}
-
-pub fn paste_text() -> Option<String> {
-    unsafe {
-        OpenClipboard(None).ok()?;
-        let text = (|| {
-            let handle = GetClipboardData(CF_UNICODETEXT).ok()?;
-            let memory = HGLOBAL(handle.0);
-            let source = GlobalLock(memory).cast::<u16>();
-            if source.is_null() {
-                return None;
-            }
-            let length = (0..).take_while(|&offset| *source.add(offset) != 0).count();
-            let text = String::from_utf16_lossy(std::slice::from_raw_parts(source, length));
-            let _ = GlobalUnlock(memory);
-            Some(text)
-        })();
-        let _ = CloseClipboard();
-        text
-    }
 }
 
 /// Keeps COM initialized on the current thread until dropped.

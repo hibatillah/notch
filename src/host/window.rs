@@ -316,8 +316,12 @@ pub fn run(pages: Vec<Box<dyn Page>>, activities: Vec<Box<dyn Activity>>) -> Res
 
         let width = (WINDOW_WIDTH * scale).round() as i32;
         let height = (WINDOW_HEIGHT * scale).round() as i32;
-        // NOTCH_TOP shifts the window down in pixels, so it can be compared next to another notch app.
-        let top_offset = std::env::var("NOTCH_TOP").ok().and_then(|value| value.parse().ok()).unwrap_or(0);
+        // NOTCH_TOP or the notch.top setting shifts the window down in pixels, so it can be compared next to another notch app.
+        let top_offset = std::env::var("NOTCH_TOP")
+            .ok()
+            .or_else(|| Settings::load().get_string("notch.top").map(str::to_owned))
+            .and_then(|value| value.trim().parse().ok())
+            .unwrap_or(0);
         let screen_position = POINT { x: (GetSystemMetrics(SM_CXSCREEN) - width) / 2, y: top_offset };
         // A previous instance is asked to close only after this one is visible, so a rebuild swaps without a gap.
         let previous_window = FindWindowW(w!("NotchWindow"), None).ok();

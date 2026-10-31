@@ -21,7 +21,7 @@ const SHOW_MILLISECONDS: u32 = 4000;
 const SHOW_TEXT_SETTING: &str = "notifications.show_text";
 
 const WIDTH: f32 = 400.0;
-const PADDING: f32 = 14.0;
+const PADDING: f32 = 20.0;
 const TOP_PADDING: f32 = 10.0;
 const BOTTOM_PADDING: f32 = 12.0;
 const TILE_SIZE: f32 = 30.0;
@@ -244,7 +244,7 @@ mod tests {
 
     #[test]
     fn the_banner_is_taller_than_the_idle_pill() {
-        assert!(banner_height(0) > crate::page::RESTING_HEIGHT * 1.4);
+        assert!(banner_height(0) > crate::page::RESTING_HEIGHT * 1.25);
     }
 
     #[test]

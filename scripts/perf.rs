@@ -63,8 +63,14 @@ struct Measurement {
 struct RunningNotch(Child);
 
 impl RunningNotch {
+    /// Runs on its own settings so a full-screen window in front cannot hide the notch mid-check.
     fn start(executable: &Path, log: &Path, pages: Option<&str>) -> Self {
-        Self::start_with_profile(executable, log, pages, None)
+        let profile = log.parent().expect("log directory").join("perf-default");
+        let settings = profile.join("notch");
+        fs::create_dir_all(&settings).expect("create isolated test profile");
+        fs::write(settings.join("settings.txt"), "notch.hide_when_idle=off\nnotch.fullscreen=music\n")
+            .expect("write isolated test settings");
+        Self::start_with_profile(executable, log, pages, Some(&profile))
     }
 
     fn start_with_profile(executable: &Path, log: &Path, pages: Option<&str>, profile: Option<&Path>) -> Self {

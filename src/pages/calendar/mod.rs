@@ -24,11 +24,11 @@ use self::{
     ics::{Clock, Event, Occurrence, occurrences_on, parse},
 };
 use crate::{
-    activity::{FLASH_TIMER, Flash, Presence},
+    activity::Presence,
     gfx::{Align, Canvas, Color, FontStyle, Fonts, Point, Rect, Size, UI_FONT, Weight},
     page::{Context, Frame, Mode, Notifier, Page, PageSizes, PointerEvent, Priority, TimerId},
     platform,
-    ui::{self, Icon},
+    ui::Icon,
 };
 
 const EXPANDED_SIZE: Size = Size::new(508.0, 86.0);
@@ -50,7 +50,6 @@ const ROW_PADDING: f32 = 10.0;
 const TIME_WIDTH: f32 = 44.0;
 const JOIN_WIDTH: f32 = 52.0;
 const JOIN_HEIGHT: f32 = 22.0;
-const ALERT_MILLISECONDS: u32 = 2500;
 const DEFAULT_REFRESH_MINUTES: u64 = 15;
 const FIRST_FETCH_MILLISECONDS: u32 = 2000;
 const REMINDER_TITLE_WIDTH: f32 = 96.0;
@@ -133,9 +132,6 @@ pub struct CalendarPage {
     agenda: Agenda,
     reminder: Option<Reminder>,
     reminder_width: f32,
-    alert: Flash,
-    alert_text: String,
-    alert_width: f32,
     hovered_join: Option<usize>,
     selected_day: Option<i64>,
     hovered_day: Option<usize>,
@@ -157,9 +153,6 @@ impl CalendarPage {
             agenda: build(&[], 0),
             reminder: None,
             reminder_width: 0.0,
-            alert: Flash::default(),
-            alert_text: String::new(),
-            alert_width: 0.0,
             hovered_join: None,
             selected_day: None,
             hovered_day: None,
@@ -239,29 +232,6 @@ impl CalendarPage {
 
     fn load_events(&mut self, text: &str) {
         self.events = parse(text);
-    }
-
-    fn announce(&mut self, text: &str, context: &mut Context) {
-        self.alert_width = ui::message_width(context.fonts(), text, None);
-        self.alert_text = text.to_owned();
-        self.alert.show(context, ALERT_MILLISECONDS);
-    }
-
-    fn use_clipboard_link(&mut self, context: &mut Context) {
-        let Some(link) = platform::paste_text().and_then(|text| fetch::normalize_link(&text)) else {
-            self.announce("No calendar link copied", context);
-            return;
-        };
-        context.settings.set_string(LINK_SETTING, &link);
-        self.link = Some(link);
-        self.announce("Calendar link saved", context);
-        self.start_fetch();
-    }
-
-    fn remove_link(&mut self, context: &mut Context) {
-        context.settings.set_string(LINK_SETTING, "");
-        self.forget_link();
-        self.announce("Calendar link removed", context);
     }
 
     fn forget_link(&mut self) {
@@ -478,12 +448,7 @@ impl Page for CalendarPage {
         if self.agenda.rows.is_empty() {
             let area = events_area(bounds, scale);
             let (message, hint) = if self.link.is_none() {
-                (
-                    "No calendar linked",
-                    Some(
-                        "Copy your calendar's iCal address, then pick \"Use calendar link from clipboard\" in the tray menu.",
-                    ),
-                )
+                ("No calendar linked", Some("Paste your calendar's iCal address in Settings, under Calendar."))
             } else {
                 (if self.selected() == self.today { "Nothing for today" } else { "Nothing on this day" }, None)
             };
@@ -508,18 +473,10 @@ impl Page for CalendarPage {
     }
 
     fn presence(&self) -> Option<Presence> {
-        if self.alert.is_visible() {
-            Some(Presence::Transient { width: self.alert_width })
-        } else {
-            self.reminder.as_ref().map(|_| Presence::Badge { width: self.reminder_width })
-        }
+        self.reminder.as_ref().map(|_| Presence::Badge { width: self.reminder_width })
     }
 
     fn draw_presence(&self, canvas: &Canvas, area: Rect, scale: f32, opacity: f32) {
-        if self.alert.is_visible() {
-            ui::draw_message(canvas, area, opacity, Icon::Calendar, BLUE, &self.alert_text, None);
-            return;
-        }
         let Some(reminder) = &self.reminder else { return };
         let icon_center = Point::new(area.left + 7.0 * scale, area.center_y());
         Icon::Calendar.draw(canvas, icon_center, 14.0 * scale, Color::WHITE, opacity);
@@ -538,19 +495,6 @@ impl Page for CalendarPage {
             Rect::new(time_left, area.top, area.right, area.bottom),
             BLUE.faded(opacity),
         );
-    }
-
-    fn menu_items(&self) -> Vec<String> {
-        vec!["Use calendar link from clipboard".to_owned(), "Remove calendar link".to_owned()]
-    }
-
-    fn on_menu_item(&mut self, index: usize, context: &mut Context) {
-        match index {
-            0 => self.use_clipboard_link(context),
-            _ => self.remove_link(context),
-        }
-        self.refresh(context.fonts());
-        context.request_repaint();
     }
 
     fn on_start(&mut self, context: &mut Context) {
@@ -663,9 +607,6 @@ impl Page for CalendarPage {
 
     fn on_timer(&mut self, timer: TimerId, context: &mut Context) {
         match timer {
-            FLASH_TIMER => {
-                self.alert.on_timer(timer, context);
-            }
             MINUTE_TIMER => {
                 self.refresh(context.fonts());
                 Self::arm_minute_timer(context);
@@ -787,11 +728,11 @@ mod tests {
     }
 
     #[test]
-    fn the_calendar_is_a_page_to_open_with_a_tray_menu_and_no_collapsed_state() {
+    fn the_calendar_is_a_page_to_open_with_no_tray_items_and_no_collapsed_state() {
         let page = CalendarPage::new();
         assert_eq!(page.priority(Mode::Resting), None);
         assert!(page.priority(Mode::Expanded).is_some());
-        assert_eq!(page.menu_items().len(), 2);
+        assert!(page.menu_items().is_empty());
         assert_eq!(page.presence(), None);
     }
 
