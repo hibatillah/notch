@@ -1,10 +1,10 @@
-use gpui::{AnyElement, Context, SharedString, div, prelude::*, px, rgb, rgba};
+use gpui::{SharedString, div, prelude::*};
+use gpui_component::ActiveTheme as _;
 use notch_store::Settings;
 
 use crate::{
-    SettingsWindow,
-    field::{ACCENT, ACCENT_TINT},
-    sections::apply,
+    field, layout,
+    layout::{Group, Item, Page},
 };
 
 pub struct Choice {
@@ -27,13 +27,13 @@ pub const CHOICES: [Choice; 4] = [
     },
     Choice {
         word: "lyrics",
-        label: "Music with lyrics",
-        description: "The notch also shows playing music that has lyrics.",
+        label: "Lyrics only",
+        description: "The notch shows only while a lyric line is active, and for activities. Otherwise it hides.",
     },
     Choice {
         word: "music",
-        label: "Music, even without lyrics",
-        description: "The notch stays up with nothing playing and shows the idle clock.",
+        label: "Always visible",
+        description: "The notch always shows, with the idle clock when nothing is playing.",
     },
 ];
 
@@ -50,58 +50,52 @@ pub fn shown_word(settings: &Settings, key: &str, default: &'static str) -> &'st
         .map_or(default, |choice| choice.word)
 }
 
-pub fn select(settings: &mut Settings, key: &str, word: &str) {
-    apply(settings, key, word);
+fn choice_item(title: &'static str, description: &'static str, key: &'static str, default: &'static str) -> Item {
+    let choices =
+        CHOICES.iter().map(|choice| (SharedString::from(choice.word), SharedString::from(choice.label))).collect();
+    let control = field::dropdown(key, choices, move |settings| SharedString::from(shown_word(settings, key, default)));
+    Item::new(title, control).description(description)
 }
 
-fn choice_group(
-    title: &'static str,
-    key: &'static str,
-    default: &'static str,
-    window_state: &SettingsWindow,
-    cx: &mut Context<SettingsWindow>,
-) -> AnyElement {
-    let selected_word = shown_word(&window_state.settings, key, default);
-    let options = CHOICES.iter().map(|choice| {
-        let is_selected = choice.word == selected_word;
-        let word = choice.word;
-        div()
-            .id(SharedString::from(format!("{key}-{word}")))
-            .flex()
-            .flex_col()
-            .px_3()
-            .py_2()
-            .rounded_md()
-            .border_1()
-            .border_color(if is_selected { rgb(ACCENT) } else { rgba(0x80808055) })
-            .when(is_selected, |option| option.bg(rgba(ACCENT_TINT)))
-            .cursor_pointer()
-            .on_click(cx.listener(move |window_state, _event, _window, cx| {
-                window_state.settings.reload();
-                select(&mut window_state.settings, key, word);
-                cx.notify();
-            }))
-            .child(div().child(choice.label))
-            .child(div().text_sm().opacity(0.7).child(choice.description))
-    });
-    div()
-        .flex()
-        .flex_col()
-        .gap_2()
-        .child(div().font_weight(gpui::FontWeight::SEMIBOLD).child(title))
-        .children(options)
-        .into_any_element()
+fn meanings() -> Item {
+    Item::custom(|window, cx| {
+        let value_color = cx.theme().foreground;
+        let entries = CHOICES
+            .iter()
+            .map(|choice| {
+                let description = div().text_sm().text_color(value_color).child(choice.description).into_any_element();
+                (SharedString::from(choice.label), description)
+            })
+            .collect();
+        layout::accordion("behavior-choices", true, entries, window, cx)
+    })
 }
 
-pub fn render(window_state: &SettingsWindow, cx: &mut Context<SettingsWindow>) -> AnyElement {
-    div()
-        .flex()
-        .flex_col()
-        .gap_4()
-        .max_w(px(480.0))
-        .child(choice_group("Over a maximized window", MAXIMIZED_KEY, DEFAULT_MAXIMIZED, window_state, cx))
-        .child(choice_group("Over a full-screen app", FULLSCREEN_KEY, DEFAULT_FULLSCREEN, window_state, cx))
-        .into_any_element()
+pub fn page() -> Page {
+    Page::new(
+        "Behavior",
+        "Choose what the notch shows while another window is in front.",
+        vec![
+            Group::titled(
+                "Over other windows",
+                vec![
+                    choice_item(
+                        "Over a maximized window",
+                        "Applies while a maximized window is in front.",
+                        MAXIMIZED_KEY,
+                        DEFAULT_MAXIMIZED,
+                    ),
+                    choice_item(
+                        "Over a full-screen app",
+                        "Applies while a full-screen app is in front.",
+                        FULLSCREEN_KEY,
+                        DEFAULT_FULLSCREEN,
+                    ),
+                ],
+            ),
+            Group::loose_titled("What each choice does", vec![meanings()]),
+        ],
+    )
 }
 
 #[cfg(test)]
@@ -115,15 +109,15 @@ mod tests {
     }
 
     #[test]
-    fn the_dropdown_offers_the_four_choices_in_order() {
+    fn the_choices_come_in_order() {
         let offered: Vec<(&str, &str)> = CHOICES.iter().map(|choice| (choice.word, choice.label)).collect();
         assert_eq!(
             offered,
             [
                 ("hidden", "Hidden"),
                 ("activities", "Activities only"),
-                ("lyrics", "Music with lyrics"),
-                ("music", "Music, even without lyrics"),
+                ("lyrics", "Lyrics only"),
+                ("music", "Always visible"),
             ]
         );
         assert!(CHOICES.iter().all(|choice| !choice.description.is_empty()));
@@ -143,16 +137,6 @@ mod tests {
         let _ = std::fs::remove_file(&path);
         assert_eq!(shown_word(&settings, MAXIMIZED_KEY, DEFAULT_MAXIMIZED), "music");
         assert_eq!(shown_word(&settings, FULLSCREEN_KEY, DEFAULT_FULLSCREEN), "activities");
-    }
-
-    #[test]
-    fn selecting_a_choice_writes_its_exact_word() {
-        let (mut settings, path) = settings_with("select", "");
-        select(&mut settings, FULLSCREEN_KEY, "music");
-        select(&mut settings, MAXIMIZED_KEY, "activities");
-        let text = std::fs::read_to_string(&path).unwrap();
-        let _ = std::fs::remove_file(&path);
-        assert!(text.contains("notch.fullscreen=music") && text.contains("notch.maximized=activities"), "{text}");
     }
 
     #[test]

@@ -1,0 +1,2 @@
+// GPUI loads the window and taskbar icon from resource id 1.
+1 ICON "logo.ico"

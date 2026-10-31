@@ -77,7 +77,6 @@ fn item_at(y: f32, item_height: f32, padding: f32, item_count: usize) -> Option<
 struct Menu {
     window: HWND,
     scale: f32,
-    is_dark: bool,
     hovered: Option<usize>,
     foreground_at_open: HWND,
     target: Option<ID2D1HwndRenderTarget>,
@@ -195,11 +194,7 @@ impl Menu {
         }
         let Some(target) = self.target.clone() else { return };
         let scale = self.scale;
-        let (text_color, highlight_color) = if self.is_dark {
-            (color(1.0, 1.0, 1.0, 1.0), color(1.0, 1.0, 1.0, 0.10))
-        } else {
-            (color(0.0, 0.0, 0.0, 1.0), color(0.0, 0.0, 0.0, 0.06))
-        };
+        let (text_color, highlight_color) = (color(1.0, 1.0, 1.0, 1.0), color(1.0, 1.0, 1.0, 0.10));
         unsafe {
             let (Ok(text_brush), Ok(highlight_brush)) =
                 (target.CreateSolidColorBrush(&text_color, None), target.CreateSolidColorBrush(&highlight_color, None))
@@ -207,8 +202,8 @@ impl Menu {
                 return;
             };
             target.BeginDraw();
-            // Fully transparent so the system backdrop shows through.
-            target.Clear(Some(&color(0.0, 0.0, 0.0, 0.0)));
+            // Opaque dark gray: the system backdrop does not show through this surface.
+            target.Clear(Some(&color(0.09, 0.09, 0.10, 1.0)));
             for (index, label) in LABELS.iter().enumerate() {
                 let top = (MENU_PADDING + ITEM_HEIGHT * index as f32) * scale;
                 let bottom = top + ITEM_HEIGHT * scale;
@@ -408,7 +403,7 @@ fn main() -> windows::core::Result<()> {
             w!("en-us"),
         )?;
         format.SetParagraphAlignment(DWRITE_PARAGRAPH_ALIGNMENT_CENTER)?;
-        let menu = Menu { window, scale, is_dark, hovered: None, foreground_at_open, target: None, factory, format };
+        let menu = Menu { window, scale, hovered: None, foreground_at_open, target: None, factory, format };
         let (width, height) = menu.size_pixels();
         MENU.with(|slot| *slot.borrow_mut() = Some(menu));
         SetWindowPos(window, None, cursor.x, cursor.y, width, height, SWP_NOACTIVATE | SWP_NOZORDER)?;

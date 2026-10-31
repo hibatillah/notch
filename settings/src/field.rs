@@ -1,332 +1,219 @@
-use std::ops::RangeInclusive;
+use std::{ops::RangeInclusive, rc::Rc};
 
 use gpui::{
-    AnyElement, App, Context, Entity, FocusHandle, KeyDownEvent, MouseButton, Rgba, SharedString, Subscription, Window,
-    div, prelude::*, px, rgb, rgba,
+    AnyElement, App, AppContext as _, Corner, ElementId, Entity, Focusable as _, SharedString, Subscription, Window,
+    div, prelude::*, px,
+};
+use gpui_component::{
+    ActiveTheme as _,
+    button::Button,
+    input::{Input, InputEvent, InputState},
+    menu::{DropdownMenu as _, PopupMenuItem},
+    switch::Switch,
 };
 use notch_store::Settings;
 
-use crate::{SettingsWindow, sections::apply};
-
-pub(crate) const ACCENT: u32 = 0x3b82f6;
-pub(crate) const ACCENT_TINT: u32 = 0x3b82f633;
-const SWITCH_OFF: u32 = 0x777777;
+use crate::{layout::Render, sections::apply};
 
 pub fn on_off(enabled: bool) -> &'static str {
     if enabled { "on" } else { "off" }
 }
 
-pub fn set_toggle(settings: &mut Settings, key: &str, enabled: bool) {
-    apply(settings, key, on_off(enabled));
+pub fn parse_whole_number(input: &str, range: &RangeInclusive<u32>) -> Option<u32> {
+    input.trim().parse::<u32>().ok().filter(|number| range.contains(number))
 }
 
-pub fn parse_minutes(input: &str, range: &RangeInclusive<u32>) -> Option<u32> {
-    input.trim().parse::<u32>().ok().filter(|minutes| range.contains(minutes))
+/// Saves the key and repaints, so a control shows its new state at once.
+pub fn write(key: &str, value: &str, cx: &mut App) {
+    apply(&mut Settings::load(), key, value);
+    cx.refresh_windows();
 }
 
-#[derive(Debug, PartialEq)]
-pub enum Press {
-    Typing,
-    Commit,
-    Revert,
+/// A bare switch; `on_click` gets the new state.
+pub fn bare_switch(
+    id: impl Into<ElementId>,
+    checked: bool,
+    on_click: impl Fn(bool, &mut Window, &mut App) + 'static,
+) -> Switch {
+    Switch::new(id).checked(checked).on_click(move |checked: &bool, window, cx| on_click(*checked, window, cx))
 }
 
-/// The text being edited next to the last value that was saved; only Enter or blur may save it.
-pub struct Draft {
-    committed: String,
-    text: String,
+/// A switch whose state is read again on every paint, so the tray's own toggles show up too.
+pub fn switch(id: &'static str, is_on: impl Fn() -> bool + 'static, set: impl Fn(bool, &mut App) + 'static) -> Render {
+    let set = Rc::new(set);
+    Rc::new(move |_window, _cx| {
+        let set = set.clone();
+        bare_switch(id, is_on(), move |enabled, _window, cx| set(enabled, cx)).into_any_element()
+    })
 }
 
-impl Draft {
-    pub fn new(value: &str) -> Self {
-        Self { committed: value.to_owned(), text: value.to_owned() }
-    }
-
-    pub fn text(&self) -> &str {
-        &self.text
-    }
-
-    pub fn reset_to(&mut self, value: &str) {
-        self.committed = value.to_owned();
-        self.text = value.to_owned();
-    }
-
-    pub fn insert(&mut self, typed: &str) {
-        self.text.extend(typed.chars().filter(|character| !character.is_control()));
-    }
-
-    pub fn press(&mut self, key: &str, key_char: Option<&str>) -> Press {
-        match key {
-            "enter" => Press::Commit,
-            "escape" => {
-                self.text = self.committed.clone();
-                Press::Revert
-            }
-            "backspace" => {
-                self.text.pop();
-                Press::Typing
-            }
-            _ => {
-                if let Some(typed) = key_char {
-                    self.insert(typed);
-                }
-                Press::Typing
-            }
-        }
-    }
-
-    /// Returns the value to save; a rejected or unchanged draft saves nothing and a rejected one reverts.
-    pub fn finish(&mut self, accept: impl FnOnce(&str) -> Option<String>) -> Option<String> {
-        match accept(&self.text) {
-            Some(value) => {
-                self.text = value.clone();
-                if value == self.committed {
-                    return None;
-                }
-                self.committed = value.clone();
-                Some(value)
-            }
-            None => {
-                self.text = self.committed.clone();
-                None
-            }
-        }
-    }
+pub fn toggle(key: &'static str, default: bool) -> Render {
+    switch(key, move || Settings::load().get_bool(key, default), move |enabled, cx| write(key, on_off(enabled), cx))
 }
 
-enum Kind {
-    Text,
-    Minutes { default: u32, range: RangeInclusive<u32> },
-}
-
-/// A single-line field that writes its key on Enter or when it loses focus.
-pub struct TextField {
+/// A dropdown of `(word, label)` choices bound to a settings key; `shown` picks the word to display.
+pub fn dropdown(
     key: &'static str,
-    kind: Kind,
-    draft: Draft,
-    // Its own handle on the file: every write re-reads it, so the window's other copy loses nothing.
-    settings: Settings,
-    focus_handle: FocusHandle,
-    _blur_subscription: Subscription,
+    choices: Vec<(SharedString, SharedString)>,
+    shown: impl Fn(&Settings) -> SharedString + 'static,
+) -> Render {
+    Rc::new(move |_window, cx| {
+        let current = shown(&Settings::load());
+        let label =
+            choices.iter().find(|(word, _)| *word == current).map_or(current.clone(), |(_, label)| label.clone());
+        let choices = choices.clone();
+        Button::new(key)
+            .label(label)
+            .dropdown_caret(true)
+            .outline()
+            .bg(crate::input_background(cx))
+            .border_color(cx.theme().input)
+            .dropdown_menu_with_anchor(Corner::TopRight, move |menu, _window, _cx| {
+                choices.iter().fold(menu, |menu, (word, label)| {
+                    let word = word.clone();
+                    let checked = word == current;
+                    menu.item(
+                        PopupMenuItem::new(label.clone())
+                            .checked(checked)
+                            .on_click(move |_event, _window, cx| write(key, &word, cx)),
+                    )
+                })
+            })
+            .into_any_element()
+    })
 }
 
-pub fn text(key: &'static str, window: &mut Window, cx: &mut App) -> Entity<TextField> {
-    cx.new(|cx| TextField::new(key, Kind::Text, window, cx))
+#[derive(Clone)]
+pub enum Kind {
+    Text {
+        width: f32,
+    },
+    /// Shown as dots, with a button that reveals it.
+    Secret {
+        width: f32,
+    },
+    WholeNumber {
+        default: u32,
+        range: RangeInclusive<u32>,
+    },
 }
 
-pub fn minutes(
-    key: &'static str,
-    default: u32,
-    range: RangeInclusive<u32>,
-    window: &mut Window,
-    cx: &mut App,
-) -> Entity<TextField> {
-    cx.new(|cx| TextField::new(key, Kind::Minutes { default, range }, window, cx))
-}
-
-impl TextField {
-    fn new(key: &'static str, kind: Kind, window: &mut Window, cx: &mut Context<Self>) -> Self {
-        let focus_handle = cx.focus_handle();
-        let blur_subscription = cx.on_blur(&focus_handle, window, |field, _window, cx| field.commit(cx));
-        let settings = Settings::load();
-        let draft = Draft::new(&shown_value(&settings, key, &kind));
-        Self { key, kind, draft, settings, focus_handle, _blur_subscription: blur_subscription }
-    }
-
-    fn commit(&mut self, cx: &mut Context<Self>) {
-        let accepted = self.draft.finish(|text| match &self.kind {
-            Kind::Text => Some(text.trim().to_owned()),
-            Kind::Minutes { range, .. } => parse_minutes(text, range).map(|minutes| minutes.to_string()),
-        });
-        if let Some(value) = accepted {
-            apply(&mut self.settings, self.key, &value);
-        }
-        cx.notify();
-    }
-
-    fn on_key_down(&mut self, event: &KeyDownEvent, cx: &mut Context<Self>) {
-        let keystroke = &event.keystroke;
-        if keystroke.modifiers.control && keystroke.key == "v" {
-            if let Some(pasted) = cx.read_from_clipboard().and_then(|item| item.text()) {
-                self.draft.insert(&pasted);
-            }
-            cx.notify();
-            return;
-        }
-        if keystroke.modifiers.control || keystroke.modifiers.alt || keystroke.modifiers.platform {
-            return;
-        }
-        match self.draft.press(&keystroke.key, keystroke.key_char.as_deref()) {
-            Press::Commit => self.commit(cx),
-            Press::Typing | Press::Revert => cx.notify(),
+impl Kind {
+    fn width(&self) -> f32 {
+        match self {
+            Kind::Text { width } | Kind::Secret { width } => *width,
+            Kind::WholeNumber { .. } => 96.0,
         }
     }
 }
 
 fn shown_value(settings: &Settings, key: &str, kind: &Kind) -> String {
     match kind {
-        Kind::Text => settings.get_string(key).unwrap_or_default().to_owned(),
-        Kind::Minutes { default, .. } => {
+        Kind::Text { .. } | Kind::Secret { .. } => settings.get_string(key).unwrap_or_default().to_owned(),
+        Kind::WholeNumber { default, .. } => {
             // The notch accepts any positive value, so a hand edit outside the field's range is shown as stored.
             settings
                 .get_string(key)
                 .and_then(|text| text.trim().parse::<u32>().ok())
-                .filter(|minutes| *minutes > 0)
+                .filter(|number| *number > 0)
                 .unwrap_or(*default)
                 .to_string()
         }
     }
 }
 
-impl Render for TextField {
-    fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        let focused = self.focus_handle.is_focused(window);
-        if !focused {
-            // A hand edit or the notch's own write shows up here instead of being overwritten by a stale value.
-            self.settings.reload();
-            self.draft.reset_to(&shown_value(&self.settings, self.key, &self.kind));
-        }
-        let width = match self.kind {
-            Kind::Text => 320.0,
-            Kind::Minutes { .. } => 72.0,
-        };
-        let caret = if focused { "|" } else { "" };
-        div()
-            .track_focus(&self.focus_handle)
-            .w(px(width))
-            .px_2()
-            .py_1()
-            .rounded_md()
-            .border_1()
-            .border_color(if focused { rgb(ACCENT) } else { rgba(0x80808080) })
-            .overflow_hidden()
-            .whitespace_nowrap()
-            .on_mouse_down(
-                MouseButton::Left,
-                cx.listener(|field, _event, window, _cx| field.focus_handle.focus(window)),
-            )
-            .on_key_down(cx.listener(|field, event: &KeyDownEvent, _window, cx| field.on_key_down(event, cx)))
-            .child(format!("{}{caret}", self.draft.text()))
-    }
+struct InputBox {
+    input: Entity<InputState>,
+    _subscription: Subscription,
 }
 
-fn row(label: impl Into<SharedString>, control: impl IntoElement) -> AnyElement {
-    let label: SharedString = label.into();
-    div().flex().items_center().justify_between().gap_4().child(div().child(label)).child(control).into_any_element()
+/// A text or number field that saves on Enter or when it loses focus; a rejected value reverts.
+pub fn input(key: &'static str, kind: Kind, placeholder: &'static str) -> Render {
+    Rc::new(move |window, cx| input_element(key, &kind, placeholder, window, cx))
 }
 
-pub fn field_row(label: &'static str, field: &Entity<TextField>) -> AnyElement {
-    row(label, field.clone())
-}
-
-pub fn switch_row(
-    label: impl Into<SharedString>,
-    enabled: bool,
-    on_click: impl Fn(&mut SettingsWindow) + 'static,
-    cx: &mut Context<SettingsWindow>,
-) -> AnyElement {
-    let label: SharedString = label.into();
-    let track_color: Rgba = rgb(if enabled { ACCENT } else { SWITCH_OFF });
-    let switch = div()
-        .id(label.clone())
-        .flex()
-        .items_center()
-        .w(px(40.0))
-        .h(px(22.0))
-        .p(px(2.0))
-        .rounded_full()
-        .bg(track_color)
-        .when(enabled, |track| track.justify_end())
-        .child(div().size(px(18.0)).rounded_full().bg(rgb(0xffffff)))
-        .on_click(cx.listener(move |this, _event, _window, cx| {
-            on_click(this);
-            cx.notify();
-        }));
-    row(label, switch)
-}
-
-pub fn toggle(
-    label: &'static str,
+fn input_element(
     key: &'static str,
-    default: bool,
-    settings: &Settings,
-    cx: &mut Context<SettingsWindow>,
+    kind: &Kind,
+    placeholder: &'static str,
+    window: &mut Window,
+    cx: &mut App,
 ) -> AnyElement {
-    switch_row(
-        label,
-        settings.get_bool(key, default),
-        move |window_state| {
-            window_state.settings.reload();
-            let enabled = window_state.settings.get_bool(key, default);
-            set_toggle(&mut window_state.settings, key, !enabled);
-        },
-        cx,
-    )
+    let stored = shown_value(&Settings::load(), key, kind);
+    let state = window.use_keyed_state(SharedString::from(format!("input-{key}")), cx, {
+        let (kind, stored) = (kind.clone(), stored.clone());
+        move |window, cx| {
+            let secret = matches!(kind, Kind::Secret { .. });
+            let input = cx.new(|cx| {
+                let state = InputState::new(window, cx).placeholder(placeholder).default_value(stored);
+                if secret { state.masked(true) } else { state }
+            });
+            let _subscription =
+                cx.subscribe_in(&input, window, move |_box: &mut InputBox, input, event, window, cx| {
+                    if matches!(event, InputEvent::PressEnter { .. } | InputEvent::Blur) {
+                        commit(key, &kind, input, window, cx);
+                    }
+                });
+            InputBox { input, _subscription }
+        }
+    });
+    let input = state.read(cx).input.clone();
+    // A hand edit or the tray's own write shows up here instead of being overwritten by a stale value.
+    if !input.focus_handle(cx).is_focused(window) && input.read(cx).value() != stored {
+        input.update(cx, |input, cx| input.set_value(stored, window, cx));
+    }
+    div()
+        .w(px(kind.width()))
+        .rounded(cx.theme().radius)
+        .border_1()
+        .border_color(cx.theme().input)
+        .bg(crate::input_background(cx))
+        .child(match kind {
+            Kind::Secret { .. } => Input::new(&input).appearance(false).mask_toggle(),
+            _ => Input::new(&input).appearance(false),
+        })
+        .into_any_element()
+}
+
+fn commit(key: &'static str, kind: &Kind, input: &Entity<InputState>, window: &mut Window, cx: &mut App) {
+    let typed = input.read(cx).value();
+    let accepted = match kind {
+        Kind::Text { .. } | Kind::Secret { .. } => Some(typed.trim().to_owned()),
+        Kind::WholeNumber { range, .. } => parse_whole_number(&typed, range).map(|number| number.to_string()),
+    };
+    let stored = shown_value(&Settings::load(), key, kind);
+    let shown = match accepted {
+        Some(value) => {
+            if value != stored {
+                write(key, &value, cx);
+            }
+            value
+        }
+        None => stored,
+    };
+    input.update(cx, |input, cx| input.set_value(shown, window, cx));
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
 
-    fn temporary_settings(name: &str) -> (Settings, std::path::PathBuf) {
-        let path = std::env::temp_dir().join(format!("notch-settings-field-{}-{name}.txt", std::process::id()));
-        let _ = std::fs::remove_file(&path);
-        (Settings::at(Some(path.clone())), path)
+    #[test]
+    fn toggles_write_on_and_off_words() {
+        assert_eq!(on_off(true), "on");
+        assert_eq!(on_off(false), "off");
     }
 
     #[test]
-    fn a_toggle_writes_on_and_off() {
-        let (mut settings, path) = temporary_settings("toggle");
-        set_toggle(&mut settings, "media.lyrics", true);
-        assert_eq!(std::fs::read_to_string(&path).unwrap().trim(), "media.lyrics=on");
-        set_toggle(&mut settings, "media.lyrics", false);
-        assert_eq!(std::fs::read_to_string(&path).unwrap().trim(), "media.lyrics=off");
-        let _ = std::fs::remove_file(&path);
-    }
-
-    #[test]
-    fn minutes_outside_the_range_are_rejected() {
+    fn numbers_outside_the_range_are_rejected() {
         let range = 5..=120;
-        assert_eq!(parse_minutes("4", &range), None);
-        assert_eq!(parse_minutes("121", &range), None);
-        assert_eq!(parse_minutes("abc", &range), None);
-        assert_eq!(parse_minutes("", &range), None);
-        assert_eq!(parse_minutes(" 5 ", &range), Some(5));
-        assert_eq!(parse_minutes("120", &range), Some(120));
-
-        let mut draft = Draft::new("25");
-        draft.press("backspace", None);
-        draft.press("backspace", None);
-        draft.insert("3");
-        let saved = draft.finish(|text| parse_minutes(text, &range).map(|minutes| minutes.to_string()));
-        assert_eq!(saved, None);
-        assert_eq!(draft.text(), "25", "a rejected value reverts the field");
+        assert_eq!(parse_whole_number("4", &range), None);
+        assert_eq!(parse_whole_number("121", &range), None);
+        assert_eq!(parse_whole_number("abc", &range), None);
+        assert_eq!(parse_whole_number("", &range), None);
+        assert_eq!(parse_whole_number(" 5 ", &range), Some(5));
+        assert_eq!(parse_whole_number("120", &range), Some(120));
     }
-
-    #[test]
-    fn text_commits_only_on_enter_or_blur() {
-        let accept = |text: &str| Some(text.trim().to_owned());
-        let mut draft = Draft::new("");
-        for typed in ["h", "i"] {
-            assert_eq!(draft.press(typed, Some(typed)), Press::Typing);
-        }
-        assert_eq!(draft.text(), "hi");
-        assert_eq!(draft.press("enter", None), Press::Commit);
-        assert_eq!(draft.finish(accept), Some("hi".to_owned()));
-        assert_eq!(draft.finish(accept), None, "blur right after Enter has nothing new to save");
-
-        draft.insert("!");
-        assert_eq!(draft.finish(accept), Some("hi!".to_owned()), "blur commits a pending edit");
-
-        draft.insert("?");
-        assert_eq!(draft.press("escape", None), Press::Revert);
-        assert_eq!(draft.text(), "hi!");
-    }
-}
-
-#[cfg(test)]
-mod shown_value_tests {
-    use super::*;
 
     #[test]
     fn a_stored_value_outside_the_range_is_shown_not_replaced_by_the_default() {
@@ -335,7 +222,7 @@ mod shown_value_tests {
             .unwrap();
         let settings = Settings::at(Some(path.clone()));
         let _ = std::fs::remove_file(&path);
-        let kind = |default| Kind::Minutes { default, range: 1..=120 };
+        let kind = |default| Kind::WholeNumber { default, range: 1..=120 };
         assert_eq!(shown_value(&settings, "timer.short_break_minutes", &kind(5)), "180");
         assert_eq!(shown_value(&settings, "timer.long_break_minutes", &kind(15)), "15");
         assert_eq!(shown_value(&settings, "timer.focus_minutes", &kind(25)), "25");

@@ -1,6 +1,12 @@
-use gpui::{AnyElement, Context, IntoElement, Render, SharedString, Window, div, prelude::*, rgb, rgba};
+use gpui::{AnyElement, App, Context, IntoElement, Render, SharedString, Window, div, prelude::*, px};
+use gpui_component::{ActiveTheme as _, h_flex, v_flex};
+use notch_store::Settings;
 
-use crate::{SettingsWindow, field, sections::apply};
+use crate::{
+    field,
+    layout::{Group, Item, Page},
+    sections::apply,
+};
 
 const KNOWN_KEY: &str = "pages.known";
 const ORDER_KEY: &str = "navigation.order";
@@ -96,13 +102,39 @@ struct DraggedPage {
 struct DragPreview(SharedString);
 
 impl Render for DragPreview {
-    fn render(&mut self, _window: &mut Window, _cx: &mut Context<Self>) -> impl IntoElement {
-        div().px_3().py_1().rounded_md().bg(rgb(0x3a3a3a)).text_color(rgb(0xf0f0f0)).child(self.0.clone())
+    fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        div()
+            .px_3()
+            .py_1()
+            .rounded_md()
+            .bg(cx.theme().secondary)
+            .text_color(cx.theme().foreground)
+            .child(self.0.clone())
     }
 }
 
-pub fn render(window_state: &SettingsWindow, cx: &mut Context<SettingsWindow>) -> AnyElement {
-    let settings = &window_state.settings;
+/// Two columns of dots, the usual sign that a row can be dragged.
+fn page_description(id: &str) -> Option<&'static str> {
+    match id {
+        "media" => Some("Music player with synced lyrics."),
+        "shelf" => Some("Holds dropped files for a while."),
+        "calendar" => Some("The week and the events of a day you pick."),
+        "timer" => Some("Focus and break timer."),
+        "stats" => Some("System stats, off until you switch it on."),
+        _ => None,
+    }
+}
+
+fn grip(cx: &App) -> AnyElement {
+    let color = cx.theme().muted_foreground;
+    let column =
+        move || v_flex().gap(px(3.0)).children((0..3).map(move |_| div().size(px(3.0)).rounded_full().bg(color)));
+    h_flex().flex_none().gap(px(3.0)).child(column()).child(column()).into_any_element()
+}
+
+/// The page list as a settings item: drag a row to reorder it, switch it to turn the page on or off.
+fn page_list(cx: &mut App) -> AnyElement {
+    let settings = Settings::load();
     let known = parse_known(settings.get_string(KNOWN_KEY));
     if known.is_empty() {
         return div()
@@ -111,52 +143,66 @@ pub fn render(window_state: &SettingsWindow, cx: &mut Context<SettingsWindow>) -
     }
     let order = current_order(&known, settings.get_string(ORDER_KEY));
     let disabled = disabled_pages(&known, settings.get_string(DISABLED_KEY));
+    let border = cx.theme().border;
+    let card = cx.theme().group_box;
+    let muted = cx.theme().muted_foreground;
+    let drop_highlight = cx.theme().accent;
     let rows = order.iter().enumerate().map(|(index, id)| {
         let label = known.iter().find(|page| &page.id == id).map(|page| page.label.clone()).unwrap_or_default();
         let shown_label = SharedString::from(label);
         let switch_id = id.clone();
-        let switch = field::switch_row(
-            shown_label.clone(),
-            !disabled.contains(id),
-            move |window_state| {
-                let settings = &mut window_state.settings;
-                settings.reload();
-                let known = parse_known(settings.get_string(KNOWN_KEY));
-                let order = current_order(&known, settings.get_string(ORDER_KEY));
-                let mut disabled = disabled_pages(&known, settings.get_string(DISABLED_KEY));
-                let enabled = disabled.contains(&switch_id);
-                if switch_page(&order, &mut disabled, &switch_id, enabled) {
-                    apply(settings, DISABLED_KEY, &order_text(&order, &disabled).1);
-                }
-            },
-            cx,
-        );
-        let dragged = DraggedPage { index, label: shown_label };
-        div()
+        let switch = field::bare_switch(("page-switch", index), !disabled.contains(id), move |enabled, _window, cx| {
+            let mut settings = Settings::load();
+            let known = parse_known(settings.get_string(KNOWN_KEY));
+            let order = current_order(&known, settings.get_string(ORDER_KEY));
+            let mut disabled = disabled_pages(&known, settings.get_string(DISABLED_KEY));
+            if switch_page(&order, &mut disabled, &switch_id, enabled) {
+                apply(&mut settings, DISABLED_KEY, &order_text(&order, &disabled).1);
+            }
+            cx.refresh_windows();
+        });
+        let dragged = DraggedPage { index, label: shown_label.clone() };
+        h_flex()
             .id(("page-row", index))
-            .py_1()
-            .rounded_md()
+            .items_center()
+            .gap_3()
+            .px_3()
+            .py_2()
+            .rounded_lg()
+            .border_1()
+            .border_color(border)
+            .bg(card)
             .cursor_grab()
             .on_drag(dragged, |dragged, _position, _window, cx| cx.new(|_| DragPreview(dragged.label.clone())))
-            .drag_over::<DraggedPage>(|style, _dragged, _window, _cx| style.bg(rgba(field::ACCENT_TINT)))
-            .on_drop(cx.listener(move |window_state, dragged: &DraggedPage, _window, cx| {
-                let settings = &mut window_state.settings;
-                settings.reload();
+            .drag_over::<DraggedPage>(move |style, _dragged, _window, _cx| style.bg(drop_highlight))
+            .on_drop(move |dragged: &DraggedPage, _window, cx| {
+                let mut settings = Settings::load();
                 let known = parse_known(settings.get_string(KNOWN_KEY));
                 let mut order = current_order(&known, settings.get_string(ORDER_KEY));
                 reorder(&mut order, dragged.index, index);
-                apply(settings, ORDER_KEY, &order_text(&order, &[]).0);
-                cx.notify();
-            }))
+                apply(&mut settings, ORDER_KEY, &order_text(&order, &[]).0);
+                cx.refresh_windows();
+            })
+            .child(grip(cx))
+            .child(
+                v_flex()
+                    .flex_1()
+                    .min_w_0()
+                    .gap_0p5()
+                    .child(div().text_sm().child(shown_label))
+                    .children(page_description(id).map(|text| div().text_sm().text_color(muted).child(text))),
+            )
             .child(switch)
     });
-    div()
-        .flex()
-        .flex_col()
-        .gap_1()
-        .child(div().child("Drag a page to reorder it. At least one page stays on."))
-        .children(rows)
-        .into_any_element()
+    v_flex().gap_2().children(rows).into_any_element()
+}
+
+pub fn page() -> Page {
+    Page::new(
+        "Pages",
+        "Drag a page to move it, and switch off the ones you do not want. At least one stays on.",
+        vec![Group::loose(vec![Item::custom(|_window, cx| page_list(cx))])],
+    )
 }
 
 #[cfg(test)]

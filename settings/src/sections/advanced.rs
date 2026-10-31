@@ -1,18 +1,27 @@
-use gpui::{AnyElement, div, prelude::*};
+use std::ops::RangeInclusive;
 
-const VARIABLES: [(&str, &str); 4] = [
-    ("NOTCH_PAGES", "comma-separated page ids to switch on"),
-    ("NOTCH_LYRICS=off", "never look up lyrics"),
-    ("NOTCH_DEBUG=<file>", "append a timestamped log to this file"),
-    ("NOTCH_TOP=<pixels>", "move the notch down by this many pixels"),
-];
+use crate::{
+    field::{self, Kind},
+    layout::{Group, Item, Page},
+};
 
-pub fn render() -> AnyElement {
-    div()
-        .flex()
-        .flex_col()
-        .gap_2()
-        .child("Set these environment variables before starting notch.exe; they are read at start.")
-        .children(VARIABLES.iter().map(|(name, meaning)| div().child(format!("{name}: {meaning}"))))
-        .into_any_element()
+const TOP_RANGE: RangeInclusive<u32> = 0..=2000;
+
+pub fn page() -> Page {
+    Page::new(
+        "Advanced",
+        "Troubleshooting and placement. Changes apply after you restart the notch.",
+        vec![Group::new(vec![
+            Item::new(
+                "Debug log file",
+                field::input("advanced.debug_log", Kind::Text { width: 280.0 }, "Path to a log file"),
+            )
+            .description("Appends timestamped lines to this file. Empty means no log."),
+            Item::new(
+                "Move down (pixels)",
+                field::input("notch.top", Kind::WholeNumber { default: 0, range: TOP_RANGE }, "0"),
+            )
+            .description("Distance below the top edge, 0 to 2000."),
+        ])],
+    )
 }
